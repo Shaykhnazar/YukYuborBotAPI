@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\User;
 
-use App\Models\TelegramUser;
+use App\Http\Controllers\Controller as BaseController;
 use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
 
-class UserController extends Controller
+class Controller extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,

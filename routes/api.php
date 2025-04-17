@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -16,8 +15,8 @@ use Illuminate\Support\Facades\Route;
 //middleware('auth:sanctum')->
 
 Route::middleware( ['auth:tgwebapp', 'tg.init'] )->group(function () {
-    Route::get('/user', [\App\Http\Controllers\UserController::class, 'index']);
-    Route::get('/user/requests', [\App\Http\Controllers\User\RequestsController::class, 'index']);
+    Route::get('/user', [\App\Http\Controllers\User\Controller::class, 'index']);
+    Route::get('/user/requests', [\App\Http\Controllers\User\Requests\Controller::class, 'index']);
     Route::get('/requests', [\App\Http\Controllers\RequestsController::class, 'index']);
     Route::post('/send-request', [\App\Http\Controllers\SendRequest\Controller::class, 'create']);
 });
