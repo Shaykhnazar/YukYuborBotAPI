@@ -19,7 +19,7 @@ class Controller extends BaseController
     public function create(CreateRequest $request)
     {
         $dto = $request->getDTO();
-        $sendReq = new DeliveryRequest(
+        $deliveryReq = new DeliveryRequest(
             [
                 'from_location' => $dto->fromLoc,
                 'to_location' => $dto->toLoc,
@@ -32,8 +32,8 @@ class Controller extends BaseController
                 'status' => 'open',
             ]
         );
-        $sendReq->save();
+        $deliveryReq->save();
 
-        return response()->json($sendReq);
+        return response()->json($deliveryReq);
     }
 }
