@@ -20,7 +20,7 @@ class Controller extends BaseController
         $review = new Review(
             [
                 'user_id' => $dto->userId,
-                'owner_id' => $owner->$this->userService->getUserByTelegramId($request)->id,
+                'owner_id' => $owner->id,
                 'text' => $dto->text,
                 'rating' => $dto->rating
             ]
