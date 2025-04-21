@@ -19,5 +19,7 @@ Route::middleware( ['auth:tgwebapp', 'tg.init'] )->group(function () {
     Route::get('/user/{user}', [\App\Http\Controllers\User\Controller::class, 'show']);
     Route::get('/requests', [\App\Http\Controllers\RequestsController::class, 'index']);
     Route::post('/send-request', [\App\Http\Controllers\SendRequest\Controller::class, 'create']);
+    Route::post('/delivery-request', [\App\Http\Controllers\DeliveryRequest\Controller::class, 'create']);
+    Route::post('/review-request', [\App\Http\Controllers\User\Review\Controller::class, 'create']);
 });
 
