@@ -25,9 +25,13 @@ class IndexRequestResource extends JsonResource
             'to_location' => $this->to_location,
             'from_date' => $this->from_date,
             'to_date' => $this->to_date,
+            'size_type' => $this->size_type,
+            'description' => $this->description,
+            'price' => $this->price,
+            'currency' => $this->currency,
             'user' => [
                 'id' => $user->id,
-                'image' => $telegram->image ?? null,
+                'image' => $telegram->image ?? null
             ]
         ];
     }
