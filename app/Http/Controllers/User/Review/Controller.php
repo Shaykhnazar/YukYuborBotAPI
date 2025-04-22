@@ -29,4 +29,16 @@ class Controller extends BaseController
 
         return response()->json($review);
     }
+
+    public function show(int $id): \Illuminate\Http\JsonResponse
+    {
+        $review = Review::findOrFail($id);
+        return response()->json($review);
+    }
+
+    public function userReviews(int $userId): \Illuminate\Http\JsonResponse
+    {
+        $reviews = Review::where('user_id', $userId)->get();
+        return response()->json($reviews);
+    }
 }
