@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\SendRequest\CreateRequest;
 use App\Models\SendRequest;
 use App\Service\TelegramUserService;
+use App\Service\Matcher;
 use Carbon\CarbonImmutable;
 
 class Controller extends BaseController
 {
     public function __construct(
         protected TelegramUserService $userService,
+        protected Matcher $matcher
     )
     {
     }
@@ -33,6 +35,7 @@ class Controller extends BaseController
             ]
         );
         $sendReq->save();
+        $this->matcher->matchSendRequest($sendReq);
 
         return response()->json($sendReq);
     }

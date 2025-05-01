@@ -34,7 +34,7 @@
                     return $item;
                 });;
             }
-            $requests = $delivery->merge($send)->sortByDesc('created_at')->values();
+            $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
             return IndexRequestResource::collection($requests);
         }
@@ -61,7 +61,7 @@
                 });
             }
 
-            $requests = $delivery->merge($send)->sortByDesc('created_at')->values();
+            $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
             return IndexRequestResource::collection($requests);
         }

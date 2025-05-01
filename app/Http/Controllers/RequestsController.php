@@ -35,7 +35,7 @@ class RequestsController extends Controller
                 });
         }
 
-        $requests = $delivery->merge($send)->sortByDesc('created_at')->values();
+        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
     }
