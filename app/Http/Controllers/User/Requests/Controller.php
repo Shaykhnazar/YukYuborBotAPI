@@ -35,6 +35,7 @@ class Controller extends BaseController
                 return $item;
             });;
         }
+      
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
@@ -61,7 +62,7 @@ class Controller extends BaseController
                 return $item;
             });
         }
-
+     
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
