@@ -24,6 +24,6 @@ Route::middleware( ['auth:tgwebapp', 'tg.init'] )->group(function () {
     Route::get('/user/reviews/{userId}', [\App\Http\Controllers\User\Review\Controller::class   , 'userReviews']);
     Route::get('/requests/{id}', [\App\Http\Controllers\User\Requests\Controller::class, 'show']);
     Route::get('user/{user}/requests', [\App\Http\Controllers\User\Requests\Controller::class, 'userRequests']);
-    Route::get('/place', [\App\Http\Controllers\Place\Controller::class, 'index']);
 });
+Route::get('/place', [\App\Http\Controllers\Place\Controller::class, 'index']);
 
