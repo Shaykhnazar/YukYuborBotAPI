@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Place;
+namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Http\Requests\Place\IndexRequest;
+use App\Http\Requests\Place\PlaceRequest;
 use App\Service\PlaceApi;
 
-class Controller extends BaseController
+class PlaceController extends BaseController
 {
     public function __construct(
         protected PlaceApi $placeApi,
@@ -14,7 +14,7 @@ class Controller extends BaseController
     {
     }
 
-    public function index(IndexRequest $request)
+    public function index(PlaceRequest $request)
     {
         $places = $this->placeApi->search_by_city($request->getPlace());
 

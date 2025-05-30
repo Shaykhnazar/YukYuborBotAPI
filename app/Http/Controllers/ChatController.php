@@ -1,15 +1,19 @@
 <?php
 
-namespace App\Http\Controllers\Chat;
+namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
+use App\Http\Requests\Chat\ChatCreateRequest;
 use App\Models\Chat;
 use App\Models\ChatMessage;
+use App\Models\User;
 use App\Service\TelegramUserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
-class Controller extends BaseController
+class ChatController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,
@@ -172,14 +176,8 @@ class Controller extends BaseController
     /**
      * Create new chat (start dialog with matched user)
      */
-    public function createChat(Request $request): JsonResponse
+    public function createChat(ChatCreateRequest $request): JsonResponse
     {
-        $request->validate([
-            'request_type' => 'required|string|in:send,delivery',
-            'request_id' => 'required|integer',
-            'other_user_id' => 'required|integer|exists:users,id',
-        ]);
-
         $user = $this->tgService->getUserByTelegramId($request);
 
         // Check if user has enough links
@@ -223,8 +221,8 @@ class Controller extends BaseController
         $chat = new Chat($chatData);
         $chat->save();
 
-        // Deduct one link from user's balance
-        $user->decrement('links_balance');
+        // Deduct one link from user's balance TODO:: apply deduct logic after payment integration is done
+//        $user->decrement('links_balance');
 
         return response()->json([
             'chat_id' => $chat->id,
@@ -272,7 +270,7 @@ class Controller extends BaseController
      */
     private function sendTelegramNotification(int $userId, string $senderName, string $message): void
     {
-        $user = \App\Models\User::with('telegramUser')->find($userId);
+        $user = User::with('telegramUser')->find($userId);
 
         if (!$user || !$user->telegramUser) {
             return;
@@ -282,13 +280,13 @@ class Controller extends BaseController
         $notificationText = "💬 Новое сообщение от {$senderName}:\n\n{$message}";
 
         $token = env('TELEGRAM_BOT_TOKEN');
-        $response = \Illuminate\Support\Facades\Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
+        $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $notificationText,
         ]);
 
         if ($response->failed()) {
-            \Illuminate\Support\Facades\Log::error('Failed to send Telegram notification', [
+            Log::error('Failed to send Telegram notification', [
                 'user_id' => $userId,
                 'telegram_id' => $telegramId,
                 'response' => $response->body()

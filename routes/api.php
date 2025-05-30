@@ -1,7 +1,15 @@
 <?php
 
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\PlaceController;
+use App\Http\Controllers\RequestController;
+use App\Http\Controllers\ResponseController;
+use App\Http\Controllers\SendRequestController;
+use App\Http\Controllers\User\Request\UserRequestController;
+use App\Http\Controllers\User\Review\UserReviewController;
+use App\Http\Controllers\User\UserController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Chat\Controller as ChatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,17 +29,17 @@ if (!env('TELEGRAM_DEV_MODE', false)) {
 }
 
 Route::middleware($middleware)->group(function () {
-    Route::get('/user', [\App\Http\Controllers\User\Controller::class, 'index']);
-    Route::get('/user/requests', [\App\Http\Controllers\User\Requests\Controller::class, 'index']);
-    Route::get('/user/{user}', [\App\Http\Controllers\User\Controller::class, 'show']);
-    Route::get('/requests', [\App\Http\Controllers\RequestsController::class, 'index']);
-    Route::post('/send-request', [\App\Http\Controllers\SendRequest\Controller::class, 'create']);
-    Route::post('/delivery-request', [\App\Http\Controllers\DeliveryRequest\Controller::class, 'create']);
-    Route::post('/review-request', [\App\Http\Controllers\User\Review\Controller::class, 'create']);
-    Route::get('/reviews/{id}', [\App\Http\Controllers\User\Review\Controller::class, 'show']);
-    Route::get('/user/reviews/{userId}', [\App\Http\Controllers\User\Review\Controller::class, 'userReviews']);
-    Route::get('/requests/{id}', [\App\Http\Controllers\User\Requests\Controller::class, 'show']);
-    Route::get('user/{user}/requests', [\App\Http\Controllers\User\Requests\Controller::class, 'userRequests']);
+    Route::get('/user', [UserController::class, 'index']);
+    Route::get('/user/requests', [UserRequestController::class, 'index']);
+    Route::get('/user/{user}', [UserController::class, 'show']);
+    Route::get('/requests', [RequestController::class, 'index']);
+    Route::post('/send-request', [SendRequestController::class, 'create']);
+    Route::post('/delivery-request', [DeliveryController::class, 'create']);
+    Route::post('/review-request', [UserReviewController::class, 'create']);
+    Route::get('/reviews/{id}', [UserReviewController::class, 'show']);
+    Route::get('/user/reviews/{userId}', [UserReviewController::class, 'userReviews']);
+    Route::get('/requests/{id}', [UserRequestController::class, 'show']);
+    Route::get('user/{user}/requests', [UserRequestController::class, 'userRequests']);
 
     // Chat routes
     Route::prefix('chat')->group(function () {
@@ -44,6 +52,19 @@ Route::middleware($middleware)->group(function () {
         // Create new chat (start dialog)
         Route::post('/create', [ChatController::class, 'createChat']);
     });
+
+    // Responses routes
+    Route::prefix('responses')->controller(ResponseController::class)->group(function () {
+        // Get all responses for current user
+        Route::get('/', 'index');
+        // Accept a response
+        Route::post('/{responseId}/accept', 'accept');
+        // Reject a response
+        Route::post('/{responseId}/reject', 'reject');
+        // Cancel a response
+        Route::post('/{responseId}/cancel', 'cancel');
+    });
 });
-Route::get('/place', [\App\Http\Controllers\Place\Controller::class, 'index']);
+
+Route::get('/place', [PlaceController::class, 'index']);
 

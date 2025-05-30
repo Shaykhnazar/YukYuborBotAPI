@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Place;
+namespace App\Http\Requests\Parcel;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class IndexRequest extends FormRequest
+class ParcelRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,12 +22,12 @@ class IndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'place' => 'required|string'
+            'filter' => 'nullable|string'
         ];
     }
 
-    public function getPlace()
+    public function getFilter()
     {
-        return $this->validated('place');
+        return $this->validated('filter');
     }
 }

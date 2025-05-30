@@ -1,21 +1,21 @@
 <?php
 
-namespace App\Http\Controllers\User\Requests;
+namespace App\Http\Controllers\User\Request;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Http\Requests\Parcel\IndexRequest;
+use App\Http\Requests\Parcel\ParcelRequest;
 use App\Http\Resources\Parcel\IndexRequestResource;
 use App\Service\TelegramUserService;
 use App\Models\User;
 
-class Controller extends BaseController
+class UserRequestController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,
     )
     {}
 
-    public function index(IndexRequest $request)
+    public function index(ParcelRequest $request)
     {
         $filter = $request->getFilter();
         $user = $this->tgService->getUserByTelegramId($request);
@@ -35,13 +35,13 @@ class Controller extends BaseController
                 return $item;
             });;
         }
-      
+
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
     }
 
-    public function show(IndexRequest $request, int $id)
+    public function show(ParcelRequest $request, int $id)
     {
         $filter = $request->getFilter();
         $user = $this->tgService->getUserByTelegramId($request);
@@ -62,12 +62,12 @@ class Controller extends BaseController
                 return $item;
             });
         }
-     
+
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
     }
-    public function userRequests(IndexRequest $request, User $user)
+    public function userRequests(ParcelRequest $request, User $user)
     {
         $filter = $request->getFilter();
 

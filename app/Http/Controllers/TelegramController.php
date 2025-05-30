@@ -9,8 +9,6 @@ use App\Models\SendRequest;
 
 class TelegramController extends Controller
 {
-    // App\Http\Controllers\TelegramController.php
-
     public function handle(Request $request)
     {
         $data = $request->all();

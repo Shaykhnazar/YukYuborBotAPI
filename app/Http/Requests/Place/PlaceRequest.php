@@ -1,11 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Review;
+namespace App\Http\Requests\Place;
 
-use App\Http\DTO\Review\CreateRequestDTO;
 use Illuminate\Foundation\Http\FormRequest;
 
-class CreateRequest extends FormRequest
+class PlaceRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,19 +22,12 @@ class CreateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id' => 'required|integer',
-            'text' => 'required|string',
-            'rating' => 'required|integer',
+            'place' => 'required|string'
         ];
     }
 
-    public function getDTO(): CreateRequestDTO
+    public function getPlace()
     {
-        return new CreateRequestDTO(
-            (int) $this->validated('user_id'),
-            $this->validated('text'),
-            (int) $this->validated('rating')
-        );
+        return $this->validated('place');
     }
-
 }

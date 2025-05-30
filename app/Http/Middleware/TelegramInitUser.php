@@ -67,6 +67,7 @@ class TelegramInitUser
 
         $this->createOrUpdateUser($user);
         $request->attributes->set('telegram_id', $user['id']);
+
         Log::info('User processed successfully', ['telegram_id' => $user['id']]);
 
         return $next($request);
@@ -79,31 +80,37 @@ class TelegramInitUser
     {
         Log::info('Handling development mode');
 
-        // Check if we have custom dev user data in headers
-        $devUserData = $request->header('X-DEV-USER-DATA');
+        // Get user data from X-TELEGRAM-USER-DATA header (same as production)
+        $userDataHead = $request->header('X-TELEGRAM-USER-DATA');
 
-        if ($devUserData) {
-            $user = json_decode($devUserData, true);
-            Log::info('Using custom dev user data', ['user' => $user]);
+        if ($userDataHead) {
+            // Parse the data the same way as production mode
+            parse_str(urldecode($userDataHead), $userData);
+            Log::info('Parsed development user data', ['userData' => $userData]);
+
+            if (isset($userData['user'])) {
+                $user = json_decode($userData['user'], true);
+                Log::info('Using development user from header', ['user' => $user]);
+            } else {
+                Log::warning('Invalid development user data format, using default');
+                $user = $this->getDefaultDevUser();
+            }
         } else {
-            // Default development user
-            $user = [
-                'id' => env('DEV_TELEGRAM_ID'),
-                'first_name' => 'Dev',
-                'last_name' => 'User',
-                'username' => env('DEV_TELEGRAM_USERNAME'),
-                'language_code' => 'ru',
-                'photo_url' => 'https://via.placeholder.com/150/0000FF/808080?text=Dev+User'
-            ];
+            // Fallback to default development user
+            $user = $this->getDefaultDevUser();
             Log::info('Using default dev user', ['user' => $user]);
         }
 
-        // Create or update the development user
+        // Create or update the development user (ensures separate DB records)
         $this->createOrUpdateUser($user);
         $request->attributes->set('telegram_id', $user['id']);
         $request->attributes->set('telegram_user', $user);
 
-        Log::info('Development user set', ['telegram_id' => $user['id']]);
+        Log::info('Development user set', [
+            'telegram_id' => $user['id'],
+            'name' => ($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''),
+            'username' => $user['username'] ?? null
+        ]);
     }
 
     /**
@@ -119,7 +126,8 @@ class TelegramInitUser
             Log::info('Creating new user');
             // Create new user
             $userModel = new User([
-                'name' => trim(trim($user['first_name'] ?? '') . ' ' . trim($user['last_name'] ?? ''))
+                'name' => trim(trim($user['first_name'] ?? '') . ' ' . trim($user['last_name'] ?? '')),
+                'links_balance' => 3 // TODO: MVP: Give every user 3 links by default
             ]);
             $userModel->save();
 
@@ -156,5 +164,20 @@ class TelegramInitUser
                 Log::info('User name updated', ['new_name' => $newName]);
             }
         }
+    }
+
+    /**
+     * Get default development user
+     */
+    private function getDefaultDevUser(): array
+    {
+        return [
+            'id' => env('DEV_TELEGRAM_ID'),
+            'first_name' => 'Dev',
+            'last_name' => 'User',
+            'username' => env('DEV_TELEGRAM_USERNAME'),
+            'language_code' => 'ru',
+            'photo_url' => 'https://via.placeholder.com/150/0000FF/808080?text=Dev+User'
+        ];
     }
 }
