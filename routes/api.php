@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Route;
 
 // Determine middleware based on environment
 $middleware = ['tg.init'];
-if (!env('TELEGRAM_DEV_MODE', false)) {
+if (!env('TELEGRAM_DEV_MODE', false) || app()->environment() === 'production') {
     $middleware[] = 'auth:tgwebapp';
 }
 
