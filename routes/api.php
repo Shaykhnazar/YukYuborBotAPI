@@ -6,6 +6,7 @@ use App\Http\Controllers\PlaceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\SendRequestController;
+use App\Http\Controllers\TestUsersController;
 use App\Http\Controllers\User\Request\UserRequestController;
 use App\Http\Controllers\User\Review\UserReviewController;
 use App\Http\Controllers\User\UserController;
@@ -23,8 +24,16 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Determine middleware based on environment
-$middleware = ['tg.init'];
-if (!env('TELEGRAM_DEV_MODE', false) || app()->environment() === 'production') {
+// Determine middleware based on environment
+$middleware = [];
+
+if (app()->environment(['local', 'development'])) {
+    // Development/Local environment - use development middleware
+    $middleware[] = 'tg.init.dev';
+    // Skip the auth:tgwebapp middleware in development
+} else {
+    // Production environment - use production middleware + auth
+    $middleware[] = 'tg.init';
     $middleware[] = 'auth:tgwebapp';
 }
 
@@ -68,3 +77,18 @@ Route::middleware($middleware)->group(function () {
 
 Route::get('/place', [PlaceController::class, 'index']);
 
+// Development-only routes (secured)
+Route::middleware(['throttle:60,1'])->group(function () {
+    // Test users endpoint - only accessible in development with proper headers
+    Route::get('/dev/test-users', [TestUsersController::class, 'index']);
+});
+
+// Health check route (useful for deployment)
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'environment' => app()->environment(),
+        'timestamp' => now()->toISOString(),
+        'version' => '1.0.0'
+    ]);
+});
