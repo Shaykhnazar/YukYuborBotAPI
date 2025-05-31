@@ -5,15 +5,16 @@ namespace App\Http\Controllers\User\Review;
 use App\Http\Controllers\Controller as BaseController;
 use App\Models\Review;
 use App\Service\TelegramUserService;
-use App\Http\Requests\Review\CreateRequest;
+use App\Http\Requests\Review\CreateReviewRequest;
+use Illuminate\Http\JsonResponse;
 
-class Controller extends BaseController
+class UserReviewController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,
     ) {}
 
-    public function create(CreateRequest $request): \Illuminate\Http\JsonResponse
+    public function create(CreateReviewRequest $request): JsonResponse
     {
         $dto = $request->getDTO();
         $owner = $this->tgService->getUserByTelegramId($request);
@@ -30,13 +31,13 @@ class Controller extends BaseController
         return response()->json($review);
     }
 
-    public function show(int $id): \Illuminate\Http\JsonResponse
+    public function show(int $id): JsonResponse
     {
         $review = Review::findOrFail($id);
         return response()->json($review);
     }
 
-    public function userReviews(int $userId): \Illuminate\Http\JsonResponse
+    public function userReviews(int $userId): JsonResponse
     {
         $reviews = Review::where('user_id', $userId)->get();
         return response()->json($reviews);

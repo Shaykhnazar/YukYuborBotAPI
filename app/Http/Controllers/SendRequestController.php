@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Http\Controllers\DeliveryRequest;
+namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Http\Requests\DeliveryRequest\CreateRequest;
-use App\Models\DeliveryRequest;
-use App\Service\TelegramUserService;
+use App\Http\Requests\Send\CreateSendRequest;
+use App\Models\SendRequest;
 use App\Service\Matcher;
+use App\Service\TelegramUserService;
 
-class Controller extends BaseController
+class SendRequestController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $userService,
@@ -17,10 +17,10 @@ class Controller extends BaseController
     {
     }
 
-    public function create(CreateRequest $request)
+    public function create(CreateSendRequest $request)
     {
         $dto = $request->getDTO();
-        $deliveryReq = new DeliveryRequest(
+        $sendReq = new SendRequest(
             [
                 'from_location' => $dto->fromLoc,
                 'to_location' => $dto->toLoc,
@@ -33,9 +33,9 @@ class Controller extends BaseController
                 'status' => 'open',
             ]
         );
-        $deliveryReq->save();
-        $this->matcher->matchDeliveryRequest($deliveryReq);
+        $sendReq->save();
+        $this->matcher->matchSendRequest($sendReq);
 
-        return response()->json($deliveryReq);
+        return response()->json($sendReq);
     }
 }

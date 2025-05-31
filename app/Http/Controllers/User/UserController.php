@@ -10,7 +10,7 @@ use Carbon\Carbon;
 use Carbon\Translator;
 use Illuminate\Http\Request;
 
-class Controller extends BaseController
+class UserController extends BaseController
 {
     private string $customLocale = 'ru_custom';
 

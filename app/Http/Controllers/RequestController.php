@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\Parcel\IndexRequest;
+use App\Http\Requests\Parcel\ParcelRequest;
 use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
 use App\Http\Resources\Parcel\IndexRequestResource;
 
-class RequestsController extends Controller
+class RequestController extends Controller
 {
-    public function index(IndexRequest $request)
+    public function index(ParcelRequest $request)
     {
         $filter = $request->getFilter();
         $delivery = collect();
