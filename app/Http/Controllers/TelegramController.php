@@ -3,12 +3,18 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
+use App\Service\Matcher;
 
 class TelegramController extends Controller
 {
+    public function __construct(
+        protected Matcher $matcher,
+    ) {}
+
     public function handle(Request $request)
     {
         $data = $request->all();
@@ -17,52 +23,78 @@ class TelegramController extends Controller
         if (isset($data['callback_query'])) {
             $callback = $data['callback_query'];
             $chatId = $callback['from']['id'];
-            $payload = json_decode($callback['data'], true);
+            $callbackData = $callback['data'];
 
-            if ($payload['action'] === 'accept_order') {
-                $this->handleAcceptOrder($chatId, $payload);
-            } elseif ($payload['action'] === 'reject_order') {
-                $this->handleRejectOrder($chatId, $payload);
+            // Handle deliverer responses from Telegram bot
+            if (str_starts_with($callbackData, 'delivery_response:')) {
+                $this->handleDelivererResponse($chatId, $callbackData);
+            }
+            // Handle old callback format for backward compatibility
+            elseif (str_contains($callbackData, 'request:')) {
+                $this->handleLegacyCallback($chatId, $callbackData);
             }
         }
 
         return response()->noContent();
     }
 
-    private function handleAcceptOrder($chatId, $payload)
+    /**
+     * Handle deliverer response callbacks
+     * Format: delivery_response:accept:delivery_id:send_id
+     */
+    private function handleDelivererResponse($chatId, $callbackData)
     {
-        $delivery = DeliveryRequest::find($payload['delivery_id']);
-        $send = SendRequest::find($payload['send_id']);
+        $parts = explode(':', $callbackData);
+        if (count($parts) !== 4) {
+            $this->sendMessage($chatId, "❌ Неверный формат ответа");
+            return;
+        }
 
-        if ($delivery && $send) {
-            $delivery->status = 'matched';
-            $delivery->matched_send_id = $send->id;
-            $delivery->save();
+        $action = $parts[1]; // 'accept' or 'reject'
+        $deliveryId = $parts[2];
+        $sendId = $parts[3];
 
-            $send->status = 'matched';
-            $send->matched_delivery_id = $delivery->id;
-            $send->save();
+        $delivery = DeliveryRequest::find($deliveryId);
+        $send = SendRequest::find($sendId);
 
-            // Уведомляем обоих пользователей
-            $this->sendMessage($chatId, "✅ Вы приняли заказ! Свяжитесь с отправителем для деталей.");
+        if (!$delivery || !$send) {
+            $this->sendMessage($chatId, "❌ Заказ не найден или уже обработан");
+            return;
+        }
 
-            $senderMessage = "🎉 Ваш заказ №{$send->id} принят! Вот контакт получателя:";
-            $this->sendMessage($payload['send_user_id'], $senderMessage);
+        if ($action === 'accept') {
+            // Use matcher to create deliverer response
+            $this->matcher->createDelivererResponse($send->id, $delivery->id, 'accept');
+            $this->sendMessage($chatId, "✅ Отлично! Ваш ответ отправлен отправителю. Ожидайте подтверждения.");
         } else {
-            $this->sendMessage($chatId, "❌ Заказ уже был обработан другим пользователем");
+            // Handle rejection
+            $this->matcher->createDelivererResponse($send->id, $delivery->id, 'reject');
+            $this->sendMessage($chatId, "❌ Вы отклонили заказ. Мы найдем вам другие варианты.");
         }
     }
 
-    private function handleRejectOrder($chatId, $payload)
+    /**
+     * Handle legacy callback format for backward compatibility
+     */
+    private function handleLegacyCallback($chatId, $callbackData)
     {
-        $this->sendMessage($chatId, "Вы отклонили заказ. Мы найдем вам другие варианты.");
+        $parts = explode(':', $callbackData);
+
+        if (count($parts) >= 4) {
+            $action = $parts[2]; // 'accept' or 'reject'
+
+            if ($action === 'accept') {
+                $this->sendMessage($chatId, "✅ Для подтверждения заказа, пожалуйста, используйте приложение.");
+            } else {
+                $this->sendMessage($chatId, "❌ Заказ отклонен.");
+            }
+        }
     }
 
     private function sendMessage($chatId, $text): void
     {
-
-        $token = env('TELEGRAM_BOT_TOKEN');
-        $response = \Illuminate\Support\Facades\Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
+        $token = config('auth.guards.tgwebapp.token');
+        $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $chatId,
             'text' => $text,
         ]);
