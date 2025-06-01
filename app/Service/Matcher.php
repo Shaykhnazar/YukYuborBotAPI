@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
+use App\Models\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -33,10 +34,21 @@ class Matcher
                     ->orWhere('size_type', null);
             })
             ->where('status', 'open')
+            ->where('user_id', '!=', $sendRequest->user_id) // Don't match with self
             ->get();
 
         foreach ($matchedDeliveries as $delivery) {
-            $this->notifySenderUser($sendRequest, $delivery);
+            // Create response record in database
+            $this->createResponseRecord(
+                $sendRequest->user_id,
+                $delivery->user_id,
+                'send',
+                $sendRequest->id,
+                $delivery->id
+            );
+
+            // Send notification to delivery user
+            $this->notifyDeliveryUser($sendRequest, $delivery);
         }
     }
 
@@ -57,21 +69,66 @@ class Matcher
                     ->orWhere('size_type', null);
             })
             ->where('status', 'open')
+            ->where('user_id', '!=', $deliveryRequest->user_id) // Don't match with self
             ->get();
 
         foreach ($matchedSends as $send) {
-            $this->notifyDeliveryUser($send, $deliveryRequest);
+            // Create response record in database
+            $this->createResponseRecord(
+                $deliveryRequest->user_id,
+                $send->user_id,
+                'delivery',
+                $deliveryRequest->id,
+                $send->id
+            );
+
+            // Send notification to send user
+            $this->notifySenderUser($send, $deliveryRequest);
+        }
+    }
+
+    /**
+     * Create a response record in the database
+     */
+    private function createResponseRecord(int $userId, int $responderId, string $requestType, int $requestId, int $offerId): void
+    {
+        // Check if response already exists to avoid duplicates
+        $existingResponse = Response::where('user_id', $userId)
+            ->where('responder_id', $responderId)
+            ->where('request_type', $requestType)
+            ->where('request_id', $requestId)
+            ->where('offer_id', $offerId)
+            ->first();
+
+        if (!$existingResponse) {
+            Response::create([
+                'user_id' => $userId,
+                'responder_id' => $responderId,
+                'request_type' => $requestType,
+                'request_id' => $requestId,
+                'offer_id' => $offerId,
+                'status' => 'pending',
+                'message' => null
+            ]);
+
+            Log::info('Response record created', [
+                'user_id' => $userId,
+                'responder_id' => $responderId,
+                'request_type' => $requestType,
+                'request_id' => $requestId,
+                'offer_id' => $offerId
+            ]);
         }
     }
 
     protected function notifyDeliveryUser(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
-
         $user = $delivery->user;
         if (!$user || !$user->telegramUser) {
             Log::warning("No telegram_id for user of delivery ID {$delivery->id}");
             return;
         }
+
         $text = "🎉 Поздравляем, по Вашей <b>заявке №{$delivery->id}</b> найден заказ!\n\n";
         $text .= "<b>Вот данные от отправителя посылки:</b>\n";
         $text .= "<b>🛫Город отправления:</b> {$sendRequest->from_location}\n";
@@ -154,6 +211,7 @@ class Matcher
             ]);
         }
     }
+
     protected function notifySenderUser(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
         $user = $sendRequest->user;

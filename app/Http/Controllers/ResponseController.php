@@ -6,6 +6,7 @@ use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
 use App\Models\User;
 use App\Models\Chat;
+use App\Models\Response;
 use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -24,88 +25,58 @@ class ResponseController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
-        $responses = [];
 
-        // Get responses for user's send requests (delivery offers)
-        $sendRequests = $user->sendRequests()->where('status', 'open')->get();
-        foreach ($sendRequests as $sendRequest) {
-            $deliveryOffers = DeliveryRequest::where('status', 'open')
-                ->where('from_location', $sendRequest->from_location)
-                ->where('to_location', $sendRequest->to_location)
-                ->where('user_id', '!=', $user->id)
-                ->whereDate('from_date', '<=', $sendRequest->to_date)
-                ->whereDate('to_date', '>=', $sendRequest->to_date)
-                ->with('user.telegramUser')
-                ->get();
+        // Get responses from the database where current user is the recipient
+        $responses = Response::where('user_id', $user->id)
+            ->where('status', 'pending') // Only show pending responses
+            ->with(['responder.telegramUser'])
+            ->orderByDesc('created_at')
+            ->get();
 
-            foreach ($deliveryOffers as $offer) {
-                $responses[] = [
-                    'id' => 'delivery_' . $offer->id . '_send_' . $sendRequest->id,
-                    'type' => 'delivery',
-                    'request_id' => $sendRequest->id,
-                    'offer_id' => $offer->id,
-                    'user' => [
-                        'id' => $offer->user->id,
-                        'name' => $offer->user->name,
-                        'image' => $offer->user->telegramUser->image ?? null,
-                        'requests_count' => $offer->user->deliveryRequests()->count(),
-                    ],
-                    'from_location' => $offer->from_location,
-                    'to_location' => $offer->to_location,
-                    'from_date' => $offer->from_date,
-                    'to_date' => $offer->to_date,
-                    'price' => $offer->price,
-                    'currency' => $offer->currency,
-                    'size_type' => $offer->size_type,
-                    'description' => $offer->description,
-                    'status' => $this->getResponseStatus($sendRequest, $offer),
-                ];
+        $formattedResponses = [];
+
+        foreach ($responses as $response) {
+            // Get the offer details based on request type
+            if ($response->request_type === 'send') {
+                $offer = DeliveryRequest::find($response->offer_id);
+                $userRequest = SendRequest::find($response->request_id);
+            } else {
+                $offer = SendRequest::find($response->offer_id);
+                $userRequest = DeliveryRequest::find($response->request_id);
             }
+
+            if (!$offer || !$userRequest) {
+                continue; // Skip if request/offer not found
+            }
+
+            $formattedResponses[] = [
+                'id' => ($response->request_type === 'send' ? 'delivery' : 'send') . '_' . $response->offer_id . '_' .
+                       ($response->request_type === 'send' ? 'send' : 'delivery') . '_' . $response->request_id,
+                'type' => $response->request_type,
+                'request_id' => $response->request_id,
+                'offer_id' => $response->offer_id,
+                'user' => [
+                    'id' => $response->responder->id,
+                    'name' => $response->responder->name,
+                    'image' => $response->responder->telegramUser->image ?? null,
+                    'requests_count' => $response->request_type === 'send'
+                        ? $response->responder->deliveryRequests()->count()
+                        : $response->responder->sendRequests()->count(),
+                ],
+                'from_location' => $offer->from_location,
+                'to_location' => $offer->to_location,
+                'from_date' => $offer->from_date ?? null,
+                'to_date' => $offer->to_date,
+                'price' => $offer->price,
+                'currency' => $offer->currency,
+                'size_type' => $offer->size_type,
+                'description' => $offer->description,
+                'status' => $response->status,
+                'created_at' => $response->created_at,
+            ];
         }
 
-        // Get responses for user's delivery requests (send offers)
-        $deliveryRequests = $user->deliveryRequests()->where('status', 'open')->get();
-        foreach ($deliveryRequests as $deliveryRequest) {
-            $sendOffers = SendRequest::where('status', 'open')
-                ->where('from_location', $deliveryRequest->from_location)
-                ->where('to_location', $deliveryRequest->to_location)
-                ->where('user_id', '!=', $user->id)
-                ->whereDate('to_date', '>=', $deliveryRequest->from_date)
-                ->whereDate('to_date', '<=', $deliveryRequest->to_date)
-                ->with('user.telegramUser')
-                ->get();
-
-            foreach ($sendOffers as $offer) {
-                $responses[] = [
-                    'id' => 'send_' . $offer->id . '_delivery_' . $deliveryRequest->id,
-                    'type' => 'send',
-                    'request_id' => $deliveryRequest->id,
-                    'offer_id' => $offer->id,
-                    'user' => [
-                        'id' => $offer->user->id,
-                        'name' => $offer->user->name,
-                        'image' => $offer->user->telegramUser->image ?? null,
-                        'requests_count' => $offer->user->sendRequests()->count(),
-                    ],
-                    'from_location' => $offer->from_location,
-                    'to_location' => $offer->to_location,
-                    'from_date' => null,
-                    'to_date' => $offer->to_date,
-                    'price' => $offer->price,
-                    'currency' => $offer->currency,
-                    'size_type' => $offer->size_type,
-                    'description' => $offer->description,
-                    'status' => $this->getResponseStatus($deliveryRequest, $offer, 'delivery'),
-                ];
-            }
-        }
-
-        // Sort by created date
-        usort($responses, function($a, $b) {
-            return strtotime($b['to_date'] ?? $b['from_date']) - strtotime($a['to_date'] ?? $a['from_date']);
-        });
-
-        return response()->json($responses);
+        return response()->json($formattedResponses);
     }
 
     /**
@@ -130,10 +101,22 @@ class ResponseController extends Controller
         $requestType = $parts[2]; // 'send' or 'delivery'
         $requestId = $parts[3];
 
+        // Find the response record
+        $response = Response::where('user_id', $user->id)
+            ->where('request_type', $offerType)
+            ->where('request_id', $requestId)
+            ->where('offer_id', $offerId)
+            ->where('status', 'pending')
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Response not found'], 404);
+        }
+
         // Create chat
         $chatData = [
             'sender_id' => $user->id,
-            'receiver_id' => null,
+            'receiver_id' => $response->responder_id,
             'status' => 'active',
         ];
 
@@ -152,8 +135,6 @@ class ResponseController extends Controller
         if (!$offer || !$userRequest) {
             return response()->json(['error' => 'Request not found'], 404);
         }
-
-        $chatData['receiver_id'] = $offer->user_id;
 
         // Check if chat already exists
         $existingChat = Chat::where(function ($query) use ($chatData) {
@@ -176,15 +157,29 @@ class ResponseController extends Controller
 
         // Create chat and deduct link
         $chat = Chat::create($chatData);
-        $user->decrement('links_balance');
+//        $user->decrement('links_balance'); // TODO: After MVP version deduction will be actualized
+
+        // Update response status to accepted
+        $response->update([
+            'status' => 'accepted',
+            'chat_id' => $chat->id
+        ]);
 
         // Update request statuses
         $offer->update(['status' => 'matched']);
         $userRequest->update(['status' => 'matched']);
 
+        // Reject all other pending responses for the same request
+        Response::where('user_id', $user->id)
+            ->where('request_type', $offerType)
+            ->where('request_id', $requestId)
+            ->where('status', 'pending')
+            ->where('id', '!=', $response->id)
+            ->update(['status' => 'rejected']);
+
         // Send notification to other user
         $this->sendTelegramNotification(
-            $offer->user_id,
+            $response->responder_id,
             $user->name,
             "Ваше предложение принято! Начните общение в чате."
         );
@@ -209,20 +204,27 @@ class ResponseController extends Controller
 
         $offerType = $parts[0];
         $offerId = $parts[1];
+        $requestType = $parts[2];
+        $requestId = $parts[3];
 
-        if ($offerType === 'delivery') {
-            $offer = DeliveryRequest::find($offerId);
-        } else {
-            $offer = SendRequest::find($offerId);
+        // Find and update the response record
+        $response = Response::where('user_id', $user->id)
+            ->where('request_type', $offerType)
+            ->where('request_id', $requestId)
+            ->where('offer_id', $offerId)
+            ->where('status', 'pending')
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Response not found'], 404);
         }
 
-        if (!$offer) {
-            return response()->json(['error' => 'Request not found'], 404);
-        }
+        // Update response status to rejected
+        $response->update(['status' => 'rejected']);
 
         // Send notification to other user
         $this->sendTelegramNotification(
-            $offer->user_id,
+            $response->responder_id,
             $user->name,
             "Ваше предложение было отклонено."
         );
@@ -235,32 +237,34 @@ class ResponseController extends Controller
      */
     public function cancel(Request $request, string $responseId): JsonResponse
     {
-        // This would be used for responses that are in "waiting" state
-        return response()->json(['message' => 'Response cancelled']);
-    }
+        $user = $this->tgService->getUserByTelegramId($request);
 
-    /**
-     * Get response status based on request matching
-     */
-    private function getResponseStatus($userRequest, $offer, $type = 'send'): string
-    {
-        // Check if there's an existing chat
-        $chatExists = Chat::where(function ($query) use ($userRequest, $offer, $type) {
-            if ($type === 'delivery') {
-                $query->where('delivery_request_id', $userRequest->id)
-                    ->where('send_request_id', $offer->id);
-            } else {
-                $query->where('send_request_id', $userRequest->id)
-                    ->where('delivery_request_id', $offer->id);
-            }
-        })->exists();
-
-        if ($chatExists) {
-            return 'accepted';
+        $parts = explode('_', $responseId);
+        if (count($parts) !== 4) {
+            return response()->json(['error' => 'Invalid response ID'], 400);
         }
 
-        // For now, all new matches are pending
-        return 'pending';
+        $offerType = $parts[0];
+        $offerId = $parts[1];
+        $requestType = $parts[2];
+        $requestId = $parts[3];
+
+        // Find and update the response record
+        $response = Response::where('user_id', $user->id)
+            ->where('request_type', $offerType)
+            ->where('request_id', $requestId)
+            ->where('offer_id', $offerId)
+            ->where('status', 'waiting')
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Response not found'], 404);
+        }
+
+        // Delete the response record for cancellation
+        $response->delete();
+
+        return response()->json(['message' => 'Response cancelled']);
     }
 
     /**
