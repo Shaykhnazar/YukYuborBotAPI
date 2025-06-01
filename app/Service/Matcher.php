@@ -5,17 +5,13 @@ namespace App\Service;
 use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class Matcher
 {
-    protected string $botToken;
-
-    public function __construct()
-    {
-        $this->botToken = config('auth.guards.tgwebapp.token');
-    }
+    public function __construct(
+        protected TelegramNotificationService $telegramService
+    ) {}
 
     /**
      * When a SEND request is created, find matching DELIVERY requests
@@ -23,7 +19,86 @@ class Matcher
      */
     public function matchSendRequest(SendRequest $sendRequest): void
     {
-        $matchedDeliveries = DeliveryRequest::where('from_location', $sendRequest->from_location)
+        $matchedDeliveries = $this->findMatchingDeliveryRequests($sendRequest);
+
+        foreach ($matchedDeliveries as $delivery) {
+            // Create response for deliverer to see send request
+            $this->createResponseRecord(
+                $delivery->user_id,        // deliverer will see this
+                $sendRequest->user_id,     // sender made the offer
+                'send',                    // type of request
+                $delivery->id,             // deliverer's request ID
+                $sendRequest->id          // sender's request ID
+            );
+
+            // Notify the DELIVERY user about the SEND request with callback buttons
+            $this->notifyDeliveryUserAboutNewSend($sendRequest, $delivery);
+        }
+    }
+
+    /**
+     * When a DELIVERY request is created, find matching SEND requests
+     */
+    public function matchDeliveryRequest(DeliveryRequest $deliveryRequest): void
+    {
+        $matchedSends = $this->findMatchingSendRequests($deliveryRequest);
+
+        foreach ($matchedSends as $send) {
+            // Create response for deliverer to see send request
+            $this->createResponseRecord(
+                $deliveryRequest->user_id, // deliverer will see this
+                $send->user_id,            // sender made the offer
+                'send',                    // type of request
+                $deliveryRequest->id,      // deliverer's request ID
+                $send->id                 // sender's request ID
+            );
+
+            // Notify the DELIVERY user about existing SEND requests
+            $this->notifyDeliveryUserAboutExistingSend($send, $deliveryRequest);
+        }
+    }
+
+    /**
+     * When deliverer responds to a send request, create response for sender
+     */
+    public function createDelivererResponse(int $sendRequestId, int $deliveryRequestId, string $action): void
+    {
+        $sendRequest = SendRequest::find($sendRequestId);
+        $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
+
+        if (!$sendRequest || !$deliveryRequest) {
+            Log::warning('Send or delivery request not found', [
+                'send_id' => $sendRequestId,
+                'delivery_id' => $deliveryRequestId
+            ]);
+            return;
+        }
+
+        if ($action === 'accept') {
+            // Create response for sender to see deliverer's acceptance
+            $this->createResponseRecord(
+                $sendRequest->user_id,     // sender will see this
+                $deliveryRequest->user_id, // deliverer is responding
+                'delivery',                // type of response
+                $sendRequest->id,          // sender's request ID
+                $deliveryRequest->id,      // deliverer's request ID
+                'waiting'                  // waiting for sender's confirmation
+            );
+
+            // Notify sender about deliverer's acceptance
+            $this->notifySenderAboutDelivererResponse($sendRequest, $deliveryRequest);
+        }
+
+        // Update the original deliverer's response
+        $this->updateDelivererResponseStatus($deliveryRequest->user_id, $sendRequest->id, $deliveryRequest->id, $action);
+    }
+
+    /**
+     * Find matching delivery requests for a send request
+     */
+    private function findMatchingDeliveryRequests(SendRequest $sendRequest): \Illuminate\Database\Eloquent\Collection
+    {
+        return DeliveryRequest::where('from_location', $sendRequest->from_location)
             ->where(function($query) use ($sendRequest) {
                 $query->where('to_location', $sendRequest->to_location)
                     ->orWhere('to_location', '*');
@@ -40,28 +115,14 @@ class Matcher
             ->where('status', 'open')
             ->where('user_id', '!=', $sendRequest->user_id)
             ->get();
-
-        foreach ($matchedDeliveries as $delivery) {
-            // Create response for deliverer to see send request
-            $this->createResponseRecord(
-                $delivery->user_id,        // deliverer will see this
-                $sendRequest->user_id,     // sender made the offer
-                'send',                    // type of request
-                $delivery->id,             // deliverer's request ID
-                $sendRequest->id          // sender's request ID
-            );
-
-            // Notify the DELIVERY user about the SEND request
-            $this->notifyDeliveryUser($sendRequest, $delivery);
-        }
     }
 
     /**
-     * When a DELIVERY request is created, find matching SEND requests
+     * Find matching send requests for a delivery request
      */
-    public function matchDeliveryRequest(DeliveryRequest $deliveryRequest): void
+    private function findMatchingSendRequests(DeliveryRequest $deliveryRequest): \Illuminate\Database\Eloquent\Collection
     {
-        $matchedSends = SendRequest::where('from_location', $deliveryRequest->from_location)
+        return SendRequest::where('from_location', $deliveryRequest->from_location)
             ->where(function($query) use ($deliveryRequest) {
                 $query->where('to_location', $deliveryRequest->to_location)
                     ->orWhere('to_location', '*');
@@ -78,54 +139,6 @@ class Matcher
             ->where('status', 'open')
             ->where('user_id', '!=', $deliveryRequest->user_id)
             ->get();
-
-        foreach ($matchedSends as $send) {
-            // Create response for deliverer to see send request
-            $this->createResponseRecord(
-                $deliveryRequest->user_id, // deliverer will see this
-                $send->user_id,            // sender made the offer
-                'send',                    // type of request
-                $deliveryRequest->id,      // deliverer's request ID
-                $send->id                 // sender's request ID
-            );
-
-            // Notify the DELIVERY user about the SEND request
-            $this->notifyDeliveryUserAboutSend($send, $deliveryRequest);
-        }
-    }
-
-    /**
-     * When deliverer responds to a send request, create response for sender
-     */
-    public function createDelivererResponse(int $sendRequestId, int $deliveryRequestId, string $action): void
-    {
-        $sendRequest = SendRequest::find($sendRequestId);
-        $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
-
-        if (!$sendRequest || !$deliveryRequest) {
-            return;
-        }
-
-        if ($action === 'accept') {
-            // Create response for sender to see deliverer's acceptance
-            $this->createResponseRecord(
-                $sendRequest->user_id,     // sender will see this
-                $deliveryRequest->user_id, // deliverer is responding
-                'delivery',                // type of response
-                $sendRequest->id,          // sender's request ID
-                $deliveryRequest->id,      // deliverer's request ID
-                'waiting'                  // waiting for sender's confirmation
-            );
-
-            // Notify sender about deliverer's acceptance
-            $this->notifySenderAboutDelivererResponse($sendRequest, $deliveryRequest, 'accept');
-        }
-
-        // Update the original deliverer's response
-        Response::where('user_id', $deliveryRequest->user_id)
-            ->where('offer_id', $sendRequest->id)
-            ->where('request_id', $deliveryRequest->id)
-            ->update(['status' => $action === 'accept' ? 'responded' : 'rejected']);
     }
 
     /**
@@ -163,32 +176,20 @@ class Matcher
     }
 
     /**
-     * Notify delivery user about send request (when send request is created)
+     * Update deliverer response status
      */
-    protected function notifyDeliveryUser(SendRequest $sendRequest, DeliveryRequest $delivery): void
+    private function updateDelivererResponseStatus(int $delivererUserId, int $sendRequestId, int $deliveryRequestId, string $action): void
     {
-        $user = $delivery->user;
-        if (!$user || !$user->telegramUser) {
-            Log::warning("No telegram_id for user of delivery ID {$delivery->id}");
-            return;
-        }
-
-        $text = "🎉 Найдена посылка для доставки!\n\n";
-        $text .= "<b>Детали посылки от отправителя:</b>\n";
-        $text .= "<b>🛫 Откуда:</b> {$sendRequest->from_location}\n";
-        $text .= "<b>🛬 Куда:</b> {$sendRequest->to_location}\n";
-        $text .= "<b>🗓 Даты отправки:</b> {$sendRequest->from_date} - {$sendRequest->to_date}\n";
-        $text .= "<b>📦 Что отправляем:</b> {$sendRequest->description}\n";
-        $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n\n";
-        $text .= "Проверьте раздел 'Отклики' в приложении для подробностей.";
-
-        $this->sendTelegramMessage($user->telegramUser->telegram, $text);
+        Response::where('user_id', $delivererUserId)
+            ->where('offer_id', $sendRequestId)
+            ->where('request_id', $deliveryRequestId)
+            ->update(['status' => $action === 'accept' ? 'responded' : 'rejected']);
     }
 
     /**
-     * Notify delivery user about existing send requests (when delivery request is created)
+     * Notify delivery user about new send request with callback buttons
      */
-    protected function notifyDeliveryUserAboutSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
+    private function notifyDeliveryUserAboutNewSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
         $user = $delivery->user;
         if (!$user || !$user->telegramUser) {
@@ -196,22 +197,63 @@ class Matcher
             return;
         }
 
-        $text = "🎉 Найдены посылки для доставки!\n\n";
-        $text .= "По вашей заявке на доставку найдена посылка:\n";
-        $text .= "<b>🛫 Откуда:</b> {$sendRequest->from_location}\n";
-        $text .= "<b>🛬 Куда:</b> {$sendRequest->to_location}\n";
-        $text .= "<b>🗓 Нужно доставить до:</b> {$sendRequest->to_date}\n";
-        $text .= "<b>📦 Что везти:</b> {$sendRequest->description}\n";
-        $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n\n";
-        $text .= "Посмотрите в разделе 'Отклики' для ответа.";
+        $text = $this->buildNewSendNotificationText($sendRequest, $delivery);
+        $keyboard = $this->telegramService->buildDeliveryResponseKeyboard(
+            $sendRequest->id,
+            $delivery->id,
+            $sendRequest->user_id,
+            $delivery->user_id
+        );
 
-        $this->sendTelegramMessage($user->telegramUser->telegram, $text);
+        if ($keyboard) {
+            $this->telegramService->sendMessageWithKeyboard(
+                $user->telegramUser->telegram,
+                $text,
+                $keyboard
+            );
+        } else {
+            // Fallback to simple message if keyboard creation failed
+            $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
+            $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
+        }
+    }
+
+    /**
+     * Notify delivery user about existing send requests with callback buttons
+     */
+    private function notifyDeliveryUserAboutExistingSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
+    {
+        $user = $delivery->user;
+        if (!$user || !$user->telegramUser) {
+            Log::warning("No telegram_id for user of delivery ID {$delivery->id}");
+            return;
+        }
+
+        $text = $this->buildExistingSendNotificationText($sendRequest, $delivery);
+        $keyboard = $this->telegramService->buildDeliveryResponseKeyboard(
+            $sendRequest->id,
+            $delivery->id,
+            $sendRequest->user_id,
+            $delivery->user_id
+        );
+
+        if ($keyboard) {
+            $this->telegramService->sendMessageWithKeyboard(
+                $user->telegramUser->telegram,
+                $text,
+                $keyboard
+            );
+        } else {
+            // Fallback to simple message if keyboard creation failed
+            $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
+            $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
+        }
     }
 
     /**
      * Notify sender when deliverer responds to their request
      */
-    protected function notifySenderAboutDelivererResponse(SendRequest $sendRequest, DeliveryRequest $delivery, string $action): void
+    private function notifySenderAboutDelivererResponse(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
         $user = $sendRequest->user;
         if (!$user || !$user->telegramUser) {
@@ -219,41 +261,75 @@ class Matcher
             return;
         }
 
-        if ($action === 'accept') {
-            $text = "🎉 Отличные новости! Найден перевозчик для вашей посылки!\n\n";
-            $text .= "<b>Детали перевозчика:</b>\n";
-            $text .= "<b>📍 Маршрут:</b> {$delivery->from_location} → {$delivery->to_location}\n";
-            $text .= "<b>🗓 Даты поездки:</b> {$delivery->from_date} - {$delivery->to_date}\n";
-            if ($delivery->description) {
-                $text .= "<b>📝 Примечания:</b> {$delivery->description}\n";
-            }
-            $text .= "\n<b>Проверьте раздел 'Отклики' чтобы подтвердить сотрудничество.</b>";
-        } else {
-            $text = "К сожалению, один из перевозчиков отклонил вашу посылку. Мы продолжаем поиск других вариантов.";
-        }
-
-        $this->sendTelegramMessage($user->telegramUser->telegram, $text);
+        $text = $this->buildSenderNotificationText($sendRequest, $delivery);
+        $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
     }
 
     /**
-     * Send telegram message
+     * Build notification text for deliverer about new send request
      */
-    private function sendTelegramMessage(int $chatId, string $text): void
+    private function buildNewSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
     {
-        $payload = [
-            'chat_id' => $chatId,
-            'text' => $text,
-            'parse_mode' => 'HTML'
-        ];
+        $text = "🎉 Поздравляем, по Вашей <b>заявке №{$delivery->id}</b> найден заказ!\n\n";
+        $text .= "<b>Вот данные от отправителя посылки:</b>\n";
+        $text .= "<b>🛫 Город отправления:</b> {$sendRequest->from_location}\n";
+        $text .= "<b>🛬 Город назначения:</b> {$sendRequest->to_location}\n";
+        $text .= "<b>🗓 Даты:</b> {$sendRequest->from_date} - {$sendRequest->to_date}\n";
+        $text .= "<b>📊 Категория посылки:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n\n";
 
-        $response = Http::withOptions(['verify' => false])
-            ->post("https://api.telegram.org/bot{$this->botToken}/sendMessage", $payload);
-
-        if ($response->failed()) {
-            Log::error('Telegram notification failed', [
-                'error' => $response->body(),
-                'chat_id' => $chatId,
-            ]);
+        if ($sendRequest->description && $sendRequest->description !== 'Пропустить') {
+            $text .= "<b>📜 Дополнительные примечания:</b> {$sendRequest->description}\n\n";
+        } else {
+            $text .= "<b>📜 Дополнительные примечания:</b> Не указаны\n\n";
         }
+
+        if ($sendRequest->price) {
+            $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n\n";
+        }
+
+        $text .= "Хотите взяться за эту доставку?";
+
+        return $text;
+    }
+
+    /**
+     * Build notification text for deliverer about existing send requests
+     */
+    private function buildExistingSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
+    {
+        $text = "🎉 Найдены посылки для доставки по Вашей заявке!\n\n";
+        $text .= "По вашей заявке на доставку найдена посылка:\n";
+        $text .= "<b>🛫 Откуда:</b> {$sendRequest->from_location}\n";
+        $text .= "<b>🛬 Куда:</b> {$sendRequest->to_location}\n";
+        $text .= "<b>🗓 Нужно доставить до:</b> {$sendRequest->to_date}\n";
+        $text .= "<b>📊 Категория:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n";
+        $text .= "<b>📦 Что везти:</b> {$sendRequest->description}\n";
+
+        if ($sendRequest->price) {
+            $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n";
+        }
+
+        $text .= "\nХотите взяться за эту доставку?";
+
+        return $text;
+    }
+
+    /**
+     * Build notification text for sender about deliverer response
+     */
+    private function buildSenderNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
+    {
+        $text = "🎉 Отличные новости! Найден перевозчик для вашей посылки №{$sendRequest->id}!\n\n";
+        $text .= "<b>Детали перевозчика:</b>\n";
+        $text .= "<b>📍 Маршрут:</b> {$delivery->from_location} → {$delivery->to_location}\n";
+        $text .= "<b>🗓 Даты поездки:</b> {$delivery->from_date} - {$delivery->to_date}\n";
+
+        if ($delivery->description && $delivery->description !== 'Пропустить') {
+            $text .= "<b>📝 Примечания:</b> {$delivery->description}\n";
+        }
+
+        $text .= "\n<b>Проверьте раздел 'Отклики' чтобы подтвердить сотрудничество.</b>";
+
+        return $text;
     }
 }
