@@ -180,10 +180,12 @@ class Matcher
      */
     private function updateDelivererResponseStatus(int $delivererUserId, int $sendRequestId, int $deliveryRequestId, string $action): void
     {
+        $status = $action === 'accept' ? 'accepted' : 'rejected'; // Use valid status values
+
         Response::where('user_id', $delivererUserId)
             ->where('offer_id', $sendRequestId)
             ->where('request_id', $deliveryRequestId)
-            ->update(['status' => $action === 'accept' ? 'responded' : 'rejected']);
+            ->update(['status' => $status]);
     }
 
     /**

@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Send;
 
-use App\Http\DTO\SendRequest\CreateRequestDTO;
+use App\Http\DTO\SendRequest\CreateSendRequestDTO;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -27,20 +27,18 @@ class CreateSendRequest extends FormRequest
             'from_location' => 'required|string',
             'to_location' => 'required|string',
             'description' => 'nullable|string',
-            'from_date' => 'required|date',
             'to_date' => 'required|date',
             'price' => 'nullable|integer',
             'currency' => 'nullable|string'
         ];
     }
 
-    public function getDTO(): CreateRequestDTO
+    public function getDTO(): CreateSendRequestDTO
     {
-        return new CreateRequestDTO(
+        return new CreateSendRequestDTO(
             $this->validated('from_location'),
             $this->validated('to_location'),
             $this->validated('description'),
-            CarbonImmutable::parse($this->validated('from_date')),
             CarbonImmutable::parse($this->validated('to_date')),
             $this->validated('price'),
             $this->validated('currency'),

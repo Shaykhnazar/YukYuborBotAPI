@@ -380,7 +380,7 @@ class ResponseController extends Controller
         $telegramId = $user->telegramUser->telegram;
         $notificationText = "📬 {$message}";
 
-        $token = config('auth.guards.tgwebapp.token');
+        $token = env('TELEGRAM_BOT_TOKEN');
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $notificationText,

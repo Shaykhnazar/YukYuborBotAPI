@@ -7,7 +7,6 @@ use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use App\Models\DeliveryRequest;
 use App\Service\Matcher;
 use App\Service\TelegramUserService;
-use Carbon\CarbonImmutable;
 
 class DeliveryController extends BaseController
 {
@@ -26,7 +25,7 @@ class DeliveryController extends BaseController
                 'from_location' => $dto->fromLoc,
                 'to_location' => $dto->toLoc,
                 'description' => $dto->desc ?? null,
-                'from_date' =>CarbonImmutable::now()->toDateString(),
+                'from_date' => $dto->fromDate->toDateString(),
                 'to_date' => $dto->toDate->toDateString(),
                 'price' => $dto->price ?? null,
                 'currency' => $dto->currency ?? null,

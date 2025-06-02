@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\DTO\SendRequest;
+namespace App\Http\DTO\DeliveryRequest;
 
 use Carbon\CarbonImmutable;
 
-class CreateRequestDTO
+class CreateDeliveryRequestDTO
 {
     public function __construct(
         public string $fromLoc,
