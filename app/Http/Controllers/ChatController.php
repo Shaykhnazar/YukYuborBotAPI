@@ -180,11 +180,6 @@ class ChatController extends BaseController
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Check if user has enough links
-        if ($user->links_balance <= 0) {
-            return response()->json(['error' => 'Insufficient links balance'], 403);
-        }
-
         // Check if chat already exists
         $existingChat = Chat::where(function ($query) use ($request) {
             if ($request->request_type === 'send') {
@@ -202,7 +197,17 @@ class ChatController extends BaseController
             ->first();
 
         if ($existingChat) {
-            return response()->json(['error' => 'Chat already exists', 'chat_id' => $existingChat->id], 409);
+            // Return success response with existing chat
+            return response()->json([
+                'chat_id' => $existingChat->id,
+                'message' => 'Chat already exists',
+                'existing' => true
+            ], 200);
+        }
+
+        // Check if user has enough links for new chat creation
+        if ($user->links_balance <= 0) {
+            return response()->json(['error' => 'Insufficient links balance'], 403);
         }
 
         // Create new chat
@@ -221,12 +226,14 @@ class ChatController extends BaseController
         $chat = new Chat($chatData);
         $chat->save();
 
-        // Deduct one link from user's balance TODO:: apply deduct logic after payment integration is done
-//        $user->decrement('links_balance');
+        // Deduct one link from user's balance
+        // TODO: apply deduct logic after payment integration is done
+        // $user->decrement('links_balance');
 
         return response()->json([
             'chat_id' => $chat->id,
-            'message' => 'Chat created successfully'
+            'message' => 'Chat created successfully',
+            'existing' => false
         ]);
     }
 

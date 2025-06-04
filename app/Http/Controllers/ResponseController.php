@@ -209,7 +209,12 @@ class ResponseController extends Controller
             ->first();
 
         if ($existingChat) {
-            return response()->json(['error' => 'Chat already exists', 'chat_id' => $existingChat->id], 409);
+            // Return success response with existing chat
+            return response()->json([
+                'chat_id' => $existingChat->id,
+                'message' => 'Partnership confirmed successfully',
+                'existing' => true
+            ], 200);
         }
 
         // Create chat between sender and deliverer
