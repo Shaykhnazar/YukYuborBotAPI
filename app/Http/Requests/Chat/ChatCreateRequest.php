@@ -28,4 +28,14 @@ class ChatCreateRequest extends FormRequest
         ];
     }
 
+    /**
+     * Get custom messages for validator errors.
+     */
+    public function messages(): array
+    {
+        return [
+            'request_type.in' => 'The request type must be either send or delivery.',
+            'other_user_id.exists' => 'The selected user does not exist.',
+        ];
+    }
 }

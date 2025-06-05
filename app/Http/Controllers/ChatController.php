@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\MessageRead;
+use App\Events\MessageSent;
+use App\Events\UserTyping;
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Chat\ChatCreateRequest;
+use App\Http\Requests\SendMessageRequest;
 use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\User;
@@ -86,11 +90,22 @@ class ChatController extends BaseController
             ])
             ->firstOrFail();
 
-        // Mark messages as read
-        $chat->messages()
+        // Get unread message IDs before marking as read
+        $unreadMessageIds = $chat->messages()
             ->where('sender_id', '!=', $user->id)
             ->where('is_read', false)
-            ->update(['is_read' => true]);
+            ->pluck('id')
+            ->toArray();
+
+        // Mark messages as read
+        if (!empty($unreadMessageIds)) {
+            $chat->messages()
+                ->whereIn('id', $unreadMessageIds)
+                ->update(['is_read' => true, 'updated_at' => now()]);
+
+            // Broadcast read receipt
+            broadcast(new MessageRead($user, $chat->id, $unreadMessageIds));
+        }
 
         $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
 
@@ -112,10 +127,12 @@ class ChatController extends BaseController
                     'message_type' => $message->message_type,
                     'is_read' => $message->is_read,
                     'created_at' => $message->created_at,
+                    'updated_at' => $message->updated_at,
                 ];
             }),
             'request_info' => $this->getRequestInfo($chat),
             'status' => $chat->status,
+            'unread_marked' => count($unreadMessageIds),
         ];
 
         return response()->json($chatData);
@@ -124,14 +141,8 @@ class ChatController extends BaseController
     /**
      * Send a message in chat
      */
-    public function sendMessage(Request $request): JsonResponse
+    public function sendMessage(SendMessageRequest $request): JsonResponse
     {
-        $request->validate([
-            'chat_id' => 'required|integer|exists:chats,id',
-            'message' => 'required|string|max:1000',
-            'message_type' => 'nullable|string|in:text,image,file'
-        ]);
-
         $user = $this->tgService->getUserByTelegramId($request);
 
         $chat = Chat::where('id', $request->chat_id)
@@ -160,6 +171,9 @@ class ChatController extends BaseController
         // Send notification to the other user via Telegram bot
         $receiverId = $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
         $this->sendTelegramNotification($receiverId, $user->name, $request->message);
+
+        // Broadcast the event - this triggers real-time updates
+        broadcast(new MessageSent($user, $message, $chat->id));
 
         return response()->json([
             'id' => $message->id,
@@ -197,7 +211,6 @@ class ChatController extends BaseController
             ->first();
 
         if ($existingChat) {
-            // Return success response with existing chat
             return response()->json([
                 'chat_id' => $existingChat->id,
                 'message' => 'Chat already exists',
@@ -234,6 +247,116 @@ class ChatController extends BaseController
             'chat_id' => $chat->id,
             'message' => 'Chat created successfully',
             'existing' => false
+        ]);
+    }
+
+    /**
+     * Mark messages as read and broadcast read receipt
+     */
+    public function markAsRead(Request $request, int $chatId): JsonResponse
+    {
+        $user = $this->tgService->getUserByTelegramId($request);
+
+        $chat = Chat::where('id', $chatId)
+            ->where(function ($query) use ($user) {
+                $query->where('sender_id', $user->id)
+                    ->orWhere('receiver_id', $user->id);
+            })
+            ->firstOrFail();
+
+        // Get unread messages from other users
+        $unreadMessages = $chat->messages()
+            ->where('sender_id', '!=', $user->id)
+            ->where('is_read', false)
+            ->get();
+
+        if ($unreadMessages->isNotEmpty()) {
+            $messageIds = $unreadMessages->pluck('id')->toArray();
+
+            // Mark messages as read
+            $chat->messages()
+                ->whereIn('id', $messageIds)
+                ->update(['is_read' => true, 'updated_at' => now()]);
+
+            // Broadcast read receipt to other user
+            broadcast(new MessageRead($user, $chat->id, $messageIds));
+
+            Log::info('Messages marked as read', [
+                'user_id' => $user->id,
+                'chat_id' => $chat->id,
+                'message_count' => count($messageIds)
+            ]);
+        }
+
+        return response()->json([
+            'marked_as_read' => count($unreadMessages),
+            'message_ids' => $unreadMessages->pluck('id')
+        ]);
+    }
+
+    /**
+     * Handle typing indicator
+     */
+    public function setTyping(Request $request): JsonResponse
+    {
+        $request->validate([
+            'chat_id' => 'required|integer|exists:chats,id',
+            'is_typing' => 'required|boolean',
+        ]);
+
+        $user = $this->tgService->getUserByTelegramId($request);
+        $chatId = $request->input('chat_id');
+
+        // Verify user can access this chat
+        $chat = Chat::where('id', $chatId)
+            ->where(function ($query) use ($user) {
+                $query->where('sender_id', $user->id)
+                    ->orWhere('receiver_id', $user->id);
+            })
+            ->firstOrFail();
+
+        // Broadcast typing status
+        broadcast(new UserTyping($user, $chatId, $request->boolean('is_typing')));
+
+        Log::info('Typing status updated', [
+            'user_id' => $user->id,
+            'chat_id' => $chatId,
+            'is_typing' => $request->boolean('is_typing')
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'is_typing' => $request->boolean('is_typing')
+        ]);
+    }
+
+    /**
+     * Get online users for a specific chat
+     */
+    public function getOnlineUsers(Request $request, int $chatId): JsonResponse
+    {
+        $user = $this->tgService->getUserByTelegramId($request);
+
+        // Verify user can access this chat
+        $chat = Chat::where('id', $chatId)
+            ->where(function ($query) use ($user) {
+                $query->where('sender_id', $user->id)
+                    ->orWhere('receiver_id', $user->id);
+            })
+            ->firstOrFail();
+
+        // For now, we'll return basic info
+        // In a real implementation, you'd track online status in Redis/cache
+        $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
+
+        return response()->json([
+            'chat_id' => $chatId,
+            'other_user' => [
+                'id' => $otherUser->id,
+                'name' => $otherUser->name,
+                'last_seen' => $otherUser->updated_at, // Basic implementation
+            ],
+            'online_users' => [] // This would be populated by presence channel data
         ]);
     }
 
