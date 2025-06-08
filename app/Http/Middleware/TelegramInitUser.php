@@ -39,7 +39,7 @@ class TelegramInitUser
      */
     private function handleRealTelegramData(Request $request, string $initData, Closure $next): Response
     {
-        Log::info('Processing REAL Telegram Web App data', ['init_data_length' => strlen($initData)]);
+        Log::info('Processing REAL Telegram Web App data', ['init_data_length' => strlen($initData), 'init_data' => $initData]);
 
         try {
             // Parse Telegram's initData
