@@ -61,7 +61,8 @@ class TelegramInitUser
                 'params_keys' => array_keys($params),
                 'has_user' => isset($params['user']),
                 'has_auth_date' => isset($params['auth_date']),
-                'has_hash' => isset($params['hash'])
+                'has_hash' => isset($params['hash']),
+                'raw_user_param' => $params['user'] ?? 'missing'
             ]);
 
             if (!isset($params['user'])) {
@@ -69,21 +70,13 @@ class TelegramInitUser
                 return $this->handleDevelopmentData($request, $next);
             }
 
-            // Decode the user parameter (try both with and without URL decoding)
-            $userParam = $params['user'];
-            $user = json_decode($userParam, true);
-
-            // If that fails, try URL decoding first
-            if (!$user) {
-                $userParam = urldecode($params['user']);
-                $user = json_decode($userParam, true);
-            }
+            // FIXED: Improved user parameter processing
+            $user = $this->parseUserParameter($params['user']);
 
             if (!$user || !isset($user['id'])) {
-                Log::warning('Invalid Telegram user data', [
+                Log::warning('Invalid Telegram user data after parsing', [
                     'user_param_raw' => $params['user'],
-                    'user_param_decoded' => $userParam ?? 'failed_to_decode',
-                    'decoded_user' => $user,
+                    'parsed_user' => $user,
                     'json_error' => json_last_error_msg()
                 ]);
                 return $this->handleDevelopmentData($request, $next);
@@ -123,7 +116,85 @@ class TelegramInitUser
     }
 
     /**
-     * Handle development/testing data
+     * FIXED: Improved user parameter parsing with multiple fallback strategies
+     */
+    private function parseUserParameter(string $userParam): ?array
+    {
+        Log::debug('Parsing user parameter', [
+            'original' => $userParam,
+            'length' => strlen($userParam)
+        ]);
+
+        // Strategy 1: Try direct JSON decode (parse_str already decoded URL encoding)
+        $user = json_decode($userParam, true);
+        if ($user && isset($user['id'])) {
+            Log::debug('Strategy 1 successful: Direct JSON decode');
+            return $user;
+        }
+
+        // Strategy 2: Try with manual URL decoding
+        $decodedParam = urldecode($userParam);
+        Log::debug('Strategy 2: Manual URL decode', ['decoded' => $decodedParam]);
+
+        $user = json_decode($decodedParam, true);
+        if ($user && isset($user['id'])) {
+            Log::debug('Strategy 2 successful: Manual URL decode + JSON');
+            return $user;
+        }
+
+        // Strategy 3: Handle double encoding (if somehow double-encoded)
+        $doubleDecoded = urldecode($decodedParam);
+        if ($doubleDecoded !== $decodedParam) {
+            Log::debug('Strategy 3: Double URL decode', ['double_decoded' => $doubleDecoded]);
+
+            $user = json_decode($doubleDecoded, true);
+            if ($user && isset($user['id'])) {
+                Log::debug('Strategy 3 successful: Double URL decode + JSON');
+                return $user;
+            }
+        }
+
+        // Strategy 4: Handle malformed JSON by fixing common issues
+        $fixedJson = $this->fixMalformedJson($userParam);
+        if ($fixedJson !== $userParam) {
+            Log::debug('Strategy 4: Fixed JSON', ['fixed' => $fixedJson]);
+
+            $user = json_decode($fixedJson, true);
+            if ($user && isset($user['id'])) {
+                Log::debug('Strategy 4 successful: Fixed JSON');
+                return $user;
+            }
+        }
+
+        Log::warning('All user parsing strategies failed', [
+            'original' => $userParam,
+            'decoded' => $decodedParam ?? 'failed',
+            'json_last_error' => json_last_error_msg()
+        ]);
+
+        return null;
+    }
+
+    /**
+     * Fix common JSON malformation issues
+     */
+    private function fixMalformedJson(string $json): string
+    {
+        // Remove any leading/trailing whitespace
+        $json = trim($json);
+
+        // Fix unescaped forward slashes in URLs (common issue)
+        $json = str_replace('https:/', 'https:\/\/', $json);
+        $json = str_replace('http:/', 'http:\/\/', $json);
+
+        // Fix any stray backslashes that shouldn't be there
+        $json = preg_replace('/([^\\\\])\\\\([^"\/nrtbf])/', '$1$2', $json);
+
+        return $json;
+    }
+
+    /**
+     * Handle development/testing data - FIXED version
      */
     private function handleDevelopmentData(Request $request, Closure $next): Response
     {
@@ -133,10 +204,17 @@ class TelegramInitUser
 
         if ($userDataHead) {
             try {
-                parse_str(urldecode($userDataHead), $userData);
+                // FIXED: Don't double-decode, parse_str handles URL decoding
+                parse_str($userDataHead, $userData);
+
+                Log::debug('Development data parsed', [
+                    'keys' => array_keys($userData),
+                    'has_user' => isset($userData['user'])
+                ]);
 
                 if (isset($userData['user'])) {
-                    $user = json_decode($userData['user'], true);
+                    // Use the same improved parsing logic
+                    $user = $this->parseUserParameter($userData['user']);
 
                     if (!$user || !isset($user['id'])) {
                         Log::warning('Invalid development user data', [
