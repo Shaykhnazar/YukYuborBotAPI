@@ -28,7 +28,6 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Determine middleware based on environment
-// Determine middleware based on environment
 $middleware = [];
 
 if (app()->environment(['local', 'development'])) {
@@ -38,7 +37,7 @@ if (app()->environment(['local', 'development'])) {
 } else {
     // Production environment - use production middleware + auth
     $middleware[] = 'tg.init';
-//    $middleware[] = 'auth:tgwebapp';
+    $middleware[] = 'auth:tgwebapp';
 }
 
 Route::middleware($middleware)->group(function () {
