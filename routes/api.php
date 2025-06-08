@@ -38,7 +38,7 @@ if (app()->environment(['local', 'development'])) {
 } else {
     // Production environment - use production middleware + auth
     $middleware[] = 'tg.init';
-    $middleware[] = 'auth:tgwebapp';
+//    $middleware[] = 'auth:tgwebapp';
 }
 
 Route::middleware($middleware)->group(function () {
