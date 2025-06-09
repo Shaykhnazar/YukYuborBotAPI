@@ -33,7 +33,7 @@ class ResponseController extends Controller
 
         // Get responses from the database where current user is the recipient
         $responses = Response::where('user_id', $user->id)
-            ->whereIn('status', ['pending', 'waiting']) // Show both pending and waiting responses
+            ->whereIn('status', ['pending', 'waiting', 'accepted']) // Show both pending and waiting responses
             ->with(['responder.telegramUser'])
             ->orderByDesc('created_at')
             ->get();
@@ -191,6 +191,27 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Request not found'], 404);
         }
 
+        // First check if there's already an accepted response with a chat
+        $acceptedResponse = Response::where('user_id', $sender->id)
+            ->where('request_type', 'delivery')
+            ->where('request_id', $sendRequest->id)
+            ->where('offer_id', $deliveryRequest->id)
+            ->where('status', 'accepted')
+            ->first();
+
+        if ($acceptedResponse && $acceptedResponse->chat_id) {
+            // Response already accepted and chat exists
+            Log::info('Response already accepted, returning existing chat', [
+                'response_id' => $acceptedResponse->id,
+                'chat_id' => $acceptedResponse->chat_id
+            ]);
+            return response()->json([
+                'chat_id' => $acceptedResponse->chat_id,
+                'message' => 'Partnership already confirmed',
+                'existing' => true
+            ], 200);
+        }
+
         // Find the waiting response record
         $response = Response::where('user_id', $sender->id)
             ->where('request_type', 'delivery')
@@ -200,7 +221,30 @@ class ResponseController extends Controller
             ->first();
 
         if (!$response) {
-            return response()->json(['error' => 'Response not found'], 404);
+            // Check if chat already exists by request IDs
+            $existingChat = Chat::where('send_request_id', $sendRequest->id)
+                ->where('delivery_request_id', $deliveryRequest->id)
+                ->first();
+
+            if ($existingChat) {
+                Log::info('Chat already exists, returning existing chat ID', [
+                    'chat_id' => $existingChat->id,
+                    'send_request_id' => $sendRequest->id,
+                    'delivery_request_id' => $deliveryRequest->id
+                ]);
+                return response()->json([
+                    'chat_id' => $existingChat->id,
+                    'message' => 'Chat already exists',
+                    'existing' => true
+                ], 200);
+            }
+
+            Log::warning('Response not found for sender acceptance', [
+                'user_id' => $sender->id,
+                'send_request_id' => $sendRequest->id,
+                'delivery_request_id' => $deliveryRequest->id
+            ]);
+            return response()->json(['error' => 'Response not found or already processed'], 404);
         }
 
         // Check if chat already exists
@@ -209,7 +253,17 @@ class ResponseController extends Controller
             ->first();
 
         if ($existingChat) {
-            // Return success response with existing chat
+            // Update response to point to existing chat
+            $response->update([
+                'status' => 'accepted',
+                'chat_id' => $existingChat->id
+            ]);
+
+            Log::info('Updated response to point to existing chat', [
+                'response_id' => $response->id,
+                'chat_id' => $existingChat->id
+            ]);
+
             return response()->json([
                 'chat_id' => $existingChat->id,
                 'message' => 'Partnership confirmed successfully',
@@ -224,6 +278,12 @@ class ResponseController extends Controller
             'send_request_id' => $sendRequest->id,
             'delivery_request_id' => $deliveryRequest->id,
             'status' => 'active',
+        ]);
+
+        Log::info('Created new chat', [
+            'chat_id' => $chat->id,
+            'sender_id' => $sender->id,
+            'receiver_id' => $deliveryRequest->user_id
         ]);
 
         // Deduct link from sender
