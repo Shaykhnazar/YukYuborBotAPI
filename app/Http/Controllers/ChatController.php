@@ -81,6 +81,7 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
+            ->where('status', 'active')
             ->with([
                 'sender.telegramUser',
                 'receiver.telegramUser',
