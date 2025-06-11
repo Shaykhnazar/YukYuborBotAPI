@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 |
 */
 // Broadcasting authentication route - CRITICAL for presence channels
-Broadcast::routes(['middleware' => ['tg.init', /*'auth:tgwebapp'*/]]);
+Broadcast::routes(['middleware' => ['tg.init', 'auth:tgwebapp']]);
 
 // For development, also add without auth middleware
 if (app()->environment(['local', 'development'])) {
