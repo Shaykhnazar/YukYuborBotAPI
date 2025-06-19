@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Http\Resources\Review\IndexResource;
+use App\Http\Resources\Review\ReviewResource;
 use App\Models\User;
 use App\Service\TelegramUserService;
 use Carbon\Carbon;
@@ -31,7 +31,7 @@ class UserController extends BaseController
         return response()->json([
             'telegram' => $user->telegramUser,
             'user' => collect($user)->except('telegram_user'),
-            'reviews' => IndexResource::collection($user->reviews),
+            'reviews' => ReviewResource::collection($user->reviews),
             'average_rating' => round($averageRating, 2),
         ]);
     }
@@ -44,7 +44,7 @@ class UserController extends BaseController
         return response()->json([
             'telegram' => $user->telegramUser,
             'user' => collect($user)->except('telegram_user'),
-            'reviews' => IndexResource::collection($user->reviews),
+            'reviews' => ReviewResource::collection($user->reviews),
             'average_rating' => round($averageRating, 2),
         ]);
     }

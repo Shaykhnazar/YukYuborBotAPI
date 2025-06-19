@@ -21,6 +21,7 @@ class IndexRequestResource extends JsonResource
             'id' => $this->id,
             'type' => $this->type,
             'status' => $this->status,
+            'has_responses' => $this->has_responses ?? false,
             'from_location' => $this->from_location,
             'to_location' => $this->to_location,
             'from_date' => $this->from_date,
@@ -31,7 +32,9 @@ class IndexRequestResource extends JsonResource
             'currency' => $this->currency,
             'user' => [
                 'id' => $user->id,
-                'image' => $telegram->image ?? null
+                'name' => $user->name,
+                'image' => $telegram->image ?? null,
+                'requests_count' => $user->sendRequests->count() + $user->deliveryRequests->count(),
             ]
         ];
     }
