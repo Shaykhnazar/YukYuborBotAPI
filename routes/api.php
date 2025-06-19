@@ -52,6 +52,9 @@ Route::middleware($middleware)->group(function () {
     Route::get('/user/reviews/{userId}', [UserReviewController::class, 'userReviews']);
     Route::get('/requests/{id}', [UserRequestController::class, 'show']);
     Route::get('user/{user}/requests', [UserRequestController::class, 'userRequests']);
+    // Delete request routes
+    Route::delete('/send-request/{id}', [SendRequestController::class, 'delete']);
+    Route::delete('/delivery-request/{id}', [DeliveryController::class, 'delete']);
 
     // Chat routes
     Route::prefix('chat')->group(function () {
@@ -82,7 +85,7 @@ Route::middleware($middleware)->group(function () {
     });
 });
 
-Route::get('/place', [PlaceController::class, 'index']);
+Route::get('/place', [PlaceController::class, 'index'])->middleware(['throttle:60,1']);
 
 // Development-only routes (secured)
 Route::middleware(['throttle:60,1'])->group(function () {
