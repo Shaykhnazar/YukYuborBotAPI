@@ -55,6 +55,9 @@ Route::middleware($middleware)->group(function () {
     // Delete request routes
     Route::delete('/send-request/{id}', [SendRequestController::class, 'delete']);
     Route::delete('/delivery-request/{id}', [DeliveryController::class, 'delete']);
+    // Close request routes
+    Route::patch('/send-request/{id}/close', [SendRequestController::class, 'close']);
+    Route::patch('/delivery-request/{id}/close', [DeliveryController::class, 'close']);
 
     // Chat routes
     Route::prefix('chat')->group(function () {

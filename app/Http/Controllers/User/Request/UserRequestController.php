@@ -44,7 +44,7 @@ class UserRequestController extends BaseController
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         // Optimize: Get all responses for these requests in a single query
-        $this->addResponsesFlags($requests);
+        $this->addResponsesAndChatInfo($requests);
 
         return IndexRequestResource::collection($requests);
     }
@@ -77,7 +77,7 @@ class UserRequestController extends BaseController
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         // Add responses flags for single request
-        $this->addResponsesFlags($requests);
+        $this->addResponsesAndChatInfo($requests);
 
         return IndexRequestResource::collection($requests);
     }
@@ -109,15 +109,15 @@ class UserRequestController extends BaseController
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         // Add responses flags
-        $this->addResponsesFlags($requests);
+        $this->addResponsesAndChatInfo($requests);
 
         return IndexRequestResource::collection($requests);
     }
 
     /**
-     * Add has_responses flag to requests collection in a single optimized query
+     * Add has_responses flag and chat_id to requests collection in a single optimized query
      */
-    private function addResponsesFlags($requests): void
+    private function addResponsesAndChatInfo($requests): void
     {
         if ($requests->isEmpty()) {
             return;
@@ -128,6 +128,7 @@ class UserRequestController extends BaseController
         $deliveryRequestIds = $requests->where('type', 'delivery')->pluck('id')->toArray();
 
         $responsesLookup = [];
+        $chatLookup = [];
 
         // Single query to get all responses for all requests
         if (!empty($sendRequestIds) || !empty($deliveryRequestIds)) {
@@ -148,19 +149,25 @@ class UserRequestController extends BaseController
                 }
             });
 
-            $responses = $responsesQuery->select('request_type', 'request_id')
-                                      ->distinct()
+            $responses = $responsesQuery->select('request_type', 'request_id', 'chat_id', 'status')
                                       ->get();
 
-            // Create efficient lookup map: type => [request_id => true]
+            // Create efficient lookup maps
             foreach ($responses as $response) {
+                // Mark that this request has responses
                 $responsesLookup[$response->request_type][$response->request_id] = true;
+
+                // If response is accepted and has chat_id, store it
+                if ($response->status === 'accepted' && $response->chat_id) {
+                    $chatLookup[$response->request_type][$response->request_id] = $response->chat_id;
+                }
             }
         }
 
-        // Add has_responses flag to each request
-        $requests->transform(function ($item) use ($responsesLookup) {
+        // Add has_responses flag and chat_id to each request
+        $requests->transform(function ($item) use ($responsesLookup, $chatLookup) {
             $item->has_responses = isset($responsesLookup[$item->type][$item->id]);
+            $item->chat_id = $chatLookup[$item->type][$item->id] ?? null;
             return $item;
         });
     }

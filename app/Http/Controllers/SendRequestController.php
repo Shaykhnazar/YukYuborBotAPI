@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Send\CreateSendRequest;
 use App\Models\Response;
 use App\Models\SendRequest;
+use App\Models\Chat;
 use App\Service\Matcher;
 use App\Service\TelegramUserService;
 use Carbon\CarbonImmutable;
@@ -57,31 +58,42 @@ class SendRequestController extends BaseController
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request can be deleted (no active responses or matched status)
-            if ($sendRequest->status === 'matched') {
+            // Check if request is already matched (has active chat)
+            $hasActiveChat = Chat::where('send_request_id', $id)
+                ->where('status', 'active')
+                ->exists();
+
+            if ($hasActiveChat) {
                 return response()->json([
-                    'error' => 'Cannot delete request with active collaboration'
+                    'error' => 'Cannot delete request with active chat'
                 ], 409);
             }
 
-            // Check for active responses
-            $hasActiveResponses = Response::where('request_type', 'send')
-                ->where('request_id', $id)
-                ->where('status', 'pending')
-                ->exists();
-
-            if ($hasActiveResponses) {
+            // Check if request status is completed or matched
+            if (in_array($sendRequest->status, ['matched', 'completed'])) {
                 return response()->json([
-                    'error' => 'Cannot delete request with pending responses'
+                    'error' => 'Cannot delete completed or matched request'
                 ], 409);
             }
 
             DB::beginTransaction();
 
-            // Delete related responses
-            Response::where('request_type', 'send')
-                ->where('request_id', $id)
-                ->delete();
+            // Delete all related responses where this send request appears
+            // as either the main request or as an offer
+            Response::where(function($query) use ($id) {
+                $query->where(function($subQuery) use ($id) {
+                    // Responses where this send request is the main request
+                    $subQuery->where('request_type', 'send')
+                             ->where('request_id', $id);
+                })->orWhere(function($subQuery) use ($id) {
+                    // Responses where this send request appears as an offer
+                    $subQuery->where('request_type', 'delivery')
+                             ->where('offer_id', $id);
+                });
+            })->delete();
+
+            // Delete any chats related to this send request
+            Chat::where('send_request_id', $id)->delete();
 
             // Delete the request
             $sendRequest->delete();
@@ -100,7 +112,8 @@ class SendRequestController extends BaseController
 
             Log::error('Error deleting send request', [
                 'request_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
@@ -109,4 +122,24 @@ class SendRequestController extends BaseController
         }
     }
 
+    public function close(Request $request, int $id)
+    {
+        $user = $this->userService->getUserByTelegramId($request);
+
+        $sendRequest = SendRequest::where('id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$sendRequest) {
+            return response()->json(['error' => 'Send request not found'], 404);
+        }
+
+        if ($sendRequest->status !== 'matched') {
+            return response()->json(['error' => 'Can only close matched requests'], 409);
+        }
+
+        $sendRequest->update(['status' => 'completed']);
+
+        return response()->json(['message' => 'Send request closed successfully']);
+    }
 }
