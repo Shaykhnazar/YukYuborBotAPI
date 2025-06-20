@@ -22,6 +22,7 @@ class IndexRequestResource extends JsonResource
             'type' => $this->type,
             'status' => $this->status,
             'has_responses' => $this->has_responses ?? false,
+            'chat_id' => $this->chat_id ?? null,
             'from_location' => $this->from_location,
             'to_location' => $this->to_location,
             'from_date' => $this->from_date,

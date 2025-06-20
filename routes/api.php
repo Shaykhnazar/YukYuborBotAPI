@@ -47,14 +47,18 @@ Route::middleware($middleware)->group(function () {
     Route::get('/requests', [RequestController::class, 'index']);
     Route::post('/send-request', [SendRequestController::class, 'create']);
     Route::post('/delivery-request', [DeliveryController::class, 'create']);
+    Route::get('/requests/{id}', [UserRequestController::class, 'show']);
+    Route::get('user/{user}/requests', [UserRequestController::class, 'userRequests']);
+    // Review routes
     Route::post('/review-request', [UserReviewController::class, 'create']);
     Route::get('/reviews/{id}', [UserReviewController::class, 'show']);
     Route::get('/user/reviews/{userId}', [UserReviewController::class, 'userReviews']);
-    Route::get('/requests/{id}', [UserRequestController::class, 'show']);
-    Route::get('user/{user}/requests', [UserRequestController::class, 'userRequests']);
     // Delete request routes
     Route::delete('/send-request/{id}', [SendRequestController::class, 'delete']);
     Route::delete('/delivery-request/{id}', [DeliveryController::class, 'delete']);
+    // Close request routes
+    Route::patch('/send-request/{id}/close', [SendRequestController::class, 'close']);
+    Route::patch('/delivery-request/{id}/close', [DeliveryController::class, 'close']);
 
     // Chat routes
     Route::prefix('chat')->group(function () {

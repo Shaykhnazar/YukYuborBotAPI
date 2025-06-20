@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
+use App\Models\Chat;
 use App\Service\Matcher;
 use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
@@ -56,31 +57,42 @@ class DeliveryController extends BaseController
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request can be deleted (no active responses or matched status)
-            if ($deliveryRequest->status === 'matched') {
+            // Check if request is already matched (has active chat)
+            $hasActiveChat = Chat::where('delivery_request_id', $id)
+                ->where('status', 'active')
+                ->exists();
+
+            if ($hasActiveChat) {
                 return response()->json([
-                    'error' => 'Cannot delete request with active collaboration'
+                    'error' => 'Cannot delete request with active chat'
                 ], 409);
             }
 
-            // Check for active responses
-            $hasActiveResponses = Response::where('request_type', 'delivery')
-                ->where('request_id', $id)
-                ->where('status', 'pending')
-                ->exists();
-
-            if ($hasActiveResponses) {
+            // Check if request status is completed or matched
+            if (in_array($deliveryRequest->status, ['matched', 'completed'])) {
                 return response()->json([
-                    'error' => 'Cannot delete request with pending responses'
+                    'error' => 'Cannot delete completed or matched request'
                 ], 409);
             }
 
             DB::beginTransaction();
 
-            // Delete related responses
-            Response::where('request_type', 'delivery')
-                ->where('request_id', $id)
-                ->delete();
+            // Delete all related responses where this delivery request appears
+            // as either the main request or as an offer
+            Response::where(function($query) use ($id) {
+                $query->where(function($subQuery) use ($id) {
+                    // Responses where this delivery request is the main request
+                    $subQuery->where('request_type', 'delivery')
+                             ->where('request_id', $id);
+                })->orWhere(function($subQuery) use ($id) {
+                    // Responses where this delivery request appears as an offer
+                    $subQuery->where('request_type', 'send')
+                             ->where('offer_id', $id);
+                });
+            })->delete();
+
+            // Delete any chats related to this delivery request
+            Chat::where('delivery_request_id', $id)->delete();
 
             // Delete the request
             $deliveryRequest->delete();
@@ -99,12 +111,34 @@ class DeliveryController extends BaseController
 
             Log::error('Error deleting delivery request', [
                 'request_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'error' => 'Failed to delete request'
             ], 500);
         }
+    }
+
+    public function close(Request $request, int $id)
+    {
+        $user = $this->userService->getUserByTelegramId($request);
+
+        $deliveryRequest = DeliveryRequest::where('id', $id)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (!$deliveryRequest) {
+            return response()->json(['error' => 'Delivery request not found'], 404);
+        }
+
+        if ($deliveryRequest->status !== 'matched') {
+            return response()->json(['error' => 'Can only close matched requests'], 409);
+        }
+
+        $deliveryRequest->update(['status' => 'completed']);
+
+        return response()->json(['message' => 'Delivery request closed successfully']);
     }
 }
