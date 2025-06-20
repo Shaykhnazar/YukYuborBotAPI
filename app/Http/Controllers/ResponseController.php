@@ -161,7 +161,7 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Request not found'], 404);
         }
 
-        // Find the response record
+        // Find the response record for the deliverer
         $response = Response::where('user_id', $deliverer->id)
             ->where('request_type', 'send')
             ->where('request_id', $deliveryRequest->id)
@@ -172,6 +172,12 @@ class ResponseController extends Controller
         if (!$response) {
             return response()->json(['error' => 'Response not found'], 404);
         }
+
+        // Update deliverer's response to 'responded' (indicating they responded to the send request)
+        $response->update(['status' => 'responded']);
+
+        // TODO: After MVP done uncomment this line: To Deduct link from deliverer's balance
+//        $deliverer->decrement('links_balance');
 
         // Create response for sender and notify them
         $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'accept');
@@ -371,6 +377,7 @@ class ResponseController extends Controller
             $deliveryRequestId = $id1;
             $sendRequestId = $id2;
 
+            // Find the waiting response record
             $response = Response::where('user_id', $user->id)
                 ->where('request_type', 'delivery')
                 ->where('request_id', $sendRequestId)
@@ -379,10 +386,33 @@ class ResponseController extends Controller
                 ->first();
 
             if ($response) {
+                // Mark this response as rejected
                 $response->update(['status' => 'rejected']);
 
-                // Notify deliverer that sender rejected
+                // Also find and reject the original deliverer's response
+                $delivererResponse = Response::where('user_id', $deliveryRequestId) // deliverer's user_id is same as delivery request user_id
+                    ->where('request_type', 'send')
+                    ->where('offer_id', $sendRequestId)
+                    ->whereIn('status', ['responded', 'accepted'])
+                    ->first();
+
+                if ($delivererResponse) {
+                    $delivererResponse->update(['status' => 'rejected']);
+                }
+
+                // Reset the send request status back to 'open' so it can receive new responses
+                $sendRequest = SendRequest::find($sendRequestId);
+                if ($sendRequest && $sendRequest->status !== 'open') {
+                    $sendRequest->update(['status' => 'open']);
+                }
+
+                // Reset the delivery request status back to 'open'
                 $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
+                if ($deliveryRequest && $deliveryRequest->status !== 'open') {
+                    $deliveryRequest->update(['status' => 'open']);
+                }
+
+                // Notify deliverer that sender rejected
                 if ($deliveryRequest) {
                     $this->sendTelegramNotification(
                         $deliveryRequest->user_id,

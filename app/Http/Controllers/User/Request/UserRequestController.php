@@ -130,36 +130,70 @@ class UserRequestController extends BaseController
         $responsesLookup = [];
         $chatLookup = [];
 
-        // Single query to get all responses for all requests
+        // Query for responses TO these requests (where request is the target)
         if (!empty($sendRequestIds) || !empty($deliveryRequestIds)) {
-            $responsesQuery = Response::where('status', '!=', 'rejected');
+            $responsesToRequests = Response::where('status', '!=', 'rejected')
+                ->where(function($query) use ($sendRequestIds, $deliveryRequestIds) {
+                    if (!empty($sendRequestIds)) {
+                        $query->orWhere(function($q) use ($sendRequestIds) {
+                            $q->where('request_type', 'send')
+                              ->whereIn('request_id', $sendRequestIds);
+                        });
+                    }
+                    if (!empty($deliveryRequestIds)) {
+                        $query->orWhere(function($q) use ($deliveryRequestIds) {
+                            $q->where('request_type', 'delivery')
+                              ->whereIn('request_id', $deliveryRequestIds);
+                        });
+                    }
+                })
+                ->select('request_type', 'request_id', 'chat_id', 'status')
+                ->get();
 
-            $responsesQuery->where(function($query) use ($sendRequestIds, $deliveryRequestIds) {
-                if (!empty($sendRequestIds)) {
-                    $query->orWhere(function($q) use ($sendRequestIds) {
-                        $q->where('request_type', 'send')
-                          ->whereIn('request_id', $sendRequestIds);
-                    });
-                }
-                if (!empty($deliveryRequestIds)) {
-                    $query->orWhere(function($q) use ($deliveryRequestIds) {
-                        $q->where('request_type', 'delivery')
-                          ->whereIn('request_id', $deliveryRequestIds);
-                    });
-                }
-            });
+            // Query for responses FROM these requests (where request is the offer)
+            $responsesFromRequests = Response::where('status', '!=', 'rejected')
+                ->where(function($query) use ($sendRequestIds, $deliveryRequestIds) {
+                    if (!empty($sendRequestIds)) {
+                        $query->orWhere(function($q) use ($sendRequestIds) {
+                            $q->where('request_type', 'delivery') // Opposite type
+                              ->whereIn('offer_id', $sendRequestIds); // Request is the offer
+                        });
+                    }
+                    if (!empty($deliveryRequestIds)) {
+                        $query->orWhere(function($q) use ($deliveryRequestIds) {
+                            $q->where('request_type', 'send') // Opposite type
+                              ->whereIn('offer_id', $deliveryRequestIds); // Request is the offer
+                        });
+                    }
+                })
+                ->select('request_type', 'request_id', 'offer_id', 'chat_id', 'status')
+                ->get();
 
-            $responses = $responsesQuery->select('request_type', 'request_id', 'chat_id', 'status')
-                                      ->get();
-
-            // Create efficient lookup maps
-            foreach ($responses as $response) {
-                // Mark that this request has responses
+            // Process responses TO requests
+            foreach ($responsesToRequests as $response) {
                 $responsesLookup[$response->request_type][$response->request_id] = true;
 
-                // If response is accepted and has chat_id, store it
-                if ($response->status === 'accepted' && $response->chat_id) {
+                if (in_array($response->status, ['accepted', 'waiting']) && $response->chat_id) {
                     $chatLookup[$response->request_type][$response->request_id] = $response->chat_id;
+                }
+            }
+
+            // Process responses FROM requests
+            foreach ($responsesFromRequests as $response) {
+                if ($response->request_type === 'delivery') {
+                    // This is a deliverer responding to a send request
+                    $responsesLookup['send'][$response->offer_id] = true;
+
+                    if (in_array($response->status, ['accepted', 'waiting']) && $response->chat_id) {
+                        $chatLookup['send'][$response->offer_id] = $response->chat_id;
+                    }
+                } else if ($response->request_type === 'send') {
+                    // This is a sender responding to a delivery request
+                    $responsesLookup['delivery'][$response->offer_id] = true;
+
+                    if (in_array($response->status, ['accepted', 'waiting']) && $response->chat_id) {
+                        $chatLookup['delivery'][$response->offer_id] = $response->chat_id;
+                    }
                 }
             }
         }
