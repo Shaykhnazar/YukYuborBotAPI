@@ -112,7 +112,7 @@ class Matcher
                     ->orWhere('size_type', 'Не указана')
                     ->orWhere('size_type', null);
             })
-            ->where('status', 'open')
+            ->whereIn('status', ['open', 'has_responses'])
             ->where('user_id', '!=', $sendRequest->user_id)
             ->get();
     }
@@ -136,7 +136,7 @@ class Matcher
                     ->orWhere('size_type', 'Не указана')
                     ->orWhere('size_type', null);
             })
-            ->where('status', 'open')
+            ->whereIn('status', ['open', 'has_responses'])
             ->where('user_id', '!=', $deliveryRequest->user_id)
             ->get();
     }
@@ -146,46 +146,70 @@ class Matcher
      */
     private function createResponseRecord(int $userId, int $responderId, string $requestType, int $requestId, int $offerId, string $status = 'pending'): void
     {
-        $existingResponse = Response::where('user_id', $userId)
-            ->where('responder_id', $responderId)
-            ->where('request_type', $requestType)
-            ->where('request_id', $requestId)
-            ->where('offer_id', $offerId)
-            ->first();
-
-        if (!$existingResponse) {
-            Response::create([
+        $response = Response::updateOrCreate(
+            [
                 'user_id' => $userId,
                 'responder_id' => $responderId,
                 'request_type' => $requestType,
                 'request_id' => $requestId,
                 'offer_id' => $offerId,
+            ],
+            [
                 'status' => $status,
                 'message' => null
-            ]);
+            ]
+        );
 
-            Log::info('Response record created', [
-                'user_id' => $userId,
-                'responder_id' => $responderId,
-                'request_type' => $requestType,
-                'request_id' => $requestId,
-                'offer_id' => $offerId,
-                'status' => $status
-            ]);
-        }
+        // Update request status to 'has_responses' when first response is created
+        $this->updateRequestStatusToHasResponses($requestId, $requestType);
+
+        Log::info('Response record created/updated', [
+            'user_id' => $userId,
+            'responder_id' => $responderId,
+            'request_type' => $requestType,
+            'request_id' => $requestId,
+            'offer_id' => $offerId,
+            'status' => $status,
+            'response_id' => $response->id
+        ]);
     }
 
+    /**
+     * Update request status to 'has_responses' when responses are created
+     */
+    private function updateRequestStatusToHasResponses(int $requestId, string $requestType): void
+    {
+        if ($requestType === 'send') {
+            DeliveryRequest::where('id', $requestId)
+                ->where('status', 'open')
+                ->update(['status' => 'has_responses']);
+        } else {
+            SendRequest::where('id', $requestId)
+                ->where('status', 'open')
+                ->update(['status' => 'has_responses']);
+        }
+    }
     /**
      * Update deliverer response status
      */
     private function updateDelivererResponseStatus(int $delivererUserId, int $sendRequestId, int $deliveryRequestId, string $action): void
     {
-        $status = $action === 'accept' ? 'accepted' : 'rejected'; // Use valid status values
+        $status = $action === 'accept' ? 'accepted' : 'rejected';
 
-        Response::where('user_id', $delivererUserId)
-            ->where('offer_id', $sendRequestId)
+        $updated = Response::where('user_id', $delivererUserId)
+            ->where('request_type', 'send')
             ->where('request_id', $deliveryRequestId)
+            ->where('offer_id', $sendRequestId)
             ->update(['status' => $status]);
+
+        Log::info('Deliverer response status updated', [
+            'deliverer_user_id' => $delivererUserId,
+            'send_request_id' => $sendRequestId,
+            'delivery_request_id' => $deliveryRequestId,
+            'action' => $action,
+            'status' => $status,
+            'updated_count' => $updated
+        ]);
     }
 
     /**

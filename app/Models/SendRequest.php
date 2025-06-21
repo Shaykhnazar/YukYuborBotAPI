@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class SendRequest extends Model
 {
@@ -13,8 +16,36 @@ class SendRequest extends Model
 
     protected $guarded = false;
 
-    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    // Responses where this send request is the main request
+    public function responses(): HasMany
+    {
+        return $this->hasMany(Response::class, 'request_id', 'id')
+            ->where('request_type', 'send');
+    }
+
+    // Responses where this send request is offered to delivery requests
+    public function offerResponses(): HasMany
+    {
+        return $this->hasMany(Response::class, 'offer_id', 'id')
+            ->where('request_type', 'delivery');
+    }
+
+    // Get chat through accepted responses
+    public function chat(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            Chat::class,
+            Response::class,
+            'request_id', // Foreign key on responses table (for send requests)
+            'id', // Foreign key on chats table
+            'id', // Local key on send_requests table
+            'chat_id' // Local key on responses table
+        )->where('responses.request_type', 'send')
+         ->whereIn('responses.status', ['accepted', 'waiting']);
     }
 }
