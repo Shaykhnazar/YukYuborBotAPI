@@ -57,17 +57,6 @@ class DeliveryController extends BaseController
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request is already matched (has active chat)
-            $hasActiveChat = Chat::where('delivery_request_id', $id)
-                ->where('status', 'active')
-                ->exists();
-
-            if ($hasActiveChat) {
-                return response()->json([
-                    'error' => 'Cannot delete request with active chat'
-                ], 409);
-            }
-
             // Check if request status is completed or matched
             if (in_array($deliveryRequest->status, ['matched', 'completed'])) {
                 return response()->json([

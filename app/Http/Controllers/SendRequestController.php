@@ -58,17 +58,6 @@ class SendRequestController extends BaseController
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request is already matched (has active chat)
-            $hasActiveChat = Chat::where('send_request_id', $id)
-                ->where('status', 'active')
-                ->exists();
-
-            if ($hasActiveChat) {
-                return response()->json([
-                    'error' => 'Cannot delete request with active chat'
-                ], 409);
-            }
-
             // Check if request status is completed or matched
             if (in_array($sendRequest->status, ['matched', 'completed'])) {
                 return response()->json([

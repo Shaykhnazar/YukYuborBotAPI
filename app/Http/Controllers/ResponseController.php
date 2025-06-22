@@ -154,10 +154,20 @@ class ResponseController extends Controller
      */
     private function handleDelivererAcceptance(User $deliverer, int $sendRequestId, int $deliveryRequestId): JsonResponse
     {
+        Log::info('Deliverer acceptance started', [
+            'deliverer_id' => $deliverer->id,
+            'send_request_id' => $sendRequestId,
+            'delivery_request_id' => $deliveryRequestId
+        ]);
+
         $sendRequest = SendRequest::find($sendRequestId);
         $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
 
         if (!$sendRequest || !$deliveryRequest) {
+            Log::error('Requests not found', [
+                'send_request_found' => !!$sendRequest,
+                'delivery_request_found' => !!$deliveryRequest
+            ]);
             return response()->json(['error' => 'Request not found'], 404);
         }
 
@@ -169,20 +179,47 @@ class ResponseController extends Controller
             ->where('status', 'pending')
             ->first();
 
+        Log::info('Looking for response record', [
+            'user_id' => $deliverer->id,
+            'request_type' => 'send',
+            'request_id' => $deliveryRequest->id,
+            'offer_id' => $sendRequest->id,
+            'status' => 'pending',
+            'found' => !!$response
+        ]);
+
         if (!$response) {
+            // Let's see what responses exist for this user
+            $existingResponses = Response::where('user_id', $deliverer->id)
+                ->where('request_id', $deliveryRequest->id)
+                ->where('offer_id', $sendRequest->id)
+                ->get();
+
+            Log::error('Response not found - existing responses:', [
+                'existing_responses' => $existingResponses->toArray()
+            ]);
+
             return response()->json(['error' => 'Response not found'], 404);
         }
 
-        // Update deliverer's response to 'responded' (indicating they responded to the send request)
-        $response->update(['status' => 'responded']);
+        try {
+            // Update deliverer's response to 'responded'
+            $response->update(['status' => 'responded']);
+            Log::info('Response status updated to responded');
 
-        // TODO: After MVP done uncomment this line: To Deduct link from deliverer's balance
-//        $deliverer->decrement('links_balance');
+            // Create response for sender and notify them
+            $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'accept');
+            Log::info('Deliverer response created successfully');
 
-        // Create response for sender and notify them
-        $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'accept');
+            return response()->json(['message' => 'Response sent to sender for confirmation']);
 
-        return response()->json(['message' => 'Response sent to sender for confirmation']);
+        } catch (\Exception $e) {
+            Log::error('Error in deliverer acceptance', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
     }
 
     /**
@@ -361,15 +398,29 @@ class ResponseController extends Controller
             if ($response) {
                 $response->update(['status' => 'rejected']);
 
-                // Notify sender that deliverer rejected
-                $sendRequest = SendRequest::find($sendRequestId);
-                if ($sendRequest) {
-                    $this->sendTelegramNotification(
-                        $sendRequest->user_id,
-                        $user->name,
-                        "К сожалению, один из перевозчиков отклонил вашу посылку. Мы продолжаем поиск."
-                    );
+                // Reset delivery request status if no other active responses exist
+                $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
+                if ($deliveryRequest && $deliveryRequest->status !== 'open') {
+                    $hasOtherResponses = Response::where('user_id', $deliveryRequest->user_id)
+                        ->where('request_type', 'send')
+                        ->where('request_id', $deliveryRequestId)
+                        ->whereIn('status', ['pending', 'waiting'])
+                        ->where('id', '!=', $response->id)
+                        ->exists();
+
+                    $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                    $deliveryRequest->update(['status' => $newStatus]);
                 }
+
+                // Notify sender that deliverer rejected
+//                $sendRequest = SendRequest::find($sendRequestId);
+//                if ($sendRequest) {
+//                    $this->sendTelegramNotification(
+//                        $sendRequest->user_id,
+//                        $user->name,
+//                        "К сожалению, один из перевозчиков отклонил вашу посылку. Мы продолжаем поиск."
+//                    );
+//                }
             }
 
         } elseif ($type1 === 'delivery') {
@@ -389,36 +440,52 @@ class ResponseController extends Controller
                 // Mark this response as rejected
                 $response->update(['status' => 'rejected']);
 
-                // Also find and reject the original deliverer's response
-                $delivererResponse = Response::where('user_id', $deliveryRequestId) // deliverer's user_id is same as delivery request user_id
-                    ->where('request_type', 'send')
-                    ->where('offer_id', $sendRequestId)
-                    ->whereIn('status', ['responded', 'accepted'])
-                    ->first();
+                // Get the delivery request to find the deliverer's user ID
+                $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
 
-                if ($delivererResponse) {
-                    $delivererResponse->update(['status' => 'rejected']);
+                if ($deliveryRequest) {
+                    // Find and reject the original deliverer's response using the correct user_id
+                    $delivererResponse = Response::where('user_id', $deliveryRequest->user_id)
+                        ->where('request_type', 'send')
+                        ->where('offer_id', $sendRequestId)
+                        ->whereIn('status', ['responded', 'accepted'])
+                        ->first();
+
+                    if ($delivererResponse) {
+                        $delivererResponse->update(['status' => 'rejected']);
+                    }
+
+                    // Notify deliverer that sender rejected
+//                    $this->sendTelegramNotification(
+//                        $deliveryRequest->user_id,
+//                        $user->name,
+//                        "К сожалению, отправитель выбрал другого перевозчика для своей посылки."
+//                    );
                 }
 
-                // Reset the send request status back to 'open' so it can receive new responses
+                // Reset the send request status - check for other active responses
                 $sendRequest = SendRequest::find($sendRequestId);
                 if ($sendRequest && $sendRequest->status !== 'open') {
-                    $sendRequest->update(['status' => 'open']);
+                    $hasOtherResponses = Response::where('request_type', 'delivery')
+                        ->where('request_id', $sendRequestId)
+                        ->whereIn('status', ['pending', 'waiting'])
+                        ->where('id', '!=', $response->id)
+                        ->exists();
+
+                    $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                    $sendRequest->update(['status' => $newStatus]);
                 }
 
-                // Reset the delivery request status back to 'open'
-                $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
+                // Reset the delivery request status - check for other active responses
                 if ($deliveryRequest && $deliveryRequest->status !== 'open') {
-                    $deliveryRequest->update(['status' => 'open']);
-                }
+                    $hasOtherResponses = Response::where('user_id', $deliveryRequest->user_id)
+                        ->where('request_type', 'send')
+                        ->where('request_id', $deliveryRequestId)
+                        ->whereIn('status', ['pending', 'waiting'])
+                        ->exists();
 
-                // Notify deliverer that sender rejected
-                if ($deliveryRequest) {
-                    $this->sendTelegramNotification(
-                        $deliveryRequest->user_id,
-                        $user->name,
-                        "К сожалению, отправитель выбрал другого перевозчика для своей посылки."
-                    );
+                    $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                    $deliveryRequest->update(['status' => $newStatus]);
                 }
             }
         }
