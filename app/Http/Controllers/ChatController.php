@@ -44,6 +44,8 @@ class ChatController extends BaseController
 
         $chatsData = $chats->map(function ($chat) use ($user) {
             $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
+            $requestInfo = $this->getRequestInfo($chat);
+            $isCompleted = $this->isChatCompleted($chat);
 
             return [
                 'id' => $chat->id,
@@ -58,9 +60,10 @@ class ChatController extends BaseController
                     'created_at' => $chat->latestMessage->created_at,
                     'is_my_message' => $chat->latestMessage->sender_id === $user->id,
                 ] : null,
-                'unread_count' => $chat->unreadMessagesCount($user->id),
-                'request_info' => $this->getRequestInfo($chat),
-                'status' => $chat->status,
+                'unread_count' => $isCompleted ? 0 : $chat->unreadMessagesCount($user->id),
+                'request_info' => $requestInfo,
+                'status' => $isCompleted ? 'completed' : $chat->status,
+                'is_completed' => $isCompleted,
                 'created_at' => $chat->created_at,
                 'updated_at' => $chat->updated_at,
             ];
@@ -81,7 +84,6 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
-            ->where('status', 'active')
             ->with([
                 'sender.telegramUser',
                 'receiver.telegramUser',
@@ -91,21 +93,32 @@ class ChatController extends BaseController
             ])
             ->firstOrFail();
 
-        // Get unread message IDs before marking as read
-        $unreadMessageIds = $chat->messages()
-            ->where('sender_id', '!=', $user->id)
-            ->where('is_read', false)
-            ->pluck('id')
-            ->toArray();
+        $isCompleted = $this->isChatCompleted($chat);
 
-        // Mark messages as read
-        if (!empty($unreadMessageIds)) {
-            $chat->messages()
-                ->whereIn('id', $unreadMessageIds)
-                ->update(['is_read' => true, 'updated_at' => now()]);
+        // Only mark messages as read for active chats
+        $unreadMessageIds = [];
+        if (!$isCompleted) {
+            // Get unread message IDs before marking as read
+            $unreadMessageIds = $chat->messages()
+                ->where('sender_id', '!=', $user->id)
+                ->where('is_read', false)
+                ->pluck('id')
+                ->toArray();
 
-            // Broadcast read receipt
-            broadcast(new MessageRead($user, $chat->id, $unreadMessageIds));
+            // Mark messages as read
+            if (!empty($unreadMessageIds)) {
+                $chat->messages()
+                    ->whereIn('id', $unreadMessageIds)
+                    ->update(['is_read' => true, 'updated_at' => now()]);
+
+                // Broadcast read receipt
+                broadcast(new MessageRead($user, $chat->id, $unreadMessageIds));
+            }
+        }
+
+        // Update chat status if it should be completed
+        if ($isCompleted && $chat->status === 'active') {
+            $chat->update(['status' => 'completed']);
         }
 
         $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
@@ -132,7 +145,8 @@ class ChatController extends BaseController
                 ];
             }),
             'request_info' => $this->getRequestInfo($chat),
-            'status' => $chat->status,
+            'status' => $isCompleted ? 'completed' : $chat->status,
+            'is_completed' => $isCompleted,
             'unread_marked' => count($unreadMessageIds),
         ];
 
@@ -151,11 +165,17 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
+            ->with(['sendRequest', 'deliveryRequest'])
             ->firstOrFail();
 
-        // Check if chat is active
+        // Check if chat is active and not completed
         if ($chat->status !== 'active') {
             return response()->json(['error' => 'Chat is not active'], 403);
+        }
+
+        // Check if related requests are completed
+        if ($this->isChatCompleted($chat)) {
+            return response()->json(['error' => 'Cannot send messages to completed chat'], 403);
         }
 
         $message = new ChatMessage([
@@ -263,7 +283,17 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
+            ->with(['sendRequest', 'deliveryRequest'])
             ->firstOrFail();
+
+        // Don't mark messages as read for completed chats
+        if ($this->isChatCompleted($chat)) {
+            return response()->json([
+                'marked_as_read' => 0,
+                'message_ids' => [],
+                'reason' => 'Chat is completed'
+            ]);
+        }
 
         // Get unread messages from other users
         $unreadMessages = $chat->messages()
@@ -314,7 +344,17 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
+            ->with(['sendRequest', 'deliveryRequest'])
             ->firstOrFail();
+
+        // Don't send typing indicators for completed chats
+        if ($this->isChatCompleted($chat)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot send typing indicators for completed chat',
+                'is_typing' => false
+            ]);
+        }
 
         // Broadcast typing status
         broadcast(new UserTyping($user, $chatId, $request->boolean('is_typing')));
@@ -362,6 +402,91 @@ class ChatController extends BaseController
     }
 
     /**
+     * Complete/close a chat when request is finished
+     */
+    public function completeChat(Request $request, int $chatId): JsonResponse
+    {
+        $request->validate([
+            'reason' => 'nullable|string|max:500'
+        ]);
+
+        $user = $this->tgService->getUserByTelegramId($request);
+
+        $chat = Chat::where('id', $chatId)
+            ->where(function ($query) use ($user) {
+                $query->where('sender_id', $user->id)
+                    ->orWhere('receiver_id', $user->id);
+            })
+            ->with(['sendRequest', 'deliveryRequest'])
+            ->firstOrFail();
+
+        // Update chat status to completed
+        $chat->update(['status' => 'completed']);
+
+        // Update related request statuses to completed
+        if ($chat->sendRequest && in_array($chat->sendRequest->status, ['matched', 'active'])) {
+            $chat->sendRequest->update(['status' => 'completed']);
+        }
+
+        if ($chat->deliveryRequest && in_array($chat->deliveryRequest->status, ['matched', 'active'])) {
+            $chat->deliveryRequest->update(['status' => 'completed']);
+        }
+
+        // Add system message about completion
+        $systemMessage = new ChatMessage([
+            'chat_id' => $chatId,
+            'sender_id' => $user->id,
+            'message' => "Заявка завершена пользователем {$user->name}",
+            'message_type' => 'system',
+            'is_read' => true,
+        ]);
+        $systemMessage->save();
+
+        // Send notification to other user
+        $otherUserId = $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
+        $this->sendTelegramNotification(
+            $otherUserId,
+            'PostLink',
+            "Заявка завершена пользователем {$user->name}. Спасибо за использование PostLink!"
+        );
+
+        Log::info('Chat completed', [
+            'chat_id' => $chatId,
+            'completed_by' => $user->id,
+            'reason' => $request->input('reason')
+        ]);
+
+        return response()->json([
+            'message' => 'Chat completed successfully',
+            'status' => 'completed',
+            'completed_at' => now(),
+            'completed_by' => $user->name
+        ]);
+    }
+
+    /**
+     * Check if chat should be considered completed
+     */
+    private function isChatCompleted(Chat $chat): bool
+    {
+        // Check if chat is already marked as completed
+        if ($chat->status === 'completed' || $chat->status === 'closed') {
+            return true;
+        }
+
+        // Check if related requests are completed
+        if ($chat->sendRequest) {
+            return in_array($chat->sendRequest->status, ['completed', 'closed', 'finished']);
+        }
+
+        if ($chat->deliveryRequest) {
+            return in_array($chat->deliveryRequest->status, ['completed', 'closed', 'finished']);
+        }
+
+        return false;
+    }
+
+    /**
      * Get request information for chat context
      */
     private function getRequestInfo(Chat $chat): array
@@ -376,6 +501,7 @@ class ChatController extends BaseController
                 'price' => $chat->sendRequest->price,
                 'currency' => $chat->sendRequest->currency,
                 'to_date' => $chat->sendRequest->to_date,
+                'status' => $chat->sendRequest->status,
             ];
         }
 
@@ -390,6 +516,7 @@ class ChatController extends BaseController
                 'currency' => $chat->deliveryRequest->currency,
                 'from_date' => $chat->deliveryRequest->from_date,
                 'to_date' => $chat->deliveryRequest->to_date,
+                'status' => $chat->deliveryRequest->status,
             ];
         }
 

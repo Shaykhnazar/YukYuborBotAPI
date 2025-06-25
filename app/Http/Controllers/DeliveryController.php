@@ -81,7 +81,7 @@ class DeliveryController extends BaseController
             })->delete();
 
             // Delete any chats related to this delivery request
-            Chat::where('delivery_request_id', $id)->delete();
+            Chat::where('delivery_request_id', $id)->update(['status' => 'closed']);
 
             // Delete the request
             $deliveryRequest->delete();

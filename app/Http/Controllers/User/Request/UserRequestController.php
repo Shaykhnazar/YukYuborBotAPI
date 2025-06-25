@@ -5,8 +5,10 @@ namespace App\Http\Controllers\User\Request;
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Parcel\ParcelRequest;
 use App\Http\Resources\Parcel\IndexRequestResource;
+use App\Models\Review;
 use App\Service\TelegramUserService;
 use App\Models\User;
+use App\Models\Chat;
 
 class UserRequestController extends BaseController
 {
@@ -20,7 +22,7 @@ class UserRequestController extends BaseController
         $filter = $request->getFilter();
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Eager load relationships including chat through responses and reviews
+        // Eager load relationships including chat through responses
         $user->load([
             'sendRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
@@ -28,22 +30,12 @@ class UserRequestController extends BaseController
                       ->whereIn('status', ['accepted', 'waiting']);
             },
             'sendRequests.responses.chat',
-            'sendRequests' => function ($query) use ($user) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($user) {
-                    $reviewQuery->where('owner_id', $user->id);
-                }]);
-            },
             'deliveryRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                       ->whereNotNull('chat_id')
                       ->whereIn('status', ['accepted', 'waiting']);
             },
-            'deliveryRequests.responses.chat',
-            'deliveryRequests' => function ($query) use ($user) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($user) {
-                    $reviewQuery->where('owner_id', $user->id);
-                }]);
-            }
+            'deliveryRequests.responses.chat'
         ]);
 
         $delivery = collect();
@@ -54,8 +46,8 @@ class UserRequestController extends BaseController
                 $item->type = 'send';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $user->id)->isNotEmpty();
+                // Check if user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($user, $item);
                 return $item;
             });
         }
@@ -65,8 +57,8 @@ class UserRequestController extends BaseController
                 $item->type = 'delivery';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $user->id)->isNotEmpty();
+                // Check if user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($user, $item);
                 return $item;
             });
         }
@@ -81,7 +73,7 @@ class UserRequestController extends BaseController
         $filter = $request->getFilter();
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Eager load relationships including chat through responses and reviews
+        // Eager load relationships including chat through responses
         $user->load([
             'sendRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
@@ -89,22 +81,12 @@ class UserRequestController extends BaseController
                       ->whereIn('status', ['accepted', 'waiting']);
             },
             'sendRequests.responses.chat',
-            'sendRequests' => function ($query) use ($user) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($user) {
-                    $reviewQuery->where('owner_id', $user->id);
-                }]);
-            },
             'deliveryRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                       ->whereNotNull('chat_id')
                       ->whereIn('status', ['accepted', 'waiting']);
             },
-            'deliveryRequests.responses.chat',
-            'deliveryRequests' => function ($query) use ($user) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($user) {
-                    $reviewQuery->where('owner_id', $user->id);
-                }]);
-            }
+            'deliveryRequests.responses.chat'
         ]);
 
         $delivery = collect();
@@ -115,8 +97,8 @@ class UserRequestController extends BaseController
                 $item->type = 'send';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $user->id)->isNotEmpty();
+                // Check if user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($user, $item);
                 return $item;
             });
         }
@@ -126,8 +108,8 @@ class UserRequestController extends BaseController
                 $item->type = 'delivery';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $user->id)->isNotEmpty();
+                // Check if user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($user, $item);
                 return $item;
             });
         }
@@ -142,7 +124,7 @@ class UserRequestController extends BaseController
         $filter = $request->getFilter();
         $currentUser = $this->tgService->getUserByTelegramId($request);
 
-        // Eager load relationships including chat through responses and reviews
+        // Eager load relationships including chat through responses
         $user->load([
             'sendRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
@@ -150,22 +132,12 @@ class UserRequestController extends BaseController
                       ->whereIn('status', ['accepted', 'waiting']);
             },
             'sendRequests.responses.chat',
-            'sendRequests' => function ($query) use ($currentUser) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($currentUser) {
-                    $reviewQuery->where('owner_id', $currentUser->id);
-                }]);
-            },
             'deliveryRequests.responses' => function ($query) use ($user) {
                 $query->where('user_id', $user->id)
                       ->whereNotNull('chat_id')
                       ->whereIn('status', ['accepted', 'waiting']);
             },
-            'deliveryRequests.responses.chat',
-            'deliveryRequests' => function ($query) use ($currentUser) {
-                $query->with(['user.reviews' => function ($reviewQuery) use ($currentUser) {
-                    $reviewQuery->where('owner_id', $currentUser->id);
-                }]);
-            }
+            'deliveryRequests.responses.chat'
         ]);
 
         $delivery = collect();
@@ -176,8 +148,8 @@ class UserRequestController extends BaseController
                 $item->type = 'send';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if current user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $currentUser->id)->isNotEmpty();
+                // Check if current user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $item);
                 return $item;
             });
         }
@@ -187,8 +159,8 @@ class UserRequestController extends BaseController
                 $item->type = 'delivery';
                 // Get chat_id from the loaded relationship
                 $item->chat_id = $item->responses->first()?->chat_id;
-                // Check if current user has already reviewed this request's user
-                $item->has_reviewed = $item->user->reviews->where('owner_id', $currentUser->id)->isNotEmpty();
+                // Check if current user has reviewed the other party
+                $item->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $item);
                 return $item;
             });
         }
@@ -196,5 +168,49 @@ class UserRequestController extends BaseController
         $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         return IndexRequestResource::collection($requests);
+    }
+
+    /**
+     * Check if the current user has reviewed the other party involved in this request
+     */
+    private function hasUserReviewedOtherParty($currentUser, $request): bool
+    {
+        // Only check for closed/completed requests
+        if (!in_array($request->status, ['completed', 'closed'])) {
+            return false;
+        }
+
+        // Find the chat associated with this request
+        $chat = null;
+
+        if ($request->type === 'send') {
+            $chat = Chat::where('send_request_id', $request->id)
+                       ->where(function($query) use ($currentUser) {
+                           $query->where('sender_id', $currentUser->id)
+                                 ->orWhere('receiver_id', $currentUser->id);
+                       })
+                       ->first();
+        } else {
+            $chat = Chat::where('delivery_request_id', $request->id)
+                       ->where(function($query) use ($currentUser) {
+                           $query->where('sender_id', $currentUser->id)
+                                 ->orWhere('receiver_id', $currentUser->id);
+                       })
+                       ->first();
+        }
+
+        if (!$chat) {
+            return false;
+        }
+
+        // Determine the other party
+        $otherUserId = ($chat->sender_id === $currentUser->id)
+                      ? $chat->receiver_id
+                      : $chat->sender_id;
+
+        // Check if current user has reviewed the other party
+        return Review::where('user_id', $otherUserId)
+                                ->where('owner_id', $currentUser->id)
+                                ->exists();
     }
 }

@@ -234,27 +234,6 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Request not found'], 404);
         }
 
-        // First check if there's already an accepted response with a chat
-        $acceptedResponse = Response::where('user_id', $sender->id)
-            ->where('request_type', 'delivery')
-            ->where('request_id', $sendRequest->id)
-            ->where('offer_id', $deliveryRequest->id)
-            ->where('status', 'accepted')
-            ->first();
-
-        if ($acceptedResponse && $acceptedResponse->chat_id) {
-            // Response already accepted and chat exists
-            Log::info('Response already accepted, returning existing chat', [
-                'response_id' => $acceptedResponse->id,
-                'chat_id' => $acceptedResponse->chat_id
-            ]);
-            return response()->json([
-                'chat_id' => $acceptedResponse->chat_id,
-                'message' => 'Partnership already confirmed',
-                'existing' => true
-            ], 200);
-        }
-
         // Find the waiting response record
         $response = Response::where('user_id', $sender->id)
             ->where('request_type', 'delivery')
@@ -264,24 +243,6 @@ class ResponseController extends Controller
             ->first();
 
         if (!$response) {
-            // Check if chat already exists by request IDs
-            $existingChat = Chat::where('send_request_id', $sendRequest->id)
-                ->where('delivery_request_id', $deliveryRequest->id)
-                ->first();
-
-            if ($existingChat) {
-                Log::info('Chat already exists, returning existing chat ID', [
-                    'chat_id' => $existingChat->id,
-                    'send_request_id' => $sendRequest->id,
-                    'delivery_request_id' => $deliveryRequest->id
-                ]);
-                return response()->json([
-                    'chat_id' => $existingChat->id,
-                    'message' => 'Chat already exists',
-                    'existing' => true
-                ], 200);
-            }
-
             Log::warning('Response not found for sender acceptance', [
                 'user_id' => $sender->id,
                 'send_request_id' => $sendRequest->id,
@@ -295,39 +256,33 @@ class ResponseController extends Controller
             ->where('delivery_request_id', $deliveryRequest->id)
             ->first();
 
+        $chat = null;
+        $isNewChat = false;
+
         if ($existingChat) {
-            // Update response to point to existing chat
-            $response->update([
-                'status' => 'accepted',
-                'chat_id' => $existingChat->id
-            ]);
-
-            Log::info('Updated response to point to existing chat', [
-                'response_id' => $response->id,
-                'chat_id' => $existingChat->id
-            ]);
-
-            return response()->json([
+            $chat = $existingChat;
+            Log::info('Using existing chat', [
                 'chat_id' => $existingChat->id,
-                'message' => 'Partnership confirmed successfully',
-                'existing' => true
-            ], 200);
+                'send_request_id' => $sendRequest->id,
+                'delivery_request_id' => $deliveryRequest->id
+            ]);
+        } else {
+            // Create new chat between sender and deliverer
+            $chat = Chat::create([
+                'sender_id' => $sender->id,
+                'receiver_id' => $deliveryRequest->user_id,
+                'send_request_id' => $sendRequest->id,
+                'delivery_request_id' => $deliveryRequest->id,
+                'status' => 'active',
+            ]);
+            $isNewChat = true;
+
+            Log::info('Created new chat', [
+                'chat_id' => $chat->id,
+                'sender_id' => $sender->id,
+                'receiver_id' => $deliveryRequest->user_id
+            ]);
         }
-
-        // Create chat between sender and deliverer
-        $chat = Chat::create([
-            'sender_id' => $sender->id,
-            'receiver_id' => $deliveryRequest->user_id,
-            'send_request_id' => $sendRequest->id,
-            'delivery_request_id' => $deliveryRequest->id,
-            'status' => 'active',
-        ]);
-
-        Log::info('Created new chat', [
-            'chat_id' => $chat->id,
-            'sender_id' => $sender->id,
-            'receiver_id' => $deliveryRequest->user_id
-        ]);
 
         // Deduct link from sender
 //        $sender->decrement('links_balance');  // TODO: After MVP version deduction will be actualized
@@ -360,9 +315,16 @@ class ResponseController extends Controller
             "Отлично! Отправитель подтвердил сотрудничество. Теперь вы можете общаться в чате для уточнения деталей доставки."
         );
 
+        Log::info('Sender acceptance completed successfully', [
+            'chat_id' => $chat->id,
+            'response_id' => $response->id,
+            'is_new_chat' => $isNewChat
+        ]);
+
         return response()->json([
             'chat_id' => $chat->id,
-            'message' => 'Partnership confirmed successfully'
+            'message' => 'Partnership confirmed successfully',
+            'existing' => !$isNewChat
         ]);
     }
 

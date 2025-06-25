@@ -82,7 +82,7 @@ class SendRequestController extends BaseController
             })->delete();
 
             // Delete any chats related to this send request
-            Chat::where('send_request_id', $id)->delete();
+            Chat::where('send_request_id', $id)->update(['status' => 'closed']);
 
             // Delete the request
             $sendRequest->delete();
