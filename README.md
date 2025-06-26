@@ -96,8 +96,8 @@ vendor/bin/phpunit
 ## Technologies Used
 
 - **Backend:**
-    - Laravel Framework (v10.48.2)
-    - PHP 8.1
+    - Laravel Framework (v11.x)
+    - PHP 8.2
     - PostgreSQL
     - Redis
 
