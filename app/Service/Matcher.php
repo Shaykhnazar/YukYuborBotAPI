@@ -194,7 +194,7 @@ class Matcher
      */
     private function updateDelivererResponseStatus(int $delivererUserId, int $sendRequestId, int $deliveryRequestId, string $action): void
     {
-        $status = $action === 'accept' ? 'accepted' : 'rejected';
+        $status = $action === 'accept' ? 'responded' : 'rejected';
 
         $updated = Response::where('user_id', $delivererUserId)
             ->where('request_type', 'send')

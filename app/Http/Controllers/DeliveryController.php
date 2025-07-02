@@ -157,7 +157,10 @@ class DeliveryController extends BaseController
 
             // FIX: Update chat status to closed
             Chat::where('delivery_request_id', $id)
-                ->update(['status' => 'closed']);
+                ->update([
+                    'delivery_request_id' => null,
+                    'status' => 'closed'
+                ]);
 
             DB::commit();
 
