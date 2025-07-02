@@ -33,8 +33,7 @@ class RequestController extends Controller
         // Apply request type filter
         if ($filters['filter'] !== 'send') {
             $deliveryQuery = DeliveryRequest::with('user.telegramUser')
-                ->whereIn('status', ['open', 'has_responses'])
-                ->where('user_id', '!=', $currentUser->id); // Exclude current user's requests
+                ->whereIn('status', ['open', 'has_responses']);
 
             // Apply search filter to delivery requests
             if ($filters['search']) {
@@ -49,8 +48,7 @@ class RequestController extends Controller
 
         if ($filters['filter'] !== 'delivery') {
             $sendQuery = SendRequest::with('user.telegramUser')
-                ->whereIn('status', ['open', 'has_responses'])
-                ->where('user_id', '!=', $currentUser->id); // Exclude current user's requests
+                ->whereIn('status', ['open', 'has_responses']);
 
             // Apply search filter to send requests
             if ($filters['search']) {
