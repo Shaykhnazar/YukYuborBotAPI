@@ -126,8 +126,57 @@ class DeliveryController extends BaseController
             return response()->json(['error' => 'Can only close matched requests'], 409);
         }
 
-        $deliveryRequest->update(['status' => 'completed']);
+        DB::beginTransaction();
 
-        return response()->json(['message' => 'Delivery request closed successfully']);
+        try {
+            // Update the delivery request status
+            $deliveryRequest->update(['status' => 'closed']);
+
+            // FIX: Also update the matched send request
+            if ($deliveryRequest->matched_send_id) {
+                $sendRequest = \App\Models\SendRequest::find($deliveryRequest->matched_send_id);
+                if ($sendRequest) {
+                    $sendRequest->update(['status' => 'closed']);
+                }
+            }
+
+            // FIX: Update all related responses to closed
+            Response::where(function($query) use ($id) {
+                $query->where(function($subQuery) use ($id) {
+                    // Responses where this delivery request is the main request
+                    $subQuery->where('request_type', 'delivery')
+                        ->where('request_id', $id);
+                })->orWhere(function($subQuery) use ($id) {
+                    // Responses where this delivery request appears as an offer
+                    $subQuery->where('request_type', 'send')
+                        ->where('offer_id', $id);
+                });
+            })
+                ->whereIn('status', ['accepted', 'waiting'])
+                ->update(['status' => 'closed']);
+
+            // FIX: Update chat status to closed
+            Chat::where('delivery_request_id', $id)
+                ->update(['status' => 'closed']);
+
+            DB::commit();
+
+            Log::info('Delivery request closed successfully', [
+                'request_id' => $id,
+                'user_id' => $user->id
+            ]);
+
+            return response()->json(['message' => 'Delivery request closed successfully']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Error closing delivery request', [
+                'request_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Failed to close request'], 500);
+        }
     }
 }

@@ -25,7 +25,10 @@ class SendRequest extends Model
     public function responses(): HasMany
     {
         return $this->hasMany(Response::class, 'request_id', 'id')
-            ->where('request_type', 'send');
+            ->where(function($query) {
+                $query->where('request_type', 'send')
+                    ->orWhere('request_type', 'delivery');
+            });
     }
 
     // Responses where this send request is offered to delivery requests
@@ -33,6 +36,18 @@ class SendRequest extends Model
     {
         return $this->hasMany(Response::class, 'offer_id', 'id')
             ->where('request_type', 'delivery');
+    }
+
+    // All responses related to this send request (both as request and offer)
+    public function allResponses(): HasMany
+    {
+        return $this->hasMany(Response::class, function($query) {
+            $query->where(function($subQuery) {
+                $subQuery->where('request_id', $this->id)->where('request_type', 'send');
+            })->orWhere(function($subQuery) {
+                $subQuery->where('offer_id', $this->id)->where('request_type', 'delivery');
+            });
+        });
     }
 
     // Get chat through accepted responses

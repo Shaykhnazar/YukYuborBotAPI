@@ -14,16 +14,22 @@ class IndexRequestResource extends JsonResource
      */
     public function toArray($request): array
     {
-        $user = $this->user;
-        $telegram = $user->telegramUser;
+        // Use responder data if available, otherwise use original request owner
+        $displayUser = $this->responder_user ?? $this->user;
+        $telegram = $displayUser->telegramUser;
+
+        // Determine if we should show responder data
+        $isResponder = isset($this->responder_user) && $this->responder_user !== null;
 
         return [
             'id' => $this->id,
             'type' => $this->type,
             'status' => $this->status,
+            'response_status' => $this->response_status ?? null,
             'has_responses' => in_array($this->status, ['has_responses', 'matched']),
             'has_reviewed' => $this->has_reviewed ?? false,
             'chat_id' => $this->chat_id ?? null,
+            'response_id' => $this->response_id ?? null,
             'from_location' => $this->from_location,
             'to_location' => $this->to_location,
             'from_date' => $this->from_date,
@@ -33,11 +39,12 @@ class IndexRequestResource extends JsonResource
             'price' => $this->price,
             'currency' => $this->currency,
             'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
+                'id' => $displayUser->id,
+                'name' => $displayUser->name,
                 'image' => $telegram->image ?? null,
-                'requests_count' => $user->sendRequests->count() + $user->deliveryRequests->count(),
-            ]
+                'requests_count' => $displayUser->sendRequests->count() + $displayUser->deliveryRequests->count(),
+            ],
+            'is_responder' => $isResponder,
         ];
     }
 }

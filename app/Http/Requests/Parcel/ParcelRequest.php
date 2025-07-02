@@ -22,12 +22,36 @@ class ParcelRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'filter' => 'nullable|string'
+            'filter' => 'nullable|string|in:send,delivery',
+            'status' => 'nullable|string|in:active,closed',
+            'search' => 'nullable|string|max:255',
         ];
     }
 
     public function getFilter()
     {
         return $this->validated('filter');
+    }
+
+    public function getStatus()
+    {
+        return $this->validated('status');
+    }
+
+    public function getSearch()
+    {
+        return $this->validated('search');
+    }
+
+    /**
+     * Get all filter parameters as an array
+     */
+    public function getFilters(): array
+    {
+        return [
+            'filter' => $this->getFilter(),
+            'status' => $this->getStatus(),
+            'search' => $this->getSearch(),
+        ];
     }
 }

@@ -22,10 +22,14 @@ class DeliveryRequest extends Model
     }
 
     // Responses where this delivery request is the main request
+    // This should look for responses where request_id matches AND request_type is correct
     public function responses(): HasMany
     {
         return $this->hasMany(Response::class, 'request_id', 'id')
-            ->where('request_type', 'delivery');
+            ->where(function($query) {
+                $query->where('request_type', 'delivery')
+                    ->orWhere('request_type', 'send');
+            });
     }
 
     // Responses where this delivery request is offered to send requests
@@ -33,6 +37,18 @@ class DeliveryRequest extends Model
     {
         return $this->hasMany(Response::class, 'offer_id', 'id')
             ->where('request_type', 'send');
+    }
+
+    // All responses related to this delivery request (both as request and offer)
+    public function allResponses(): HasMany
+    {
+        return $this->hasMany(Response::class, function($query) {
+            $query->where(function($subQuery) {
+                $subQuery->where('request_id', $this->id)->where('request_type', 'delivery');
+            })->orWhere(function($subQuery) {
+                $subQuery->where('offer_id', $this->id)->where('request_type', 'send');
+            });
+        });
     }
 
     // Get chat through accepted responses

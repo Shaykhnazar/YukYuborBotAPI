@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Service\TelegramNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Models\DeliveryRequest;
@@ -9,7 +10,7 @@ use App\Models\SendRequest;
 use App\Models\Response;
 use App\Service\Matcher;
 
-class TelegramController extends Controller
+class TelegramControllerNotUsed extends Controller
 {
     public function __construct(
         protected Matcher $matcher,
