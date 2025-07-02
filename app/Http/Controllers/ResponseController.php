@@ -33,7 +33,7 @@ class ResponseController extends Controller
 
         // Get responses from the database where current user is the recipient
         $responses = Response::where('user_id', $user->id)
-            ->whereIn('status', ['pending', 'waiting', 'accepted']) // Show both pending and waiting responses
+            ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded']) // Show both pending and waiting responses
             ->with(['responder.telegramUser'])
             ->orderByDesc('created_at')
             ->get();
@@ -251,18 +251,30 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Response not found or already processed'], 404);
         }
 
-        // Check if chat already exists
-        $existingChat = Chat::where('send_request_id', $sendRequest->id)
-            ->where('delivery_request_id', $deliveryRequest->id)
-            ->first();
+        // First check for any existing chat between sender and deliverer
+        $existingChat = Chat::where(function($query) use ($sender, $deliveryRequest) {
+            $query->where('sender_id', $sender->id)
+                ->where('receiver_id', $deliveryRequest->user_id)
+                ->orWhere('sender_id', $deliveryRequest->user_id)
+                ->where('receiver_id', $sender->id);
+        })->first();
 
         $chat = null;
         $isNewChat = false;
 
         if ($existingChat) {
             $chat = $existingChat;
+            // Reopen if closed and update request references
+            $updateData = ['status' => 'active'];
+            if (!$existingChat->send_request_id) {
+                $updateData['send_request_id'] = $sendRequest->id;
+            }
+            if (!$existingChat->delivery_request_id) {
+                $updateData['delivery_request_id'] = $deliveryRequest->id;
+            }
+            $chat->update($updateData);
         } else {
-            // Create new chat between sender and deliverer
+            // Create new chat only if no chat exists between these users
             $chat = Chat::create([
                 'sender_id' => $sender->id,
                 'receiver_id' => $deliveryRequest->user_id,

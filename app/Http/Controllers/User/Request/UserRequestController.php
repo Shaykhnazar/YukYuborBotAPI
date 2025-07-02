@@ -48,78 +48,6 @@ class UserRequestController extends BaseController
             'deliveryRequests.responses.user.telegramUser'
         ]);
 
-        // ADD THIS DEBUG CODE
-//
-//// Check ALL responses in the database
-//        $allResponses = \App\Models\Response::all();
-//        Log::info('ALL responses in database', [
-//            'total_count' => $allResponses->count(),
-//            'responses' => $allResponses->map(function($resp) {
-//                return [
-//                    'id' => $resp->id,
-//                    'user_id' => $resp->user_id,
-//                    'responder_id' => $resp->responder_id,
-//                    'request_type' => $resp->request_type,
-//                    'request_id' => $resp->request_id,
-//                    'offer_id' => $resp->offer_id,
-//                    'status' => $resp->status
-//                ];
-//            })
-//        ]);
-//
-//// Check responses where user 3 is involved (either as user or responder)
-//        $userResponses = \App\Models\Response::where('user_id', $user->id)
-//            ->orWhere('responder_id', $user->id)
-//            ->get();
-//
-//        Log::info('Responses involving current user', [
-//            'user_id' => $user->id,
-//            'count' => $userResponses->count(),
-//            'responses' => $userResponses->map(function($resp) {
-//                return [
-//                    'id' => $resp->id,
-//                    'user_id' => $resp->user_id,
-//                    'responder_id' => $resp->responder_id,
-//                    'request_type' => $resp->request_type,
-//                    'request_id' => $resp->request_id,
-//                    'offer_id' => $resp->offer_id,
-//                    'status' => $resp->status
-//                ];
-//            })
-//        ]);
-//
-//// Check if there are responses where request_id = 2 but request_type = 'send'
-//        $mixedResponses = \App\Models\Response::where('request_id', 2)->get();
-//        Log::info('All responses with request_id = 2 (any type)', [
-//            'responses' => $mixedResponses->map(function($resp) {
-//                return [
-//                    'id' => $resp->id,
-//                    'user_id' => $resp->user_id,
-//                    'responder_id' => $resp->responder_id,
-//                    'request_type' => $resp->request_type,
-//                    'request_id' => $resp->request_id,
-//                    'offer_id' => $resp->offer_id,
-//                    'status' => $resp->status
-//                ];
-//            })
-//        ]);
-//
-//// Check responses where offer_id = 2
-//        $offerResponses = \App\Models\Response::where('offer_id', 2)->get();
-//        Log::info('All responses with offer_id = 2', [
-//            'responses' => $offerResponses->map(function($resp) {
-//                return [
-//                    'id' => $resp->id,
-//                    'user_id' => $resp->user_id,
-//                    'responder_id' => $resp->responder_id,
-//                    'request_type' => $resp->request_type,
-//                    'request_id' => $resp->request_id,
-//                    'offer_id' => $resp->offer_id,
-//                    'status' => $resp->status
-//                ];
-//            })
-//        ]);
-
         $delivery = collect();
         $send = collect();
 
@@ -308,7 +236,7 @@ class UserRequestController extends BaseController
         Log::info('Processing requests', ['count' => $requests->count(), 'type' => $type, 'requests' => $requests]);
         foreach ($requests as $request) {
             // FIX: For closed requests, include 'closed' status in the filter
-            $statusFilter = ['accepted', 'waiting', 'pending'];
+            $statusFilter = ['accepted', 'waiting', 'pending', 'responded'];
 
             // If request is closed, also include closed responses
             if ($request->status === 'closed') {
@@ -350,7 +278,7 @@ class UserRequestController extends BaseController
                         $requestCopy->status = 'has_responses'; // "Получен отклик"
                     }
 
-                    $requestCopy->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $request);
+                    $requestCopy->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $requestCopy);
                     $processedRequests->push($requestCopy);
                 }
             } else {
@@ -359,7 +287,7 @@ class UserRequestController extends BaseController
                 $request->chat_id = null;
                 $request->response_id = null;
                 $request->responder_user = null;
-                $request->has_reviewed = false;
+                $request->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $request);
                 $processedRequests->push($request);
             }
         }
@@ -368,61 +296,64 @@ class UserRequestController extends BaseController
     }
 
     /**
-     * Check if the current user has reviewed the other party involved in this request
+     * Check if the current user has reviewed the other party involved in this specific request
      */
     private function hasUserReviewedOtherParty($currentUser, $request): bool
     {
+//        Log::info('=== DEBUG hasUserReviewedOtherParty START ===', [
+//            'current_user_id' => $currentUser->id,
+//            'request_id' => $request->id,
+//            'request_status' => $request->status,
+//            'request_type' => $request->type ?? 'NULL'
+//        ]);
+
         // Only check for closed/completed requests
         if (!in_array($request->status, ['completed', 'closed'])) {
+//            Log::info('Request status not completed/closed, returning false', [
+//                'status' => $request->status
+//            ]);
             return false;
         }
 
-        // Find the chat associated with this request
-        $chat = null;
+        // Get the other user ID from the request object
+        $otherUserId = null;
 
-        if ($request->type === 'send') {
-            $chat = Chat::where('send_request_id', $request->id)
-                       ->where(function($query) use ($currentUser) {
-                           $query->where('sender_id', $currentUser->id)
-                                 ->orWhere('receiver_id', $currentUser->id);
-                       })
-                       ->first();
-        } else {
-            $chat = Chat::where('delivery_request_id', $request->id)
-                       ->where(function($query) use ($currentUser) {
-                           $query->where('sender_id', $currentUser->id)
-                                 ->orWhere('receiver_id', $currentUser->id);
-                       })
-                       ->first();
+        if (isset($request->user) && isset($request->user->id)) {
+            $otherUserId = $request->user->id;
+        } elseif (isset($request->responder_user) && isset($request->responder_user->id)) {
+            $otherUserId = $request->responder_user->id;
         }
 
-        if (!$chat) {
+        if (!$otherUserId) {
+            Log::info('No other user found in request object, returning false');
             return false;
         }
 
-        // Determine the other party
-        $otherUserId = ($chat->sender_id === $currentUser->id)
-                      ? $chat->receiver_id
-                      : $chat->sender_id;
+//        Log::info('Other user determined from request object', [
+//            'other_user_id' => $otherUserId
+//        ]);
 
-        // Check if current user has reviewed the other party
-        return Review::where('user_id', $otherUserId)
-                                ->where('owner_id', $currentUser->id)
-                                ->exists();
-    }
+        // Check if current user has reviewed the other party for this specific request
+        $reviewExists = Review::where('user_id', $otherUserId)
+                    ->where('owner_id', $currentUser->id)
+                    ->where('request_id', $request->id)
+                    ->where('request_type', $request->type)
+                    ->exists();
 
-    public function debug(Request $request)
-    {
-        $user = $this->tgService->getUserByTelegramId($request);
+//        Log::info('Review check result', [
+//            'review_exists' => $reviewExists,
+//            'query_params' => [
+//                'user_id' => $otherUserId,
+//                'owner_id' => $currentUser->id,
+//                'request_id' => $request->id,
+//                'request_type' => $request->type
+//            ]
+//        ]);
 
-        $debug = [
-            'user_id' => $user->id,
-            'send_requests' => $user->sendRequests()->with('responses.responder')->get(),
-            'delivery_requests' => $user->deliveryRequests()->with('responses.responder')->get(),
-            'all_responses' => \App\Models\Response::with(['user', 'responder'])->get(),
-            'all_chats' => \App\Models\Chat::all(),
-        ];
+//        Log::info('=== DEBUG hasUserReviewedOtherParty END ===', [
+//            'final_result' => $reviewExists
+//        ]);
 
-        return response()->json($debug);
+        return $reviewExists;
     }
 }

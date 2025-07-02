@@ -30,6 +30,7 @@ class ChatController extends BaseController
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
+        // Get only one chat per user pair, prioritizing active chats
         $chats = Chat::where('sender_id', $user->id)
             ->orWhere('receiver_id', $user->id)
             ->with([
@@ -39,8 +40,13 @@ class ChatController extends BaseController
                 'sendRequest',
                 'deliveryRequest'
             ])
-            ->orderByDesc('updated_at')
-            ->get();
+            ->get()
+            ->unique(function ($chat) use ($user) {
+                // Create a unique key based on the other user's ID
+                return $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
+            })
+            ->sortByDesc('updated_at')
+            ->values(); // Convert back to array with numeric keys;
 
         $chatsData = $chats->map(function ($chat) use ($user) {
             $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
@@ -215,28 +221,32 @@ class ChatController extends BaseController
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Check if chat already exists
-        $existingChat = Chat::where(function ($query) use ($request) {
-            if ($request->request_type === 'send') {
-                $query->where('send_request_id', $request->request_id);
-            } else {
-                $query->where('delivery_request_id', $request->request_id);
-            }
-        })
-            ->where(function ($query) use ($user, $request) {
-                $query->where('sender_id', $user->id)
-                    ->where('receiver_id', $request->other_user_id)
-                    ->orWhere('sender_id', $request->other_user_id)
-                    ->where('receiver_id', $user->id);
-            })
-            ->first();
+// First check for any existing chat between these two users
+        $existingChat = Chat::where(function ($query) use ($user, $request) {
+            $query->where('sender_id', $user->id)
+                ->where('receiver_id', $request->other_user_id)
+                ->orWhere('sender_id', $request->other_user_id)
+                ->where('receiver_id', $user->id);
+        })->first();
 
         if ($existingChat) {
+            // Reopen the chat if it's closed/completed
+            if (in_array($existingChat->status, ['closed', 'completed'])) {
+                $existingChat->update(['status' => 'active']);
+            }
+
+            // Update request references if needed
+            if ($request->request_type === 'send' && !$existingChat->send_request_id) {
+                $existingChat->update(['send_request_id' => $request->request_id]);
+            } elseif ($request->request_type === 'delivery' && !$existingChat->delivery_request_id) {
+                $existingChat->update(['delivery_request_id' => $request->request_id]);
+            }
+
             return response()->json([
                 'chat_id' => $existingChat->id,
-                'message' => 'Chat already exists',
+                'message' => 'Chat reopened successfully',
                 'existing' => true
-            ], 200);
+            ]);
         }
 
         // Check if user has enough links for new chat creation
@@ -469,21 +479,24 @@ class ChatController extends BaseController
      */
     private function isChatCompleted(Chat $chat): bool
     {
-        // Check if chat is already marked as completed
-        if ($chat->status === 'completed' || $chat->status === 'closed') {
-            return true;
-        }
+        // Only consider chat completed if BOTH related requests are completed/closed
+        $sendCompleted = false;
+        $deliveryCompleted = false;
 
-        // Check if related requests are completed
         if ($chat->sendRequest) {
-            return in_array($chat->sendRequest->status, ['completed', 'closed', 'finished']);
+            $sendCompleted = in_array($chat->sendRequest->status, ['completed', 'closed']);
+        } else {
+            $sendCompleted = true; // No send request means this part is "completed"
         }
 
         if ($chat->deliveryRequest) {
-            return in_array($chat->deliveryRequest->status, ['completed', 'closed', 'finished']);
+            $deliveryCompleted = in_array($chat->deliveryRequest->status, ['completed', 'closed']);
+        } else {
+            $deliveryCompleted = true; // No delivery request means this part is "completed"
         }
 
-        return false;
+        // Chat is only completed if both requests are done AND chat is marked as closed
+        return ($sendCompleted && $deliveryCompleted) && $chat->status === 'closed';
     }
 
     /**

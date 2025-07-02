@@ -25,7 +25,9 @@ class CreateReviewRequest extends FormRequest
         return [
             'user_id' => 'required|integer',
             'text' => 'required|string',
-            'rating' => 'required|integer',
+            'rating' => 'required|integer|min:1|max:5',
+            'request_id' => 'required|integer',
+            'request_type' => 'required|string|in:send,delivery',
         ];
     }
 
@@ -34,7 +36,9 @@ class CreateReviewRequest extends FormRequest
         return new CreateRequestDTO(
             (int) $this->validated('user_id'),
             $this->validated('text'),
-            (int) $this->validated('rating')
+            (int) $this->validated('rating'),
+            (int) $this->validated('request_id'),
+            $this->validated('request_type'),
         );
     }
 

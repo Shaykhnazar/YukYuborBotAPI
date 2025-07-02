@@ -8,6 +8,8 @@ class CreateRequestDTO
         public int $userId,
         public string $text,
         public int $rating,
+        public int $requestId,
+        public string $requestType,
     ) {}
 
 }

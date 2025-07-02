@@ -158,7 +158,10 @@ class SendRequestController extends BaseController
 
             // FIX: Update chat status to closed
             Chat::where('send_request_id', $id)
-                ->update(['status' => 'closed']);
+                ->update([
+                    'send_request_id' => null,
+                    'status' => 'closed'
+                ]);
 
             DB::commit();
 
