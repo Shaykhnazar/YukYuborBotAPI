@@ -234,15 +234,15 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Request not found'], 404);
         }
 
-        // Find the waiting response record
-        $response = Response::where('user_id', $sender->id)
+        // Find the waiting response record (sender's response)
+        $senderResponse = Response::where('user_id', $sender->id)
             ->where('request_type', 'delivery')
             ->where('request_id', $sendRequest->id)
             ->where('offer_id', $deliveryRequest->id)
             ->where('status', 'waiting')
             ->first();
 
-        if (!$response) {
+        if (!$senderResponse) {
             Log::warning('Response not found for sender acceptance', [
                 'user_id' => $sender->id,
                 'send_request_id' => $sendRequest->id,
@@ -261,11 +261,6 @@ class ResponseController extends Controller
 
         if ($existingChat) {
             $chat = $existingChat;
-            Log::info('Using existing chat', [
-                'chat_id' => $existingChat->id,
-                'send_request_id' => $sendRequest->id,
-                'delivery_request_id' => $deliveryRequest->id
-            ]);
         } else {
             // Create new chat between sender and deliverer
             $chat = Chat::create([
@@ -276,22 +271,29 @@ class ResponseController extends Controller
                 'status' => 'active',
             ]);
             $isNewChat = true;
-
-            Log::info('Created new chat', [
-                'chat_id' => $chat->id,
-                'sender_id' => $sender->id,
-                'receiver_id' => $deliveryRequest->user_id
-            ]);
         }
 
-        // Deduct link from sender
-//        $sender->decrement('links_balance');  // TODO: After MVP version deduction will be actualized
-
-        // Update response status to accepted
-        $response->update([
+        // Update sender's response status to accepted
+        $senderResponse->update([
             'status' => 'accepted',
             'chat_id' => $chat->id
         ]);
+
+        // FIX: ALSO update the deliverer's response status to accepted
+        $delivererResponse = Response::where('user_id', $deliveryRequest->user_id)
+            ->where('request_type', 'send')
+            ->where('request_id', $deliveryRequest->id)
+            ->where('offer_id', $sendRequest->id)
+            ->where('status', 'responded')
+            ->first();
+
+        if ($delivererResponse) {
+            $delivererResponse->update([
+                'status' => 'accepted',
+                'chat_id' => $chat->id
+            ]);
+            Log::info('Updated deliverer response to accepted', ['response_id' => $delivererResponse->id]);
+        }
 
         // Update request statuses
         $sendRequest->update(['status' => 'matched', 'matched_delivery_id' => $deliveryRequest->id]);
@@ -305,7 +307,7 @@ class ResponseController extends Controller
                   ->orWhere('request_id', $sendRequest->id);
         })
         ->whereIn('status', ['pending', 'waiting'])
-        ->where('id', '!=', $response->id)
+        ->where('id', '!=', $senderResponse->id)
         ->update(['status' => 'rejected']);
 
         // Send notification to deliverer
@@ -314,12 +316,6 @@ class ResponseController extends Controller
             $sender->name,
             "Отлично! Отправитель подтвердил сотрудничество. Теперь вы можете общаться в чате для уточнения деталей доставки."
         );
-
-        Log::info('Sender acceptance completed successfully', [
-            'chat_id' => $chat->id,
-            'response_id' => $response->id,
-            'is_new_chat' => $isNewChat
-        ]);
 
         return response()->json([
             'chat_id' => $chat->id,

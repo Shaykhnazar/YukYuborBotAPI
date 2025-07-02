@@ -87,6 +87,8 @@ Route::middleware($middleware)->group(function () {
         // Cancel a response
         Route::post('/{responseId}/cancel', 'cancel');
     });
+
+    Route::get('/debug-requests', [UserRequestController::class, 'debug']);
 });
 
 Route::get('/place', [PlaceController::class, 'index'])->middleware(['throttle:60,1']);

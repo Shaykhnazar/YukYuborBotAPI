@@ -127,8 +127,57 @@ class SendRequestController extends BaseController
             return response()->json(['error' => 'Can only close matched requests'], 409);
         }
 
-        $sendRequest->update(['status' => 'completed']);
+        DB::beginTransaction();
 
-        return response()->json(['message' => 'Send request closed successfully']);
+        try {
+            // Update the send request status
+            $sendRequest->update(['status' => 'closed']);
+
+            // FIX: Also update the matched delivery request
+            if ($sendRequest->matched_delivery_id) {
+                $deliveryRequest = \App\Models\DeliveryRequest::find($sendRequest->matched_delivery_id);
+                if ($deliveryRequest) {
+                    $deliveryRequest->update(['status' => 'closed']);
+                }
+            }
+
+            // FIX: Update all related responses to closed
+            Response::where(function($query) use ($id) {
+                $query->where(function($subQuery) use ($id) {
+                    // Responses where this send request is the main request
+                    $subQuery->where('request_type', 'send')
+                             ->where('request_id', $id);
+                })->orWhere(function($subQuery) use ($id) {
+                    // Responses where this send request appears as an offer
+                    $subQuery->where('request_type', 'delivery')
+                             ->where('offer_id', $id);
+                });
+            })
+            ->whereIn('status', ['accepted', 'waiting'])
+            ->update(['status' => 'closed']);
+
+            // FIX: Update chat status to closed
+            Chat::where('send_request_id', $id)
+                ->update(['status' => 'closed']);
+
+            DB::commit();
+
+            Log::info('Send request closed successfully', [
+                'request_id' => $id,
+                'user_id' => $user->id
+            ]);
+
+            return response()->json(['message' => 'Send request closed successfully']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Error closing send request', [
+                'request_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Failed to close request'], 500);
+        }
     }
 }
