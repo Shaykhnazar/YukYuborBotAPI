@@ -212,18 +212,20 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
                 return response()->json(['error' => 'Access denied'], 403);
             }
 
-            // For presence channels, include user data
+            // CRITICAL: For presence channels, return user data
             $userData = [
-                'id' => $user->id,
+                'id' => (int) $user->id,
                 'name' => $user->name,
+                'image' => $user->telegramUser->image ?? null,
             ];
 
             $stringToSign = $socketId . ':' . $channelName . ':' . json_encode($userData);
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
-            Log::info('Presence channel authorization successful', [
+            Log::info('✅ Presence channel auth successful', [
                 'user_id' => $user->id,
-                'chat_id' => $chatId
+                'chat_id' => $chatId,
+                'user_data' => $userData
             ]);
 
             return response()->json([

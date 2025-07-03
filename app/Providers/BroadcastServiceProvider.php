@@ -16,6 +16,16 @@ class BroadcastServiceProvider extends ServiceProvider
     {
         // Determine middleware based on environment
         $middleware = [];
+
+        if (app()->environment(['local', 'development'])) {
+            // Development/Local environment - use development middleware
+            $middleware[] = 'tg.init.dev';
+            // Skip the auth:tgwebapp middleware in development
+        } else {
+            // Production environment - use production middleware + auth
+            $middleware[] = 'tg.init';
+            $middleware[] = 'auth:tgwebapp';
+        }
         // Register broadcasting routes
         Broadcast::routes(['middleware' => $middleware]);
 
