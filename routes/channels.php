@@ -73,18 +73,14 @@ Broadcast::channel('chat.{chatId}.presence', function ($user, $chatId) {
     $authorized = in_array($user->id, [$chat->sender_id, $chat->receiver_id]);
 
     if ($authorized) {
-        Log::info('✅ Presence channel authorized', [
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'chat_id' => $chatId
-        ]);
-
-        // Return user data for presence channel
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
+        $userData = [
+            'id' => (int) $user->id,  // Ensure it's an integer
+            'name' => $user->name ?? 'Unknown',
             'image' => $user->telegramUser->image ?? null,
         ];
+
+        Log::info('✅ Presence returning user data:', $userData);
+        return $userData;
     }
 
     Log::warning('❌ Presence channel not authorized', [
