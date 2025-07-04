@@ -109,7 +109,7 @@ Route::get('/health', function () {
     ]);
 });
 
-Route::middleware($middleware)->post('/broadcasting/auth', function (Request $request) {
+Route::middleware($middleware)->post('/broadcasting/auth', function (Request $request, TelegramUserService $telegramUserService) {
     try {
         Log::info('Broadcasting auth request received', [
             'url' => $request->url(),
@@ -120,7 +120,6 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
         ]);
 
         // Get user through your existing middleware/service
-        $telegramUserService = app(TelegramUserService::class);
         $user = $telegramUserService->getUserByTelegramId($request);
 
         if (!$user) {
@@ -190,47 +189,50 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
         if (preg_match('/^presence-chat\.(\d+)\.presence$/', $channelName, $matches)) {
             $chatId = (int) $matches[1];
 
-            Log::info('Authorizing presence channel', [
+            Log::info('🔐 Authorizing presence channel', [
                 'chat_id' => $chatId,
-                'user_id' => $user->id
+                'user_id' => $user->id,
+                'user_name' => $user->name
             ]);
 
             // Check if user can access this chat
             $chat = \App\Models\Chat::find($chatId);
             if (!$chat) {
-                Log::warning('Chat not found for presence authorization', ['chat_id' => $chatId]);
+                Log::warning('❌ Chat not found for presence authorization', ['chat_id' => $chatId]);
                 return response()->json(['error' => 'Chat not found'], 404);
             }
 
             $canAccess = in_array($user->id, [$chat->sender_id, $chat->receiver_id]);
 
             if (!$canAccess) {
-                Log::warning('User cannot access presence channel', [
+                Log::warning('❌ User cannot access presence channel', [
                     'user_id' => $user->id,
                     'chat_id' => $chatId
                 ]);
                 return response()->json(['error' => 'Access denied'], 403);
             }
 
-            // CRITICAL: For presence channels, return user data
+            // 🔧 CRITICAL: Ensure user data is properly formatted
             $userData = [
                 'id' => (int) $user->id,
-                'name' => $user->name,
+                'name' => (string) $user->name,
                 'image' => $user->telegramUser->image ?? null,
             ];
 
+            // 🔧 CRITICAL: Proper presence channel auth signature
             $stringToSign = $socketId . ':' . $channelName . ':' . json_encode($userData);
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
-            Log::info('✅ Presence channel auth successful', [
+            Log::info('✅ Presence channel authorization successful', [
                 'user_id' => $user->id,
                 'chat_id' => $chatId,
-                'user_data' => $userData
+                'user_data' => $userData,
+                'auth_signature' => substr($authSignature, 0, 10) . '...'
             ]);
 
             return response()->json([
                 'auth' => config('reverb.apps.apps.0.key') . ':' . $authSignature,
-                'channel_data' => json_encode($userData)
+                'channel_data' => json_encode($userData)  // 🔧 This is the key!
             ]);
         }
 

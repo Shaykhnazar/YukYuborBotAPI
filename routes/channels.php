@@ -73,13 +73,21 @@ Broadcast::channel('chat.{chatId}.presence', function ($user, $chatId) {
     $authorized = in_array($user->id, [$chat->sender_id, $chat->receiver_id]);
 
     if ($authorized) {
+        // 🔧 CRITICAL: Ensure we load the telegramUser relationship
+        $user->load('telegramUser');
+
         $userData = [
             'id' => (int) $user->id,  // Ensure it's an integer
-            'name' => $user->name ?? 'Unknown',
-            'image' => $user->telegramUser->image ?? null,
+            'name' => (string) ($user->name ?? 'Unknown'),  // Ensure it's a string
+            'image' => $user->telegramUser ? $user->telegramUser->image : null,
         ];
 
-        Log::info('✅ Presence returning user data:', $userData);
+        Log::info('✅ Presence returning user data:', [
+            'user_id' => $user->id,
+            'chat_id' => $chatId,
+            'user_data' => $userData
+        ]);
+
         return $userData;
     }
 

@@ -27,9 +27,46 @@ class BroadcastServiceProvider extends ServiceProvider
             $middleware[] = 'auth:tgwebapp';
         }
         // Register broadcasting routes
-        Broadcast::routes(['middleware' => $middleware]);
+        Broadcast::routes(['prefix' => 'api', 'middleware' => $middleware]);
 
-        // Load channel definitions
+//         🔧 CRITICAL: Custom authenticator for proper user resolution
+//        Broadcast::auth(function ($request, $guard = null) {
+//            try {
+//                Log::info('🔐 Broadcasting auth via BroadcastServiceProvider', [
+//                    'url' => $request->url(),
+//                    'method' => $request->method(),
+//                    'channel' => $request->input('channel_name'),
+//                    'socket_id' => $request->input('socket_id'),
+//                    'has_telegram_data' => $request->hasHeader('X-TELEGRAM-USER-DATA'),
+//                ]);
+//
+//                // Get user through the existing middleware/service
+//                $telegramUserService = app(TelegramUserService::class);
+//                $user = $telegramUserService->getUserByTelegramId($request);
+//
+//                if (!$user) {
+//                    Log::warning('❌ Broadcasting auth failed - no user found in provider');
+//                    return null;
+//                }
+//
+//                Log::info('✅ Broadcasting auth successful in provider', [
+//                    'user_id' => $user->id,
+//                    'user_name' => $user->name,
+//                    'channel' => $request->input('channel_name')
+//                ]);
+//
+//                return $user;
+//
+//            } catch (\Exception $e) {
+//                Log::error('❌ Broadcasting auth exception in provider', [
+//                    'error' => $e->getMessage(),
+//                    'trace' => $e->getTraceAsString()
+//                ]);
+//                return null;
+//            }
+//        });
+
+//         Load channel definitions
         require base_path('routes/channels.php');
     }
 }
