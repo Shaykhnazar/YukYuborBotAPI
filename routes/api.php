@@ -116,7 +116,9 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             'method' => $request->method(),
             'has_telegram_data' => $request->hasHeader('X-TELEGRAM-USER-DATA'),
             'socket_id' => $request->input('socket_id'),
-            'channel_name' => $request->input('channel_name')
+            'channel_name' => $request->input('channel_name'),
+            'all_headers' => $request->headers->all(),
+            'all_input' => $request->all()
         ]);
 
         // Get user through your existing middleware/service
@@ -127,9 +129,16 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             return response()->json(['error' => 'User not found'], 401);
         }
 
+        // Load telegram user relationship if not already loaded
+        if (!$user->relationLoaded('telegramUser')) {
+            $user->load('telegramUser');
+        }
+
         Log::info('Broadcasting auth user found', [
             'user_id' => $user->id,
-            'user_name' => $user->name
+            'user_name' => $user->name,
+            'has_telegram_user' => !!$user->telegramUser,
+            'telegram_image' => $user->telegramUser->image ?? 'none'
         ]);
 
         $socketId = $request->input('socket_id');
@@ -143,7 +152,7 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             return response()->json(['error' => 'Missing required parameters'], 400);
         }
 
-        // Manual channel authorization based on your channel definitions
+        // Handle private channels (regular chat channels)
         if (preg_match('/^private-chat\.(\d+)$/', $channelName, $matches)) {
             $chatId = (int) $matches[1];
 
@@ -212,27 +221,40 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
                 return response()->json(['error' => 'Access denied'], 403);
             }
 
-            // 🔧 CRITICAL: Ensure user data is properly formatted
+            // 🔧 CRITICAL FIX: Ensure user data is properly formatted and complete
             $userData = [
                 'id' => (int) $user->id,
                 'name' => (string) $user->name,
-                'image' => $user->telegramUser->image ?? null,
+                'image' => $user->telegramUser && $user->telegramUser->image
+                    ? (string) $user->telegramUser->image
+                    : null,
             ];
 
+            // 🔧 CRITICAL: Validate userData before sending
+            if (!$userData['id'] || !$userData['name']) {
+                Log::error('❌ Invalid user data for presence channel', [
+                    'user_data' => $userData,
+                    'user_object' => $user->toArray()
+                ]);
+                return response()->json(['error' => 'Invalid user data'], 500);
+            }
+
             // 🔧 CRITICAL: Proper presence channel auth signature
-            $stringToSign = $socketId . ':' . $channelName . ':' . json_encode($userData);
+            $channelData = json_encode($userData);
+            $stringToSign = $socketId . ':' . $channelName . ':' . $channelData;
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
             Log::info('✅ Presence channel authorization successful', [
                 'user_id' => $user->id,
                 'chat_id' => $chatId,
                 'user_data' => $userData,
+                'channel_data_length' => strlen($channelData),
                 'auth_signature' => substr($authSignature, 0, 10) . '...'
             ]);
 
             return response()->json([
                 'auth' => config('reverb.apps.apps.0.key') . ':' . $authSignature,
-                'channel_data' => json_encode($userData)  // 🔧 This is the key!
+                'channel_data' => $channelData  // 🔧 This is the key!
             ]);
         }
 
@@ -242,7 +264,9 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
     } catch (\Exception $e) {
         Log::error('Broadcasting auth exception', [
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'trace' => $e->getTraceAsString(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
         ]);
         return response()->json(['error' => 'Authentication failed'], 500);
     }
