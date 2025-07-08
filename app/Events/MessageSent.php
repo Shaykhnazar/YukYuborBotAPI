@@ -37,6 +37,7 @@ class MessageSent implements ShouldBroadcast
     {
         return [
             new PrivateChannel('chat.' . $this->chatId),
+            new PresenceChannel('chat.' . $this->chatId),
         ];
     }
 
