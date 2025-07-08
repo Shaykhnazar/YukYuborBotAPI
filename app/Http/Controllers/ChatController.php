@@ -46,7 +46,7 @@ class ChatController extends BaseController
                 return $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
             })
             ->sortByDesc('updated_at')
-            ->values(); // Convert back to array with numeric keys;
+            ->values();
 
         $chatsData = $chats->map(function ($chat) use ($user) {
             $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
@@ -68,7 +68,7 @@ class ChatController extends BaseController
                 ] : null,
                 'unread_count' => $isCompleted ? 0 : $chat->unreadMessagesCount($user->id),
                 'request_info' => $requestInfo,
-                'status' => $isCompleted ? 'completed' : $chat->status,
+                'status' => $chat->status, // ✅ Use actual status, don't override
                 'is_completed' => $isCompleted,
                 'created_at' => $chat->created_at,
                 'updated_at' => $chat->updated_at,
@@ -99,8 +99,15 @@ class ChatController extends BaseController
             ])
             ->firstOrFail();
 
+        Log::info('📱 Loading chat', [
+            'chat_id' => $chatId,
+            'user_id' => $user->id,
+            'chat_status' => $chat->status
+        ]);
+
         $isCompleted = $this->isChatCompleted($chat);
 
+        // ✅ FIXED: Don't auto-update chat status unless explicitly needed
         // Only mark messages as read for active chats
         $unreadMessageIds = [];
         if (!$isCompleted) {
@@ -122,10 +129,8 @@ class ChatController extends BaseController
             }
         }
 
-        // Update chat status if it should be completed
-        if ($isCompleted && $chat->status === 'active') {
-            $chat->update(['status' => 'completed']);
-        }
+        // ✅ REMOVED: Don't auto-update chat status to completed
+        // Let users explicitly close chats when they're done
 
         $otherUser = $chat->sender_id === $user->id ? $chat->receiver : $chat->sender;
 
@@ -151,10 +156,17 @@ class ChatController extends BaseController
                 ];
             }),
             'request_info' => $this->getRequestInfo($chat),
-            'status' => $isCompleted ? 'completed' : $chat->status,
+            'status' => $chat->status, // ✅ Use actual chat status, don't override
             'is_completed' => $isCompleted,
             'unread_marked' => count($unreadMessageIds),
         ];
+
+        Log::info('📱 Chat loaded successfully', [
+            'chat_id' => $chatId,
+            'status' => $chat->status,
+            'is_completed' => $isCompleted,
+            'message_count' => count($chat->messages)
+        ]);
 
         return response()->json($chatData);
     }
@@ -479,24 +491,59 @@ class ChatController extends BaseController
      */
     private function isChatCompleted(Chat $chat): bool
     {
-        // Only consider chat completed if BOTH related requests are completed/closed
+        Log::info('🔍 Checking chat completion status', [
+            'chat_id' => $chat->id,
+            'chat_status' => $chat->status,
+            'has_send_request' => !!$chat->sendRequest,
+            'has_delivery_request' => !!$chat->deliveryRequest,
+            'send_request_status' => $chat->sendRequest?->status,
+            'delivery_request_status' => $chat->deliveryRequest?->status
+        ]);
+
+        // ✅ FIXED: Chat is only completed if explicitly marked as closed/completed
+        if (in_array($chat->status, ['closed', 'completed'])) {
+            Log::info('✅ Chat marked as closed/completed', ['chat_id' => $chat->id]);
+            return true;
+        }
+
+        // ✅ FIXED: Don't auto-complete based on request status alone
+        // Only consider requests that are explicitly finished
         $sendCompleted = false;
         $deliveryCompleted = false;
 
         if ($chat->sendRequest) {
+            // ✅ FIXED: Only consider 'completed' or 'closed', not 'matched'
             $sendCompleted = in_array($chat->sendRequest->status, ['completed', 'closed']);
         } else {
-            $sendCompleted = true; // No send request means this part is "completed"
+            // ✅ FIXED: If no send request, don't assume completed
+            $sendCompleted = false;
         }
 
         if ($chat->deliveryRequest) {
+            // ✅ FIXED: Only consider 'completed' or 'closed', not 'matched'
             $deliveryCompleted = in_array($chat->deliveryRequest->status, ['completed', 'closed']);
         } else {
-            $deliveryCompleted = true; // No delivery request means this part is "completed"
+            // ✅ FIXED: If no delivery request, don't assume completed
+            $deliveryCompleted = false;
         }
 
-        // Chat is only completed if both requests are done AND chat is marked as closed
-        return ($sendCompleted && $deliveryCompleted) && $chat->status === 'closed';
+        // ✅ FIXED: Chat is completed only if:
+        // 1. Chat status is explicitly closed/completed, OR
+        // 2. BOTH requests exist AND both are completed/closed
+        $bothRequestsCompleted = ($chat->sendRequest && $chat->deliveryRequest) &&
+                                ($sendCompleted && $deliveryCompleted);
+
+        $isCompleted = $bothRequestsCompleted;
+
+        Log::info('🔍 Chat completion analysis', [
+            'chat_id' => $chat->id,
+            'send_completed' => $sendCompleted,
+            'delivery_completed' => $deliveryCompleted,
+            'both_requests_completed' => $bothRequestsCompleted,
+            'final_is_completed' => $isCompleted
+        ]);
+
+        return $isCompleted;
     }
 
     /**
