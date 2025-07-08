@@ -204,7 +204,7 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
                 'user_name' => $user->name
             ]);
 
-            // Check if user can access this chat
+            // Check chat access
             $chat = \App\Models\Chat::find($chatId);
             if (!$chat) {
                 Log::warning('❌ Chat not found for presence authorization', ['chat_id' => $chatId]);
@@ -212,7 +212,6 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             }
 
             $canAccess = in_array($user->id, [$chat->sender_id, $chat->receiver_id]);
-
             if (!$canAccess) {
                 Log::warning('❌ User cannot access presence channel', [
                     'user_id' => $user->id,
@@ -221,26 +220,34 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
                 return response()->json(['error' => 'Access denied'], 403);
             }
 
-            // 🔧 CRITICAL FIX: Ensure user data is properly formatted and complete
+            // ✅ CRITICAL: More robust user data preparation
             $userData = [
                 'id' => (int) $user->id,
-                'name' => (string) $user->name,
-                'image' => $user->telegramUser && $user->telegramUser->image
-                    ? (string) $user->telegramUser->image
-                    : null,
+                'name' => (string) trim($user->name),
+                'image' => null,
             ];
 
-            // 🔧 CRITICAL: Validate userData before sending
-            if (!$userData['id'] || !$userData['name']) {
+            // ✅ Enhanced image handling
+            if ($user->relationLoaded('telegramUser') && $user->telegramUser) {
+                $userData['image'] = $user->telegramUser->image ? (string) $user->telegramUser->image : null;
+            } else {
+                // Force load the relationship
+                $user->load('telegramUser');
+                $userData['image'] = $user->telegramUser && $user->telegramUser->image
+                    ? (string) $user->telegramUser->image
+                    : null;
+            }
+
+            // ✅ CRITICAL: Validate before sending
+            if (!$userData['id'] || $userData['id'] <= 0 || empty($userData['name'])) {
                 Log::error('❌ Invalid user data for presence channel', [
                     'user_data' => $userData,
-                    'user_object' => $user->toArray()
+                    'original_user' => $user->toArray()
                 ]);
                 return response()->json(['error' => 'Invalid user data'], 500);
             }
 
-            // 🔧 CRITICAL: Proper presence channel auth signature
-            $channelData = json_encode($userData);
+            $channelData = json_encode($userData, JSON_UNESCAPED_UNICODE);
             $stringToSign = $socketId . ':' . $channelName . ':' . $channelData;
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
@@ -248,13 +255,12 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
                 'user_id' => $user->id,
                 'chat_id' => $chatId,
                 'user_data' => $userData,
-                'channel_data_length' => strlen($channelData),
-                'auth_signature' => substr($authSignature, 0, 10) . '...'
+                'channel_data_length' => strlen($channelData)
             ]);
 
             return response()->json([
                 'auth' => config('reverb.apps.apps.0.key') . ':' . $authSignature,
-                'channel_data' => $channelData  // 🔧 This is the key!
+                'channel_data' => $channelData
             ]);
         }
 
