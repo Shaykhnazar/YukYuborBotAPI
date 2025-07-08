@@ -195,7 +195,7 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
         }
 
         // Handle presence channels
-        if (preg_match('/^presence-chat\.(\d+)\.presence$/', $channelName, $matches)) {
+        if (preg_match('/^presence-chat\.(\d+)$/', $channelName, $matches)) {
             $chatId = (int) $matches[1];
 
             Log::info('🔐 Authorizing presence channel', [
