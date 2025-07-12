@@ -21,9 +21,13 @@ class IndexRequestResource extends JsonResource
         // Determine if we should show responder data
         $isResponder = isset($this->responder_user) && $this->responder_user !== null;
 
-        // Calculate type-specific request counts
-        $sendRequestsCount = $displayUser->sendRequests->count();
-        $deliveryRequestsCount = $displayUser->deliveryRequests->count();
+        // Calculate type-specific request counts (only closed/completed requests)
+        $sendRequestsCount = $displayUser->sendRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
+        $deliveryRequestsCount = $displayUser->deliveryRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
 
         return [
             'id' => $this->id,
