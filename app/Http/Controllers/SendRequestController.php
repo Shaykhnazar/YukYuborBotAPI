@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Send\CreateSendRequest;
+use App\Models\DeliveryRequest;
 use App\Models\Response;
 use App\Models\SendRequest;
 use App\Models\Chat;
@@ -25,6 +26,27 @@ class SendRequestController extends BaseController
 
     public function create(CreateSendRequest $request)
     {
+        $user = $this->userService->getUserByTelegramId($request);
+
+        // Check active requests limit (combined for both delivery and send)
+        $activeDeliveryCount = DeliveryRequest::where('user_id', $user->id)
+            ->whereNotIn('status', ['closed'])
+            ->count();
+
+        $activeSendCount = SendRequest::where('user_id', $user->id)
+            ->whereNotIn('status', ['closed'])
+            ->count();
+
+        $totalActiveRequests = $activeDeliveryCount + $activeSendCount;
+        $maxActiveRequests = 3; // Total limit for both types
+
+        if ($totalActiveRequests >= $maxActiveRequests) {
+            return response()->json([
+                'error' => 'Вы можете иметь максимум ' . $maxActiveRequests . ' активных заявок одновременно'
+            ], 422);
+        }
+
+
         $dto = $request->getDTO();
         $sendReq = new SendRequest(
             [
@@ -35,7 +57,7 @@ class SendRequestController extends BaseController
                 'to_date' => $dto->toDate->toDateString(),
                 'price' => $dto->price ?? null,
                 'currency' => $dto->currency ?? null,
-                'user_id' => $this->userService->getUserByTelegramId($request)->id,
+                'user_id' => $user->id,
                 'status' => 'open',
             ]
         );
