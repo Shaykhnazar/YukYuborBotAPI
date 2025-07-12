@@ -21,6 +21,10 @@ class IndexRequestResource extends JsonResource
         // Determine if we should show responder data
         $isResponder = isset($this->responder_user) && $this->responder_user !== null;
 
+        // Calculate type-specific request counts
+        $sendRequestsCount = $displayUser->sendRequests->count();
+        $deliveryRequestsCount = $displayUser->deliveryRequests->count();
+
         return [
             'id' => $this->id,
             'type' => $this->type,
@@ -42,7 +46,9 @@ class IndexRequestResource extends JsonResource
                 'id' => $displayUser->id,
                 'name' => $displayUser->name,
                 'image' => $telegram->image ?? null,
-                'requests_count' => $displayUser->sendRequests->count() + $displayUser->deliveryRequests->count(),
+                'requests_count' => $this->type === 'delivery' ? $deliveryRequestsCount : $sendRequestsCount,
+                'send_requests_count' => $sendRequestsCount,
+                'delivery_requests_count' => $deliveryRequestsCount,
             ],
             'is_responder' => $isResponder,
         ];
