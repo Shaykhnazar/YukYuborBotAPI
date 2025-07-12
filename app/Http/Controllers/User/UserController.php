@@ -27,10 +27,24 @@ class UserController extends BaseController
         $user = $this->tgService->getUserByTelegramId($request);
         $user['with_us'] = Carbon::parse($user['created_at'])->locale($this->customLocale)->diffForHumans();
 
+        // Calculate completed/closed requests count
+        $completedSendRequests = $user->sendRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
+
+        $completedDeliveryRequests = $user->deliveryRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
+
+        $totalCompletedRequests = $completedSendRequests + $completedDeliveryRequests;
+
         $averageRating = $user->reviews->avg('rating');
+
         return response()->json([
             'telegram' => $user->telegramUser,
-            'user' => collect($user)->except('telegram_user'),
+            'user' => collect($user)->except('telegram_user')->merge([
+                'completed_requests_count' => $totalCompletedRequests
+            ]),
             'reviews' => ReviewResource::collection($user->reviews),
             'average_rating' => round($averageRating, 2),
         ]);
@@ -41,9 +55,22 @@ class UserController extends BaseController
         $averageRating = $user->reviews->avg('rating');
         $user['with_us'] = Carbon::parse($user['created_at'])->locale($this->customLocale)->diffForHumans();
 
+        // Calculate completed/closed requests count
+        $completedSendRequests = $user->sendRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
+
+        $completedDeliveryRequests = $user->deliveryRequests()
+            ->whereIn('status', ['completed', 'closed'])
+            ->count();
+
+        $totalCompletedRequests = $completedSendRequests + $completedDeliveryRequests;
+
         return response()->json([
             'telegram' => $user->telegramUser,
-            'user' => collect($user)->except('telegram_user'),
+            'user' => collect($user)->except('telegram_user')->merge([
+                'completed_requests_count' => $totalCompletedRequests
+            ]),
             'reviews' => ReviewResource::collection($user->reviews),
             'average_rating' => round($averageRating, 2),
         ]);
