@@ -25,6 +25,13 @@ class RequestController extends Controller
         }
 
         $filters = $request->getFilters();
+        $page = (int) $request->input('page', 1);
+        $perPage = (int) $request->input('per_page', 10);
+        
+        // Validate pagination parameters
+        $page = max(1, $page);
+        $perPage = min(50, max(5, $perPage)); // Limit between 5-50 items per page
+        
         $delivery = collect();
         $send = collect();
 
@@ -61,15 +68,33 @@ class RequestController extends Controller
             });
         }
 
-        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
+        // Combine and sort all requests
+        $allRequests = $delivery->concat($send)->sortByDesc('created_at')->values();
+        $totalCount = $allRequests->count();
+        
+        // Calculate pagination
+        $lastPage = ceil($totalCount / $perPage);
+        $offset = ($page - 1) * $perPage;
+        $paginatedRequests = $allRequests->slice($offset, $perPage)->values();
 
         Log::info('Public requests result count', [
-            'count' => $requests->count(),
+            'total_count' => $totalCount,
             'delivery_count' => $delivery->count(),
-            'send_count' => $send->count()
+            'send_count' => $send->count(),
+            'page' => $page,
+            'per_page' => $perPage,
+            'last_page' => $lastPage
         ]);
 
-        return IndexRequestResource::collection($requests);
+        return response()->json([
+            'data' => IndexRequestResource::collection($paginatedRequests),
+            'pagination' => [
+                'current_page' => $page,
+                'last_page' => $lastPage,
+                'total' => $totalCount,
+                'per_page' => $perPage
+            ]
+        ]);
     }
 
     /**
