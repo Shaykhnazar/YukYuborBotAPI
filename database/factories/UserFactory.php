@@ -4,8 +4,6 @@ namespace Database\Factories;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
@@ -13,11 +11,6 @@ use Illuminate\Support\Str;
 class UserFactory extends Factory
 {
     protected $model = User::class;
-
-    /**
-     * The current password being used by the factory.
-     */
-    protected static ?string $password;
 
     /**
      * Define the model's default state.
@@ -28,30 +21,16 @@ class UserFactory extends Factory
     {
         return [
             'name' => $this->faker->firstName() . ' ' . $this->faker->lastName(),
-            'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
-            'remember_token' => Str::random(10),
+            'phone' => $this->faker->unique()->phoneNumber(),
             'city' => $this->faker->randomElement([
                 'Tashkent', 'Samarkand', 'Bukhara', 'Andijan', 'Namangan',
                 'Fergana', 'Nukus', 'Karshi', 'Termez', 'Jizzakh'
             ]),
-            'links_balance' => $this->faker->numberBetween(0, 10),
+            'links_balance' => $this->faker->numberBetween(3, 10), // Default 3, some with more
             'created_at' => $this->faker->dateTimeBetween('-1 year', 'now'),
             'updated_at' => now(),
         ];
     }
-
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
-    }
-
 
     /**
      * User with high balance
@@ -74,12 +53,32 @@ class UserFactory extends Factory
     }
 
     /**
+     * User with default balance (3 links)
+     */
+    public function withDefaultBalance(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'links_balance' => 3,
+        ]);
+    }
+
+    /**
      * User from specific city
      */
     public function fromCity(string $city): static
     {
         return $this->state(fn (array $attributes) => [
             'city' => $city,
+        ]);
+    }
+
+    /**
+     * User with phone number pattern for Uzbekistan
+     */
+    public function withUzbekPhone(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'phone' => '+998' . $this->faker->numerify('#########'), // Uzbek phone format
         ]);
     }
 }
