@@ -20,32 +20,14 @@ class TelegramUserFactory extends Factory
      */
     public function definition(): array
     {
+        $userId = /*User::factory()*/ 2;
+
         return [
             'telegram' => $this->faker->unique()->numberBetween(100000000, 999999999),
-            'username' => $this->faker->unique()->userName(),
-            'user_id' => User::factory(),
-            'image' => $this->faker->optional(0.7)->imageUrl(150, 150, 'people'),
+            'username' => $this->faker->unique()->userName,
+            'user_id' => $userId,
+            'image' => $this->faker->imageUrl(150, 150, 'people', true, 'Profile'),
         ];
-    }
-
-    /**
-     * Telegram user without username
-     */
-    public function withoutUsername(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'username' => null,
-        ]);
-    }
-
-    /**
-     * Telegram user without profile image
-     */
-    public function withoutImage(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'image' => null,
-        ]);
     }
 
     /**
@@ -55,16 +37,19 @@ class TelegramUserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'user_id' => $user->id,
+            'telegram' => $user->id + 1000000000, // Generate based on user ID
+            'username' => 'user_' . $user->id,
         ]);
     }
 
     /**
-     * Telegram user with specific telegram ID
+     * Telegram user with placeholder image
      */
-    public function withTelegramId(int $telegramId): static
+    public function withPlaceholderImage(): static
     {
         return $this->state(fn (array $attributes) => [
-            'telegram' => $telegramId,
+            'image' => "https://via.placeholder.com/150/007bff/ffffff?text=" .
+                substr($this->faker->firstName, 0, 2),
         ]);
     }
 }

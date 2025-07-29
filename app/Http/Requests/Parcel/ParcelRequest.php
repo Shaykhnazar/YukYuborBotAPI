@@ -25,6 +25,8 @@ class ParcelRequest extends FormRequest
             'filter' => 'nullable|string|in:send,delivery',
             'status' => 'nullable|string|in:active,closed',
             'search' => 'nullable|string|max:255',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:5|max:50'
         ];
     }
 

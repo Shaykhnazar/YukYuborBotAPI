@@ -48,6 +48,9 @@ class ResponseController extends Controller
 
                 if (!$sendRequest || !$deliveryRequest) continue;
 
+                // Skip responses where either request is closed
+                if ($sendRequest->status === 'closed' || $deliveryRequest->status === 'closed') continue;
+
                 $formattedResponses[] = [
                     'id' => 'send_' . $response->offer_id . '_delivery_' . $response->request_id,
                     'type' => 'send',
