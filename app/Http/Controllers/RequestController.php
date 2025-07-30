@@ -77,6 +77,15 @@ class RequestController extends Controller
             ->whereIn('status', ['open', 'has_responses'])
             ->where('user_id', '!=', $currentUser->id);
 
+        // Apply route filters to both selects
+        if (!empty($filters['from']) && !empty($filters['to'])) {
+            $deliverySelect->where('from_location', $filters['from'])
+                ->where('to_location', $filters['to']);
+
+            $sendSelect->where('from_location', $filters['from'])
+                ->where('to_location', $filters['to']);
+        }
+
         // Apply search filters if provided
         if (!empty($filters['search'])) {
             $searchTerm = '%' . $filters['search'] . '%';
@@ -209,5 +218,15 @@ class RequestController extends Controller
                     $userQuery->where('name', 'ILIKE', "%{$search}%");
                 });
         });
+    }
+
+    private function applyRouteFilter($query, $filters)
+    {
+        if (!empty($filters['from']) && !empty($filters['to'])) {
+            $query->where('from_location', $filters['from'])
+                ->where('to_location', $filters['to']);
+        }
+
+        return $query;
     }
 }

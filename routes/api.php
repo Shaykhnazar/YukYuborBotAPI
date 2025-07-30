@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\PlaceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\ResponseController;
+use App\Http\Controllers\RouteController;
 use App\Http\Controllers\SendRequestController;
 use App\Http\Controllers\TestUsersController;
 use App\Http\Controllers\User\Request\UserRequestController;
@@ -87,7 +89,20 @@ Route::middleware($middleware)->group(function () {
         // Cancel a response
         Route::post('/{responseId}/cancel', 'cancel');
     });
-
+    // Location routes
+    Route::prefix('locations')->group(function () {
+        // Get all countries with their popular cities
+        Route::get('/countries', [LocationController::class, 'getCountries']);
+        // Get cities by country ID
+        Route::get('/countries/{countryId}/cities', [LocationController::class, 'getCitiesByCountry']);
+        // Search locations (countries and cities)
+        Route::get('/search', [LocationController::class, 'searchLocations']);
+        // Get popular routes
+        Route::get('/popular-routes', [LocationController::class, 'popularRoutes']);
+        // Suggest route
+        Route::post('/suggest-route', [LocationController::class, 'suggestRoute']);
+    });
+    // DEBUG
     Route::get('/debug-requests', [UserRequestController::class, 'debug']);
 });
 

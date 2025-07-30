@@ -26,7 +26,10 @@ class ParcelRequest extends FormRequest
             'status' => 'nullable|string|in:active,closed',
             'search' => 'nullable|string|max:255',
             'page' => 'nullable|integer|min:1',
-            'per_page' => 'nullable|integer|min:5|max:50'
+            'per_page' => 'nullable|integer|min:5|max:50',
+            'from' => 'nullable|string',
+            'to' => 'nullable|string',
+            'route_id' => 'nullable|string',
         ];
     }
 
@@ -54,6 +57,9 @@ class ParcelRequest extends FormRequest
             'filter' => $this->getFilter(),
             'status' => $this->getStatus(),
             'search' => $this->getSearch(),
+            'from' => $this->validated('from'),
+            'to' => $this->validated('to'),
+            'route_id' => $this->validated('route_id')
         ];
     }
 }
