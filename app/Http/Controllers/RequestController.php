@@ -7,8 +7,6 @@ use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
 use App\Http\Resources\Parcel\IndexRequestResource;
 use App\Service\TelegramUserService;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class RequestController extends Controller
 {
@@ -25,208 +23,85 @@ class RequestController extends Controller
             return response()->json(['error' => 'User not found'], 401);
         }
 
+        /* -----------------  Pagination  ----------------- */
+        $page     = max(1, (int) $request->input('page', 1));
+        $perPage  = min(50, max(5, (int) $request->input('per_page', 10)));
+
+        /* -----------------  Filters  ----------------- */
         $filters = $request->getFilters();
-        $page = (int) $request->input('page', 1);
-        $perPage = (int) $request->input('per_page', 10);
 
-        // Validate pagination parameters
-        $page = max(1, $page);
-        $perPage = min(50, max(5, $perPage)); // Limit between 5-50 items per page
-        $offset = ($page - 1) * $perPage;
-
-        Log::info('Public requests filters', $filters);
-
-        // Build the UNION query for combining both tables efficiently
-        $deliverySelect = DB::table('delivery_requests')
-            ->select(
-                'id',
-                'from_location',
-                'to_location',
-                'user_id',
-                'from_date',
-                'to_date',
-                'size_type',
-                'description',
-                'status',
-                'created_at',
-                'updated_at',
-                'price',
-                'currency',
-                DB::raw("'delivery' as type")
-            )
+        /* -----------------  Base queries  ----------------- */
+        $delivery = DeliveryRequest::query()
+            ->selectRaw("delivery_requests.*, 'delivery' as type")
+            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
             ->whereIn('status', ['open', 'has_responses'])
             ->where('user_id', '!=', $currentUser->id);
 
-        $sendSelect = DB::table('send_requests')
-            ->select(
-                'id',
-                'from_location',
-                'to_location',
-                'user_id',
-                'from_date',
-                'to_date',
-                'size_type',
-                'description',
-                'status',
-                'created_at',
-                'updated_at',
-                'price',
-                'currency',
-                DB::raw("'send' as type")
-            )
+        $send = SendRequest::query()
+            ->selectRaw("send_requests.*, 'send' as type")
+            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
             ->whereIn('status', ['open', 'has_responses'])
             ->where('user_id', '!=', $currentUser->id);
 
-        // Apply route filters to both selects
-        if (!empty($filters['from']) && !empty($filters['to'])) {
-            $deliverySelect->where('from_location', $filters['from'])
-                ->where('to_location', $filters['to']);
+        /* -----------------  Route filter (country-aware)  ----------------- */
+        if (!empty($filters['from_location_id']) && !empty($filters['to_location_id'])) {
+            $fromId = $filters['from_location_id'];
+            $toId   = $filters['to_location_id'];
 
-            $sendSelect->where('from_location', $filters['from'])
-                ->where('to_location', $filters['to']);
+            foreach ([$delivery, $send] as $q) {
+                // origin
+                $q->where(function ($q) use ($fromId) {
+                    $q->whereHas('fromLocation', fn ($l) => $l->where('parent_id', $fromId))
+                        ->orWhere('from_location_id', $fromId);
+                });
+
+                // destination
+                $q->where(function ($q) use ($toId) {
+                    $q->whereHas('toLocation', fn ($l) => $l->where('parent_id', $toId))
+                        ->orWhere('to_location_id', $toId);
+                });
+            }
         }
 
-        // Apply search filters if provided
+        /* -----------------  Search filter  ----------------- */
         if (!empty($filters['search'])) {
             $searchTerm = '%' . $filters['search'] . '%';
 
-            $deliverySelect->where(function($query) use ($searchTerm) {
-                $query->where('from_location', 'ILIKE', $searchTerm)
-                    ->orWhere('to_location', 'ILIKE', $searchTerm)
-                    ->orWhere('description', 'ILIKE', $searchTerm);
+            $delivery->where(function ($q) use ($searchTerm) {
+                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'ILIKE', $searchTerm))
+                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'ILIKE', $searchTerm))
+                  ->orWhere('description', 'ILIKE', $searchTerm);
             });
 
-            $sendSelect->where(function($query) use ($searchTerm) {
-                $query->where('from_location', 'ILIKE', $searchTerm)
-                    ->orWhere('to_location', 'ILIKE', $searchTerm)
-                    ->orWhere('description', 'ILIKE', $searchTerm);
+            $send->where(function ($q) use ($searchTerm) {
+                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'ILIKE', $searchTerm))
+                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'ILIKE', $searchTerm))
+                  ->orWhere('description', 'ILIKE', $searchTerm);
             });
         }
 
-        // Build final query based on filter type
-        if ($filters['filter'] === 'send') {
-            $baseQuery = $sendSelect;
-        } elseif ($filters['filter'] === 'delivery') {
-            $baseQuery = $deliverySelect;
-        } else {
-            // Combine both tables using UNION ALL for better performance
-            $baseQuery = $deliverySelect->unionAll($sendSelect);
-        }
+        /* -----------------  Decide which table(s) to use  ----------------- */
+        $union = match ($filters['filter'] ?? null) {
+            'delivery' => $delivery,
+            'send' => $send,
+            default => $delivery->unionAll($send),
+        };
 
-        // Get total count for pagination metadata
-        $totalCount = DB::table(DB::raw("({$baseQuery->toSql()}) as combined_requests"))
-            ->mergeBindings($baseQuery)
-            ->count();
+        /* -----------------  Execute with pagination  ----------------- */
+        $results = $union->orderByDesc('created_at')
+                         ->paginate($perPage, ['*'], 'page', $page);
 
-        // Apply ordering and pagination at database level
-        $paginatedResults = DB::table(DB::raw("({$baseQuery->toSql()}) as combined_requests"))
-            ->mergeBindings($baseQuery)
-            ->orderBy('created_at', 'desc')
-            ->offset($offset)
-            ->limit($perPage)
-            ->get();
-
-        // Efficiently load models with relationships in batches
-        $requests = $this->hydrateModelsWithRelationships($paginatedResults);
-
-        // Calculate pagination metadata
-        $lastPage = ceil($totalCount / $perPage);
-
-        Log::info('Public requests result count', [
-            'total_count' => $totalCount,
-            'page' => $page,
-            'per_page' => $perPage,
-            'last_page' => $lastPage,
-            'returned_count' => $requests->count(),
-            'offset' => $offset
-        ]);
-
+        /* -----------------  Response  ----------------- */
         return response()->json([
-            'data' => IndexRequestResource::collection($requests),
+            'data' => IndexRequestResource::collection($results),
             'pagination' => [
-                'current_page' => $page,
-                'last_page' => $lastPage,
-                'total' => $totalCount,
-                'per_page' => $perPage,
-                'has_more' => $page < $lastPage
+                'current_page' => $results->currentPage(),
+                'last_page'    => $results->lastPage(),
+                'total'        => $results->total(),
+                'per_page'     => $results->perPage(),
+                'has_more'     => $results->hasMorePages(),
             ]
         ]);
     }
 
-    /**
-     * Efficiently hydrate models with relationships to avoid N+1 queries
-     */
-    private function hydrateModelsWithRelationships($results)
-    {
-        // Group results by type for batch loading
-        $deliveryIds = [];
-        $sendIds = [];
-
-        foreach ($results as $result) {
-            if ($result->type === 'delivery') {
-                $deliveryIds[] = $result->id;
-            } else {
-                $sendIds[] = $result->id;
-            }
-        }
-
-        // Batch load models with relationships
-        $deliveryModels = collect();
-        $sendModels = collect();
-
-        if (!empty($deliveryIds)) {
-            $deliveryModels = DeliveryRequest::with('user.telegramUser')
-                ->whereIn('id', $deliveryIds)
-                ->get()
-                ->keyBy('id');
-        }
-
-        if (!empty($sendIds)) {
-            $sendModels = SendRequest::with('user.telegramUser')
-                ->whereIn('id', $sendIds)
-                ->get()
-                ->keyBy('id');
-        }
-
-        // Rebuild the collection maintaining the original order
-        $requests = collect();
-        foreach ($results as $result) {
-            if ($result->type === 'delivery' && $deliveryModels->has($result->id)) {
-                $model = $deliveryModels->get($result->id);
-                $model->type = 'delivery';
-                $requests->push($model);
-            } elseif ($result->type === 'send' && $sendModels->has($result->id)) {
-                $model = $sendModels->get($result->id);
-                $model->type = 'send';
-                $requests->push($model);
-            }
-        }
-
-        return $requests;
-    }
-
-    /**
-     * Apply search filter to query builder (kept for compatibility)
-     */
-    private function applySearchFilter($query, string $search)
-    {
-        return $query->where(function($q) use ($search) {
-            $q->where('from_location', 'ILIKE', "%{$search}%")
-                ->orWhere('to_location', 'ILIKE', "%{$search}%")
-                ->orWhere('description', 'ILIKE', "%{$search}%")
-                ->orWhereHas('user', function($userQuery) use ($search) {
-                    $userQuery->where('name', 'ILIKE', "%{$search}%");
-                });
-        });
-    }
-
-    private function applyRouteFilter($query, $filters)
-    {
-        if (!empty($filters['from']) && !empty($filters['to'])) {
-            $query->where('from_location', $filters['from'])
-                ->where('to_location', $filters['to']);
-        }
-
-        return $query;
-    }
 }

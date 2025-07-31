@@ -43,8 +43,8 @@ class ResponseController extends Controller
         foreach ($responses as $response) {
             if ($response->request_type === 'send') {
                 // Deliverer seeing send requests
-                $sendRequest = SendRequest::find($response->offer_id);
-                $deliveryRequest = DeliveryRequest::find($response->request_id);
+                $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
+                $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
 
                 if (!$sendRequest || !$deliveryRequest) continue;
 
@@ -63,8 +63,8 @@ class ResponseController extends Controller
                         'image' => $response->responder->telegramUser->image ?? null,
                         'requests_count' => $response->responder->sendRequests()->count(),
                     ],
-                    'from_location' => $sendRequest->from_location,
-                    'to_location' => $sendRequest->to_location,
+                    'from_location' => $sendRequest->fromLocation->fullRouteName,
+                    'to_location' => $sendRequest->toLocation->fullRouteName,
                     'from_date' => $sendRequest->from_date,
                     'to_date' => $sendRequest->to_date,
                     'price' => $sendRequest->price,
@@ -78,8 +78,8 @@ class ResponseController extends Controller
 
             } elseif ($response->request_type === 'delivery') {
                 // Sender seeing deliverer responses
-                $sendRequest = SendRequest::find($response->request_id);
-                $deliveryRequest = DeliveryRequest::find($response->offer_id);
+                $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
+                $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
 
                 if (!$sendRequest || !$deliveryRequest) continue;
 
@@ -98,8 +98,8 @@ class ResponseController extends Controller
                         'image' => $response->responder->telegramUser->image ?? null,
                         'requests_count' => $response->responder->deliveryRequests()->count(),
                     ],
-                    'from_location' => $deliveryRequest->from_location,
-                    'to_location' => $deliveryRequest->to_location,
+                    'from_location' => $deliveryRequest->fromLocation->fullRouteName,
+                    'to_location' => $deliveryRequest->toLocation->fullRouteName,
                     'from_date' => $deliveryRequest->from_date,
                     'to_date' => $deliveryRequest->to_date,
                     'price' => $deliveryRequest->price,
@@ -111,8 +111,8 @@ class ResponseController extends Controller
                     'response_type' => 'deliverer_responded', // Deliverer responded, waiting for sender confirmation
                     // Original send request info
                     'original_request' => [
-                        'from_location' => $sendRequest->from_location,
-                        'to_location' => $sendRequest->to_location,
+                        'from_location' => $sendRequest->fromLocation->fullRouteName,
+                        'to_location' => $sendRequest->toLocation->fullRouteName,
                         'description' => $sendRequest->description,
                         'price' => $sendRequest->price,
                         'currency' => $sendRequest->currency,

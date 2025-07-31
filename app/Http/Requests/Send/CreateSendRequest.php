@@ -24,8 +24,8 @@ class CreateSendRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'from_location' => 'required|string',
-            'to_location' => 'required|string',
+            'from_location_id' => 'required|integer|exists:locations,id',
+            'to_location_id' => 'required|integer|exists:locations,id',
             'description' => 'nullable|string',
             'to_date' => 'required|date',
             'price' => 'nullable|integer',
@@ -36,8 +36,8 @@ class CreateSendRequest extends FormRequest
     public function getDTO(): CreateSendRequestDTO
     {
         return new CreateSendRequestDTO(
-            $this->validated('from_location'),
-            $this->validated('to_location'),
+            $this->validated('from_location_id'),
+            $this->validated('to_location_id'),
             $this->validated('description'),
             CarbonImmutable::parse($this->validated('to_date')),
             $this->validated('price'),

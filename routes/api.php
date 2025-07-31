@@ -102,6 +102,8 @@ Route::middleware($middleware)->group(function () {
         // Suggest route
         Route::post('/suggest-route', [LocationController::class, 'suggestRoute']);
     });
+
+    Route::get('/routes', [RouteController::class, 'index']);
     // DEBUG
     Route::get('/debug-requests', [UserRequestController::class, 'debug']);
 });

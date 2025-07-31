@@ -64,13 +64,13 @@ class Location extends Model
         return $query->where('is_active', true);
     }
 
-    // Get full path (Country > City)
-    public function getFullPathAttribute(): string
+    // Get full path (Country, City)
+    public function getFullRouteNameAttribute(): string
     {
         if ($this->type === 'country') {
             return $this->name;
         }
 
-        return $this->parent->name . ' > ' . $this->name;
+        return $this->parent->name . ', ' . $this->name;
     }
 }

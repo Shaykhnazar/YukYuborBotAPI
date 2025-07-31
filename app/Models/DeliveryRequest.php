@@ -115,8 +115,8 @@ class DeliveryRequest extends Model
             return $this->fromLocation->name . ' → ' . $this->toLocation->name;
         }
 
-        // Fallback to string fields during transition
-        return $this->from_location . ' → ' . $this->to_location;
+        // Fallback if locations are missing
+        return "Location {$this->from_location_id} → Location {$this->to_location_id}";
     }
 
     public function getFromCountryAttribute(): ?Location

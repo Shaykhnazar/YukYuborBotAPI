@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Route extends Model
 {
@@ -32,6 +33,22 @@ class Route extends Model
     public function toLocation(): BelongsTo
     {
         return $this->belongsTo(Location::class, 'to_location_id');
+    }
+
+    // Get total active requests count for this route
+    public function getActiveRequestsCountAttribute(): int
+    {
+        $sendRequestsCount = SendRequest::where('from_location_id', $this->from_location_id)
+            ->where('to_location_id', $this->to_location_id)
+            ->whereIn('status', ['open', 'has_responses'])
+            ->count();
+            
+        $deliveryRequestsCount = DeliveryRequest::where('from_location_id', $this->from_location_id)
+            ->where('to_location_id', $this->to_location_id)
+            ->whereIn('status', ['open', 'has_responses'])
+            ->count();
+            
+        return $sendRequestsCount + $deliveryRequestsCount;
     }
 
     // Scopes
