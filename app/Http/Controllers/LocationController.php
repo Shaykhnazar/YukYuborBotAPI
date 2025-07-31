@@ -187,7 +187,7 @@ class LocationController extends Controller
             'to_location' => $request->to_location,
             'user_id' => $user->id,
             'status' => 'pending',
-            'notes' => $request->notes,
+            'notes' => $request->notes ?? null,
         ]);
 
         return response()->json([
