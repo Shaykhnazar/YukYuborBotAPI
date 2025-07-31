@@ -14,6 +14,7 @@ class DatabaseSeeder extends Seeder
     {
 //       $this->call(RequestsSeeder::class);
        $this->call(LocationsSeeder::class);
+       $this->call(RoutesSeeder::class);
     }
 
 }
