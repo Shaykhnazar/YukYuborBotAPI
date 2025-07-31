@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Location;
+use App\Models\Route;
 use App\Models\SuggestedRoute;
 use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
@@ -26,7 +27,7 @@ class LocationController extends Controller
                     ->limit(3); // Get only first 3 cities as popular
             }])
             ->orderBy('name')
-            ->get(['id', 'name', 'country_code']);
+            ->get(['id', 'name', 'country_code', 'is_active']);
 
         return response()->json($countries);
     }
@@ -90,59 +91,44 @@ class LocationController extends Controller
     public function popularRoutes()
     {
         try {
-            // Get popular routes with actual request counts from real requests
-            $routes = DB::select("
-            SELECT
-                from_location,
-                to_location,
-                COUNT(*) as active_requests
-            FROM (
-                SELECT from_location, to_location FROM delivery_requests WHERE status IN ('open', 'has_responses')
-                UNION ALL
-                SELECT from_location, to_location FROM send_requests WHERE status IN ('open', 'has_responses')
-            ) as all_requests
-            GROUP BY from_location, to_location
-           /* HAVING COUNT(*) >= 1*/
-            ORDER BY COUNT(*) DESC
-            LIMIT 10
-        ");
+            // Get approved routes with location details and request counts
+            $routes = Route::active()
+                ->with(['fromLocation.parent', 'toLocation.parent'])
+                ->byPriority()
+                ->get()
+                ->map(function ($route) {
+                    // Get from location details
+                    $fromLocation = $route->fromLocation;
+                    $fromCountry = $fromLocation->type === 'country'
+                        ? $fromLocation
+                        : $fromLocation->parent;
 
-            // If no actual routes exist, return empty array
-            if (empty($routes)) {
-                return response()->json([]);
-            }
+                    // Get to location details
+                    $toLocation = $route->toLocation;
+                    $toCountry = $toLocation->type === 'country'
+                        ? $toLocation
+                        : $toLocation->parent;
 
-            // Process existing routes and add popular cities
-            $popularRoutes = collect($routes)->map(function ($route) {
-                // Extract country names from location strings (assuming format like "City, Country")
-                $fromParts = explode(',', $route->from_location);
-                $toParts = explode(',', $route->to_location);
-
-                $fromCountryName = trim(end($fromParts));
-                $toCountryName = trim(end($toParts));
-
-                // Find countries by name
-                $fromCountry = Location::countries()->where('name', 'ILIKE', '%' . $fromCountryName . '%')->first();
-                $toCountry = Location::countries()->where('name', 'ILIKE', '%' . $toCountryName . '%')->first();
-
-                if ($fromCountry && $toCountry) {
                     // Get popular cities for both countries
                     $fromCities = Location::cities()
                         ->where('parent_id', $fromCountry->id)
                         ->active()
                         ->orderBy('name')
-                        ->limit(2)
+                        ->limit(3)
                         ->get(['id', 'name']);
 
                     $toCities = Location::cities()
                         ->where('parent_id', $toCountry->id)
                         ->active()
                         ->orderBy('name')
-                        ->limit(2)
+                        ->limit(3)
                         ->get(['id', 'name']);
 
+                    // Count active requests for this route
+                    $activeRequestsCount = $this->getActiveRequestsForRoute($fromCountry->name, $toCountry->name);
+
                     return [
-                        'id' => base64_encode($route->from_location . '-' . $route->to_location),
+                        'id' => $route->id,
                         'from' => [
                             'id' => $fromCountry->id,
                             'name' => $fromCountry->name,
@@ -153,23 +139,46 @@ class LocationController extends Controller
                             'name' => $toCountry->name,
                             'type' => 'country'
                         ],
-                        'active_requests' => (int) $route->active_requests,
+                        'active_requests' => $activeRequestsCount,
                         'popular_cities' => [
-                            ...$fromCities->map(fn($city) => ['id' => $city->id, 'name' => $city->name]),
-                            ...$toCities->map(fn($city) => ['id' => $city->id, 'name' => $city->name])
-                        ]
+                            ...$fromCities->map(fn($city) => [
+                                'id' => $city->id,
+                                'name' => $city->name
+                            ]),
+                            ...$toCities->map(fn($city) => [
+                                'id' => $city->id,
+                                'name' => $city->name
+                            ])
+                        ],
+                        'priority' => $route->priority,
+                        'description' => $route->description
                     ];
-                }
+                });
 
-                return null;
-            })->filter()->values();
-
-            return response()->json($popularRoutes);
+            return response()->json($routes);
 
         } catch (\Exception $e) {
             Log::error('Error fetching popular routes', ['error' => $e->getMessage()]);
             return response()->json([]);
         }
+    }
+
+    private function getActiveRequestsForRoute($fromCountryName, $toCountryName): int
+    {
+        // Count requests matching this route (using existing string fields for now)
+        $deliveryCount = DB::table('delivery_requests')
+            ->where('status', 'IN', ['open', 'has_responses'])
+            ->where('from_location', 'ILIKE', '%' . $fromCountryName . '%')
+            ->where('to_location', 'ILIKE', '%' . $toCountryName . '%')
+            ->count();
+
+        $sendCount = DB::table('send_requests')
+            ->where('status', 'IN', ['open', 'has_responses'])
+            ->where('from_location', 'ILIKE', '%' . $fromCountryName . '%')
+            ->where('to_location', 'ILIKE', '%' . $toCountryName . '%')
+            ->count();
+
+        return $deliveryCount + $sendCount;
     }
 
     public function suggestRoute(Request $request)
