@@ -50,8 +50,8 @@ class SendRequestController extends BaseController
         $dto = $request->getDTO();
         $sendReq = new SendRequest(
             [
-                'from_location' => $dto->fromLoc,
-                'to_location' => $dto->toLoc,
+                'from_location_id' => $dto->fromLocId,
+                'to_location_id' => $dto->toLocId,
                 'description' => $dto->desc ?? null,
                 'from_date' => CarbonImmutable::now()->toDateString(),
                 'to_date' => $dto->toDate->toDateString(),

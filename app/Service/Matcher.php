@@ -98,11 +98,8 @@ class Matcher
      */
     private function findMatchingDeliveryRequests(SendRequest $sendRequest): \Illuminate\Database\Eloquent\Collection
     {
-        return DeliveryRequest::where('from_location', $sendRequest->from_location)
-            ->where(function($query) use ($sendRequest) {
-                $query->where('to_location', $sendRequest->to_location)
-                    ->orWhere('to_location', '*');
-            })
+        return DeliveryRequest::where('from_location_id', $sendRequest->from_location_id)
+            ->where('to_location_id', $sendRequest->to_location_id)
             ->where(function($query) use ($sendRequest) {
                 $query->where('from_date', '<=', $sendRequest->to_date)
                     ->where('to_date', '>=', $sendRequest->from_date);
@@ -122,11 +119,8 @@ class Matcher
      */
     private function findMatchingSendRequests(DeliveryRequest $deliveryRequest): \Illuminate\Database\Eloquent\Collection
     {
-        return SendRequest::where('from_location', $deliveryRequest->from_location)
-            ->where(function($query) use ($deliveryRequest) {
-                $query->where('to_location', $deliveryRequest->to_location)
-                    ->orWhere('to_location', '*');
-            })
+        return SendRequest::where('from_location_id', $deliveryRequest->from_location_id)
+            ->where('to_location_id', $deliveryRequest->to_location_id)
             ->where(function($query) use ($deliveryRequest) {
                 $query->where('from_date', '<=', $deliveryRequest->to_date)
                     ->where('to_date', '>=', $deliveryRequest->from_date);
@@ -298,8 +292,8 @@ class Matcher
     {
         $text = "🎉 Поздравляем, по Вашей <b>заявке №{$delivery->id}</b> найден заказ!\n\n";
         $text .= "<b>Вот данные от отправителя посылки:</b>\n";
-        $text .= "<b>🛫 Город отправления:</b> {$sendRequest->from_location}\n";
-        $text .= "<b>🛬 Город назначения:</b> {$sendRequest->to_location}\n";
+        $text .= "<b>🛫 Город отправления:</b> {$sendRequest->fromLocation->fullRouteName}\n";
+        $text .= "<b>🛬 Город назначения:</b> {$sendRequest->toLocation->fullRouteName}\n";
         $text .= "<b>🗓 Даты:</b> {$sendRequest->from_date} - {$sendRequest->to_date}\n";
         $text .= "<b>📊 Категория посылки:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n\n";
 
@@ -325,8 +319,8 @@ class Matcher
     {
         $text = "🎉 Найдены посылки для доставки по Вашей заявке!\n\n";
         $text .= "По вашей заявке на доставку найдена посылка:\n";
-        $text .= "<b>🛫 Откуда:</b> {$sendRequest->from_location}\n";
-        $text .= "<b>🛬 Куда:</b> {$sendRequest->to_location}\n";
+        $text .= "<b>🛫 Откуда:</b> {$sendRequest->fromLocation->fullRouteName}\n";
+        $text .= "<b>🛬 Куда:</b> {$sendRequest->toLocation->fullRouteName}\n";
         $text .= "<b>🗓 Нужно доставить до:</b> {$sendRequest->to_date}\n";
         $text .= "<b>📊 Категория:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n";
         $text .= "<b>📦 Что везти:</b> {$sendRequest->description}\n";
@@ -347,7 +341,7 @@ class Matcher
     {
         $text = "🎉 Отличные новости! Найден перевозчик для вашей посылки №{$sendRequest->id}!\n\n";
         $text .= "<b>Детали перевозчика:</b>\n";
-        $text .= "<b>📍 Маршрут:</b> {$delivery->from_location} → {$delivery->to_location}\n";
+        $text .= "<b>📍 Маршрут:</b> {$delivery->fromLocation->fullRouteName} → {$delivery->toLocation->fullRouteName}\n";
         $text .= "<b>🗓 Даты поездки:</b> {$delivery->from_date} - {$delivery->to_date}\n";
 
         if ($delivery->description && $delivery->description !== 'Пропустить') {

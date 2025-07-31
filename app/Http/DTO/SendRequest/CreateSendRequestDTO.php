@@ -7,8 +7,8 @@ use Carbon\CarbonImmutable;
 class CreateSendRequestDTO
 {
     public function __construct(
-        public string $fromLoc,
-        public string $toLoc,
+        public int $fromLocId,
+        public int $toLocId,
         public ?string $desc,
         public CarbonImmutable $toDate,
         public ?int $price,

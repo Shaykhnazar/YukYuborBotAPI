@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\DeliveryRequest;
 use App\Models\User;
 use App\Models\SendRequest;
+use App\Models\Location;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -24,17 +25,27 @@ class DeliveryRequestFactory extends Factory
         $fromDate = $this->faker->dateTimeBetween('now', '+30 days');
         $toDate = $this->faker->dateTimeBetween($fromDate, $fromDate->format('Y-m-d') . ' +15 days');
 
-        $cities = [
-            'Tashkent', 'Samarkand', 'Bukhara', 'Andijan', 'Namangan',
-            'Fergana', 'Nukus', 'Karshi', 'Termez', 'Jizzakh'
-        ];
-
-        $fromLocation = $this->faker->randomElement($cities);
-        $toLocation = $this->faker->randomElement(array_diff($cities, [$fromLocation]));
+        // Get random locations from database, or create some if none exist
+        $locations = Location::inRandomOrder()->limit(10)->get();
+        if ($locations->isEmpty()) {
+            // Create some basic locations if none exist
+            $locationNames = ['Tashkent', 'Samarkand', 'Bukhara', 'Andijan', 'Namangan'];
+            foreach ($locationNames as $name) {
+                Location::firstOrCreate(['name' => $name], [
+                    'type' => 'city',
+                    'is_active' => true
+                ]);
+            }
+            $locations = Location::limit(10)->get();
+        }
+        
+        $fromLocation = $locations->random();
+        $availableToLocations = $locations->where('id', '!=', $fromLocation->id);
+        $toLocation = $availableToLocations->isNotEmpty() ? $availableToLocations->random() : $fromLocation;
 
         return [
-            'from_location' => $fromLocation,
-            'to_location' => $toLocation,
+            'from_location_id' => $fromLocation->id,
+            'to_location_id' => $toLocation->id,
             'user_id' => User::factory(),
             'from_date' => $fromDate,
             'to_date' => $toDate,
@@ -110,11 +121,11 @@ class DeliveryRequestFactory extends Factory
     /**
      * Delivery request with specific route
      */
-    public function withRoute(string $from, string $to): static
+    public function withRoute(int $fromLocationId, int $toLocationId): static
     {
         return $this->state(fn (array $attributes) => [
-            'from_location' => $from,
-            'to_location' => $to,
+            'from_location_id' => $fromLocationId,
+            'to_location_id' => $toLocationId,
         ]);
     }
 
@@ -123,8 +134,11 @@ class DeliveryRequestFactory extends Factory
      */
     public function anyDestination(): static
     {
+        // For any destination, we'll need to handle this differently
+        // For now, just use a random location
+        $location = Location::inRandomOrder()->first();
         return $this->state(fn (array $attributes) => [
-            'to_location' => '*',
+            'to_location_id' => $location ? $location->id : 1,
         ]);
     }
 

@@ -48,8 +48,8 @@ class DeliveryController extends BaseController
         $dto = $request->getDTO();
         $deliveryReq = new DeliveryRequest(
             [
-                'from_location' => $dto->fromLoc,
-                'to_location' => $dto->toLoc,
+                'from_location_id' => $dto->fromLocId,
+                'to_location_id' => $dto->toLocId,
                 'description' => $dto->desc ?? null,
                 'from_date' => $dto->fromDate->toDateString(),
                 'to_date' => $dto->toDate->toDateString(),

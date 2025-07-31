@@ -13,12 +13,33 @@ class DeliveryRequest extends Model
     use HasFactory;
 
     protected $table = 'delivery_requests';
-
     protected $guarded = false;
 
+    protected $casts = [
+        'from_date' => 'datetime',
+        'to_date' => 'datetime',
+        'price' => 'integer'
+    ];
+
+    // Relationships
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id', 'id');
+    }
+
+    public function fromLocation(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'from_location_id');
+    }
+
+    public function toLocation(): BelongsTo
+    {
+        return $this->belongsTo(Location::class, 'to_location_id');
+    }
+
+    public function matchedSend(): BelongsTo
+    {
+        return $this->belongsTo(SendRequest::class, 'matched_send_id');
     }
 
     // Responses where this delivery request is the main request
@@ -63,5 +84,56 @@ class DeliveryRequest extends Model
             'chat_id' // Local key on responses table
         )->where('responses.request_type', 'delivery')
          ->whereIn('responses.status', ['accepted', 'waiting']);
+    }
+
+
+    // Scopes
+    public function scopeOpen($query)
+    {
+        return $query->where('status', 'open');
+    }
+
+    public function scopeForRoute($query, $fromLocationId, $toLocationId)
+    {
+        return $query->where('from_location_id', $fromLocationId)
+                    ->where('to_location_id', $toLocationId);
+    }
+
+    public function scopeForCountryRoute($query, $fromCountryId, $toCountryId)
+    {
+        return $query->whereHas('fromLocation', function($q) use ($fromCountryId) {
+            $q->where('id', $fromCountryId)->orWhere('parent_id', $fromCountryId);
+        })->whereHas('toLocation', function($q) use ($toCountryId) {
+            $q->where('id', $toCountryId)->orWhere('parent_id', $toCountryId);
+        });
+    }
+
+    // Helper methods
+    public function getRouteDisplayAttribute(): string
+    {
+        if ($this->fromLocation && $this->toLocation) {
+            return $this->fromLocation->name . ' → ' . $this->toLocation->name;
+        }
+
+        // Fallback if locations are missing
+        return "Location {$this->from_location_id} → Location {$this->to_location_id}";
+    }
+
+    public function getFromCountryAttribute(): ?Location
+    {
+        if (!$this->fromLocation) return null;
+
+        return $this->fromLocation->type === 'country'
+            ? $this->fromLocation
+            : $this->fromLocation->parent;
+    }
+
+    public function getToCountryAttribute(): ?Location
+    {
+        if (!$this->toLocation) return null;
+
+        return $this->toLocation->type === 'country'
+            ? $this->toLocation
+            : $this->toLocation->parent;
     }
 }
