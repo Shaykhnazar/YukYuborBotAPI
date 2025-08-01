@@ -35,7 +35,7 @@ class RequestController extends Controller
             ->selectRaw("delivery_requests.*, 'delivery' as type")
             ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
             ->whereIn('status', ['open', 'has_responses'])
-            ->where('user_id', '!=', $currentUser->id);
+            /*->where('user_id', '!=', $currentUser->id)*/; // TODO: fix now user can see own requests on requests page
 
         $send = SendRequest::query()
             ->selectRaw("send_requests.*, 'send' as type")
