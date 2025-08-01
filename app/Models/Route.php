@@ -96,65 +96,50 @@ class Route extends Model
             return $routes;
         }
 
-        // Collect all location IDs for batch querying
-        $allFromIds = [];
-        $allToIds = [];
-        $routeLocationMap = [];
+        // Build a single union query for maximum performance
+        $unionQueries = [];
+        $routeKeys = [];
 
         foreach ($routes as $route) {
-            $fromIds = $route->from_location_ids;
-            $toIds = $route->to_location_ids;
+            $fromIds = implode(',', $route->from_location_ids);
+            $toIds = implode(',', $route->to_location_ids);
+            $routeKey = "route_{$route->id}";
+            $routeKeys[$routeKey] = $route->id;
 
-            $routeLocationMap[$route->id] = [
-                'from_ids' => $fromIds,
-                'to_ids' => $toIds
-            ];
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'send' as type
+                FROM send_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$fromIds})
+                  AND to_location_id IN ({$toIds})
+            ";
 
-            $allFromIds = array_merge($allFromIds, $fromIds);
-            $allToIds = array_merge($allToIds, $toIds);
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'delivery' as type
+                FROM delivery_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$fromIds})
+                  AND to_location_id IN ({$toIds})
+            ";
         }
 
-        $allFromIds = array_unique($allFromIds);
-        $allToIds = array_unique($allToIds);
+        if (!empty($unionQueries)) {
+            $counts = DB::select("
+                SELECT route_key, SUM(cnt) as total
+                FROM (" . implode(' UNION ALL ', $unionQueries) . ") as combined
+                GROUP BY route_key
+            ");
 
-        // Batch query for send requests
-        $sendCounts = SendRequest::select('from_location_id', 'to_location_id', DB::raw('COUNT(*) as count'))
-            ->whereIn('status', ['open', 'has_responses'])
-            ->whereIn('from_location_id', $allFromIds)
-            ->whereIn('to_location_id', $allToIds)
-            ->groupBy('from_location_id', 'to_location_id')
-            ->get()
-            ->groupBy('from_location_id')
-            ->map(function ($group) {
-                return $group->keyBy('to_location_id');
-            });
+            $countsByRoute = collect($counts)->keyBy('route_key');
 
-        // Batch query for delivery requests
-        $deliveryCounts = DeliveryRequest::select('from_location_id', 'to_location_id', DB::raw('COUNT(*) as count'))
-            ->whereIn('status', ['open', 'has_responses'])
-            ->whereIn('from_location_id', $allFromIds)
-            ->whereIn('to_location_id', $allToIds)
-            ->groupBy('from_location_id', 'to_location_id')
-            ->get()
-            ->groupBy('from_location_id')
-            ->map(function ($group) {
-                return $group->keyBy('to_location_id');
-            });
-
-        // Calculate counts for each route
-        foreach ($routes as $route) {
-            $mapping = $routeLocationMap[$route->id];
-            $count = 0;
-
-            // Sum counts for all applicable location combinations
-            foreach ($mapping['from_ids'] as $fromId) {
-                foreach ($mapping['to_ids'] as $toId) {
-                    $count += $sendCounts->get($fromId)?->get($toId)?->count ?? 0;
-                    $count += $deliveryCounts->get($fromId)?->get($toId)?->count ?? 0;
-                }
+            foreach ($routes as $route) {
+                $routeKey = "route_{$route->id}";
+                $route->active_requests_count = $countsByRoute->get($routeKey)?->total ?? 0;
             }
-
-            $route->active_requests_count = $count;
+        } else {
+            foreach ($routes as $route) {
+                $route->active_requests_count = 0;
+            }
         }
 
         return $routes;
