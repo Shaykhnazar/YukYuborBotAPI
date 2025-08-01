@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Route extends Model
 {
@@ -35,20 +36,119 @@ class Route extends Model
         return $this->belongsTo(Location::class, 'to_location_id');
     }
 
-    // Get total active requests count for this route
+    // Get all applicable from location IDs (parent + children)
+    public function getFromLocationIdsAttribute(): array
+    {
+        $ids = [$this->from_location_id];
+
+        if ($this->fromLocation && $this->fromLocation->children->isNotEmpty()) {
+            $ids = array_merge($ids, $this->fromLocation->children->pluck('id')->toArray());
+        }
+
+        return $ids;
+    }
+
+    // Get all applicable to location IDs (parent + children)
+    public function getToLocationIdsAttribute(): array
+    {
+        $ids = [$this->to_location_id];
+
+        if ($this->toLocation && $this->toLocation->children->isNotEmpty()) {
+            $ids = array_merge($ids, $this->toLocation->children->pluck('id')->toArray());
+        }
+
+        return $ids;
+    }
+
+    // Get active requests count for this route
     public function getActiveRequestsCountAttribute(): int
     {
-        $sendRequestsCount = SendRequest::where('from_location_id', $this->from_location_id)
-            ->where('to_location_id', $this->to_location_id)
+        return $this->countActiveRequests();
+    }
+
+    // Method to count active requests
+    public function countActiveRequests(): int
+    {
+        $fromIds = $this->from_location_ids;
+        $toIds = $this->to_location_ids;
+
+        $sendCount = SendRequest::whereIn('from_location_id', $fromIds)
+            ->whereIn('to_location_id', $toIds)
             ->whereIn('status', ['open', 'has_responses'])
             ->count();
-            
-        $deliveryRequestsCount = DeliveryRequest::where('from_location_id', $this->from_location_id)
-            ->where('to_location_id', $this->to_location_id)
+
+        $deliveryCount = DeliveryRequest::whereIn('from_location_id', $fromIds)
+            ->whereIn('to_location_id', $toIds)
             ->whereIn('status', ['open', 'has_responses'])
             ->count();
-            
-        return $sendRequestsCount + $deliveryRequestsCount;
+
+        return $sendCount + $deliveryCount;
+    }
+
+    // Static method to load routes with counts efficiently
+    public static function withActiveRequestsCounts($query = null)
+    {
+        $query = $query ?: static::query();
+
+        $routes = $query->with(['fromLocation.children', 'toLocation.children'])->get();
+
+        if ($routes->isEmpty()) {
+            return $routes;
+        }
+
+        // Build a single union query for maximum performance
+        $unionQueries = [];
+        $routeKeys = [];
+
+        foreach ($routes as $route) {
+            $fromIds = implode(',', $route->from_location_ids);
+            $toIds = implode(',', $route->to_location_ids);
+            $routeKey = "route_{$route->id}";
+            $routeKeys[$routeKey] = $route->id;
+
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'send' as type
+                FROM send_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$fromIds})
+                  AND to_location_id IN ({$toIds})
+            ";
+
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'delivery' as type
+                FROM delivery_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$fromIds})
+                  AND to_location_id IN ({$toIds})
+            ";
+        }
+
+        if (!empty($unionQueries)) {
+            $counts = DB::select("
+                SELECT route_key, SUM(cnt) as total
+                FROM (" . implode(' UNION ALL ', $unionQueries) . ") as combined
+                GROUP BY route_key
+            ");
+
+            $countsByRoute = collect($counts)->keyBy('route_key');
+
+            foreach ($routes as $route) {
+                $routeKey = "route_{$route->id}";
+                $route->active_requests_count = $countsByRoute->get($routeKey)?->total ?? 0;
+            }
+        } else {
+            foreach ($routes as $route) {
+                $route->active_requests_count = 0;
+            }
+        }
+
+        return $routes;
+    }
+
+    // Scope to get routes with counts
+    public function scopeWithRequestsCounts($query)
+    {
+        return static::withActiveRequestsCounts($query);
     }
 
     // Scopes
