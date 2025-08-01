@@ -17,7 +17,10 @@ class Response extends Model
     const STATUS_ACCEPTED = 'accepted';
     const STATUS_REJECTED = 'rejected';
     const STATUS_WAITING = 'waiting';
-    const STATUS_RESPONDED = 'responded'; // ✅ Add this status constant
+    const STATUS_RESPONDED = 'responded';
+
+    const TYPE_MATCHING = 'matching';
+    const TYPE_MANUAL = 'manual';
 
     public function user(): BelongsTo
     {
@@ -82,6 +85,11 @@ class Response extends Model
     public function scopeForUser($query, $userId)
     {
         return $query->where('user_id', $userId);
+    }
+
+    public function scopeByType($query, $type)
+    {
+        return $query->where('response_type', $type);
     }
 
     // ✅ ADD: Helper to check if response has an active chat
