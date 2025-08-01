@@ -14,7 +14,7 @@ class RouteController extends Controller
         // Build base query
         $query = Route::query()
             ->with(['fromLocation', 'toLocation'])
-            ->when($request->boolean('active'), fn ($q) => $q->active())
+//            ->when($request->boolean('active'), fn ($q) => $q->active()) // TODO: Inactive routes also should appear on routes page
             ->when(
                 $request->filled('order_by') && $request->order_by === 'priority',
                 fn ($q) => $q->byPriority()
