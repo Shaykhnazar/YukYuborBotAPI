@@ -82,6 +82,8 @@ Route::middleware($middleware)->group(function () {
     Route::prefix('responses')->controller(ResponseController::class)->group(function () {
         // Get all responses for current user
         Route::get('/', 'index');
+        // Create manual response
+        Route::post('/manual', 'createManual');
         // Accept a response
         Route::post('/{responseId}/accept', 'accept');
         // Reject a response

@@ -259,6 +259,7 @@ class UserRequestController extends BaseController
                     $requestCopy->response_id = $response->id;
                     $requestCopy->chat_id = $response->chat_id;
                     $requestCopy->response_status = $response->status;
+                    $requestCopy->response_type = $response->response_type;
                     $requestCopy->responder_user = $response->responder; // This is the other party
                     $requestCopy->setRelation('user', $response->responder); // FIX: Override user relation to show other party
 
@@ -286,6 +287,8 @@ class UserRequestController extends BaseController
                 $request->type = $type;
                 $request->chat_id = null;
                 $request->response_id = null;
+                $request->response_status = null;
+                $request->response_type = null;
                 $request->responder_user = null;
                 $request->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $request);
                 $processedRequests->push($request);
@@ -300,27 +303,17 @@ class UserRequestController extends BaseController
      */
     private function hasUserReviewedOtherParty($currentUser, $request): bool
     {
-//        Log::info('=== DEBUG hasUserReviewedOtherParty START ===', [
-//            'current_user_id' => $currentUser->id,
-//            'request_id' => $request->id,
-//            'request_status' => $request->status,
-//            'request_type' => $request->type ?? 'NULL'
-//        ]);
-
         // Only check for closed/completed requests
         if (!in_array($request->status, ['completed', 'closed'])) {
-//            Log::info('Request status not completed/closed, returning false', [
-//                'status' => $request->status
-//            ]);
             return false;
         }
 
         // Get the other user ID from the request object
         $otherUserId = null;
 
-        if (isset($request->user) && isset($request->user->id)) {
+        if (isset($request->user->id)) {
             $otherUserId = $request->user->id;
-        } elseif (isset($request->responder_user) && isset($request->responder_user->id)) {
+        } elseif (isset($request->responder_user->id)) {
             $otherUserId = $request->responder_user->id;
         }
 
@@ -329,31 +322,11 @@ class UserRequestController extends BaseController
             return false;
         }
 
-//        Log::info('Other user determined from request object', [
-//            'other_user_id' => $otherUserId
-//        ]);
-
         // Check if current user has reviewed the other party for this specific request
-        $reviewExists = Review::where('user_id', $otherUserId)
+        return Review::where('user_id', $otherUserId)
                     ->where('owner_id', $currentUser->id)
                     ->where('request_id', $request->id)
                     ->where('request_type', $request->type)
                     ->exists();
-
-//        Log::info('Review check result', [
-//            'review_exists' => $reviewExists,
-//            'query_params' => [
-//                'user_id' => $otherUserId,
-//                'owner_id' => $currentUser->id,
-//                'request_id' => $request->id,
-//                'request_type' => $request->type
-//            ]
-//        ]);
-
-//        Log::info('=== DEBUG hasUserReviewedOtherParty END ===', [
-//            'final_result' => $reviewExists
-//        ]);
-
-        return $reviewExists;
     }
 }

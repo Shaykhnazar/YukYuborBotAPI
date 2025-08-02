@@ -150,6 +150,7 @@ class Matcher
             ],
             [
                 'status' => $status,
+                'response_type' => Response::TYPE_MATCHING,
                 'message' => null
             ]
         );

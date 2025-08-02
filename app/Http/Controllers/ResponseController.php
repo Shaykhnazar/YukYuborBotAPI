@@ -24,44 +24,74 @@ class ResponseController extends Controller
     /**
      * Get all responses for current user
      * Shows both:
-     * 1. Send requests that deliverer can respond to (status: pending)
-     * 2. Deliverer responses that sender needs to confirm (status: waiting)
+     * 1. Responses received by user (where they can accept/reject)
+     * 2. Responses sent by user (where they can only view status)
      */
     public function index(Request $request): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Get responses from the database where current user is the recipient
-        $responses = Response::where('user_id', $user->id)
+        // Get responses received by user (where they can accept/reject)
+        $receivedResponses = Response::where('user_id', $user->id)
             ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded'])
             ->with(['responder.telegramUser', 'chat'])
             ->orderByDesc('created_at')
             ->get();
 
+        // Get responses sent by user (where they are the responder)
+        $sentResponses = Response::where('responder_id', $user->id)
+            ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded', 'rejected'])
+            ->with(['user.telegramUser', 'chat'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $responses = $receivedResponses->merge($sentResponses);
+
         $formattedResponses = [];
 
         foreach ($responses as $response) {
+            // Determine if user is the receiver (can act) or sender (view only)
+            $isReceiver = $response->user_id === $user->id;
+            $otherUser = $isReceiver ? $response->responder : $response->user;
+
             if ($response->request_type === 'send') {
-                // Deliverer seeing send requests
+                // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
-                $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
 
-                if (!$sendRequest || !$deliveryRequest) continue;
+                if (!$sendRequest) continue;
 
-                // Skip responses where either request is closed
-                if ($sendRequest->status === 'closed' || $deliveryRequest->status === 'closed') continue;
+                // For manual responses, we don't need a delivery request
+                $deliveryRequest = null;
+                if ($response->response_type === 'matching') {
+                    $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
+                    if (!$deliveryRequest) continue;
+                }
+
+                // Skip responses where request is closed
+                if ($sendRequest->status === 'closed') continue;
+                // For matching responses, also check delivery request status
+                if ($deliveryRequest && $deliveryRequest->status === 'closed') continue;
+
+                $responseId = $response->response_type === 'manual' ? $response->id : 'send_' . $response->offer_id . '_delivery_' . $response->request_id;
 
                 $formattedResponses[] = [
-                    'id' => 'send_' . $response->offer_id . '_delivery_' . $response->request_id,
+                    'id' => $responseId,
                     'type' => 'send',
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
+                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
                     'user' => [
-                        'id' => $response->responder->id,
-                        'name' => $response->responder->name,
-                        'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->responder->sendRequests()->count(),
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'image' => $otherUser->telegramUser->image ?? null,
+                        'requests_count' => $isReceiver
+                            ? ($response->response_type === 'manual'
+                                ? $otherUser->deliveryRequests()->count()
+                                : $otherUser->sendRequests()->count())
+                            : ($response->response_type === 'manual'
+                                ? $otherUser->sendRequests()->count()
+                                : $otherUser->deliveryRequests()->count()),
                     ],
                     'from_location' => $sendRequest->fromLocation->fullRouteName,
                     'to_location' => $sendRequest->toLocation->fullRouteName,
@@ -73,30 +103,48 @@ class ResponseController extends Controller
                     'description' => $sendRequest->description,
                     'status' => $response->status,
                     'created_at' => $response->created_at,
-                    'response_type' => 'can_deliver', // Deliverer can respond to this
+                    'response_type' => $response->response_type === 'manual' ? 'manual' : 'can_deliver',
+                    'direction' => $isReceiver ? 'received' : 'sent',
                 ];
 
             } elseif ($response->request_type === 'delivery') {
-                // Sender seeing deliverer responses
-                $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
+                // Get the delivery request (what user clicked on)
                 $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
 
-                if (!$sendRequest || !$deliveryRequest) continue;
+                if (!$deliveryRequest) continue;
 
-                // Skip responses where either request is closed
-                if ($sendRequest->status === 'closed' || $deliveryRequest->status === 'closed') continue;
+                // For manual responses, we don't need a send request
+                $sendRequest = null;
+                if ($response->response_type === 'matching') {
+                    $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->request_id);
+                    if (!$sendRequest) continue;
+                }
+
+                // Skip responses where request is closed
+                if ($deliveryRequest->status === 'closed') continue;
+                // For matching responses, also check send request status
+                if ($sendRequest && $sendRequest->status === 'closed') continue;
+
+                $responseId = $response->response_type === 'manual' ? $response->id : 'delivery_' . $response->offer_id . '_send_' . $response->request_id;
 
                 $formattedResponses[] = [
-                    'id' => 'delivery_' . $response->offer_id . '_send_' . $response->request_id,
+                    'id' => $responseId,
                     'type' => 'delivery',
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
+                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
                     'user' => [
-                        'id' => $response->responder->id,
-                        'name' => $response->responder->name,
-                        'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->responder->deliveryRequests()->count(),
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'image' => $otherUser->telegramUser->image ?? null,
+                        'requests_count' => $isReceiver
+                            ? ($response->response_type === 'manual'
+                                ? $otherUser->sendRequests()->count()
+                                : $otherUser->deliveryRequests()->count())
+                            : ($response->response_type === 'manual'
+                                ? $otherUser->deliveryRequests()->count()
+                                : $otherUser->sendRequests()->count()),
                     ],
                     'from_location' => $deliveryRequest->fromLocation->fullRouteName,
                     'to_location' => $deliveryRequest->toLocation->fullRouteName,
@@ -108,20 +156,91 @@ class ResponseController extends Controller
                     'description' => $deliveryRequest->description,
                     'status' => $response->status,
                     'created_at' => $response->created_at,
-                    'response_type' => 'deliverer_responded', // Deliverer responded, waiting for sender confirmation
-                    // Original send request info
-                    'original_request' => [
+                    'response_type' => $response->response_type === 'manual' ? 'manual' : 'deliverer_responded',
+                    'direction' => $isReceiver ? 'received' : 'sent',
+                    // Original send request info (for matching responses only)
+                    'original_request' => $sendRequest ? [
                         'from_location' => $sendRequest->fromLocation->fullRouteName,
                         'to_location' => $sendRequest->toLocation->fullRouteName,
                         'description' => $sendRequest->description,
                         'price' => $sendRequest->price,
                         'currency' => $sendRequest->currency,
-                    ]
+                    ] : null
                 ];
             }
         }
 
         return response()->json($formattedResponses);
+    }
+
+    /**
+     * Create manual response - user manually responds to a request
+     */
+    public function createManual(Request $request): JsonResponse
+    {
+        $user = $this->tgService->getUserByTelegramId($request);
+
+        $validated = $request->validate([
+            'request_type' => 'required|in:send,delivery',
+            'request_id' => 'required|integer'
+        ]);
+
+        $requestType = $validated['request_type'];
+        $requestId = $validated['request_id'];
+
+        // Get the target request
+        if ($requestType === 'send') {
+            $targetRequest = SendRequest::find($requestId);
+        } else {
+            $targetRequest = DeliveryRequest::find($requestId);
+        }
+        if (!$targetRequest || $targetRequest->user_id === $user->id) {
+            return response()->json(['error' => 'Invalid request or cannot respond to own request'], 400);
+        }
+
+        // Check if user already responded to this request (check both perspectives)
+        $existingResponse = Response::where(function($query) use ($targetRequest, $user, $requestType, $requestId) {
+            // Check if user already sent a response to this request owner
+            $query->where('user_id', $targetRequest->user_id)
+                  ->where('responder_id', $user->id)
+                  ->where('request_type', $requestType)
+                  ->where('offer_id', $requestId);
+        })->orWhere(function($query) use ($targetRequest, $user, $requestType, $requestId) {
+            // Or check if user already has a response record for this request
+            $query->where('user_id', $user->id)
+                  ->where('responder_id', $targetRequest->user_id)
+                  ->where('request_type', $requestType)
+                  ->where('offer_id', $requestId);
+        })->whereIn('status', ['pending', 'waiting', 'accepted'])
+          ->where('response_type', Response::TYPE_MANUAL)
+          ->first();
+
+        if ($existingResponse) {
+            return response()->json(['error' => 'You have already responded to this request'], 400);
+        }
+
+        // Create single manual response for request owner (who receives and can accept/reject)
+        $response = Response::create([
+            'user_id' => $targetRequest->user_id, // Request owner receives the response
+            'responder_id' => $user->id, // User who clicked "Откликнуться"
+            'request_type' => $requestType,
+            'request_id' => 0, // Not used in manual responses
+            'offer_id' => $requestId,
+            'status' => Response::STATUS_PENDING,
+            'response_type' => Response::TYPE_MANUAL
+        ]);
+
+        // Send notification to request owner
+        $this->sendTelegramNotification(
+            $targetRequest->user_id,
+            $user->name,
+            "Пользователь откликнулся на вашу заявку! Проверьте отклики в приложении."
+        );
+
+        return response()->json([
+            'message' => 'Manual response created successfully',
+            'response_id' => $response->id
+        ]);
     }
 
     /**
@@ -136,6 +255,12 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Insufficient links balance'], 403);
         }
 
+        // Handle manual responses (simple response ID)
+        if (is_numeric($responseId)) {
+            return $this->handleManualAcceptance($user, (int)$responseId);
+        }
+
+        // Handle matching responses (complex response ID)
         $parts = explode('_', $responseId);
         if (count($parts) !== 4) {
             return response()->json(['error' => 'Invalid response ID'], 400);
@@ -155,6 +280,104 @@ class ResponseController extends Controller
         }
 
         return response()->json(['error' => 'Invalid response type'], 400);
+    }
+
+    /**
+     * Handle manual response acceptance (single confirmation)
+     */
+    private function handleManualAcceptance(User $user, int $responseId): JsonResponse
+    {
+        $response = Response::where('id', $responseId)
+            ->where('user_id', $user->id)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->where('status', Response::STATUS_PENDING)
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Manual response not found'], 404);
+        }
+
+        // Get the request and responder details
+        if ($response->request_type === 'send') {
+            $targetRequest = SendRequest::find($response->offer_id);
+        } else {
+            $targetRequest = DeliveryRequest::find($response->offer_id);
+        }
+
+        if (!$targetRequest) {
+            return response()->json(['error' => 'Target request not found'], 404);
+        }
+
+        $responder = User::find($response->responder_id);
+        if (!$responder) {
+            return response()->json(['error' => 'Responder not found'], 404);
+        }
+
+        // Create or find existing chat
+        $chat = Chat::where(function($query) use ($user, $responder) {
+            $query->where('sender_id', $user->id)
+                ->where('receiver_id', $responder->id)
+                ->orWhere('sender_id', $responder->id)
+                ->where('receiver_id', $user->id);
+        })->first();
+
+        if (!$chat) {
+            $chat = Chat::create([
+                'sender_id' => $user->id,
+                'receiver_id' => $responder->id,
+                'send_request_id' => $response->request_type === 'send' ? $response->offer_id : null,
+                'delivery_request_id' => $response->request_type === 'delivery' ? $response->offer_id : null,
+                'status' => 'active',
+            ]);
+        } else {
+            $chat->update(['status' => 'active']);
+        }
+
+        // Update response status to accepted
+        $response->update([
+            'status' => Response::STATUS_ACCEPTED,
+            'chat_id' => $chat->id
+        ]);
+
+        // Send notification to responder
+        $this->sendTelegramNotification(
+            $responder->id,
+            $user->name,
+            "Отлично! Ваш отклик принят. Теперь вы можете общаться в чате."
+        );
+
+        return response()->json([
+            'chat_id' => $chat->id,
+            'message' => 'Manual response accepted successfully'
+        ]);
+    }
+
+    /**
+     * Handle manual response rejection
+     */
+    private function handleManualRejection(User $user, int $responseId): JsonResponse
+    {
+        $response = Response::where('id', $responseId)
+            ->where('user_id', $user->id)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->where('status', Response::STATUS_PENDING)
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Manual response not found'], 404);
+        }
+
+        // Update response status to rejected
+        $response->update(['status' => Response::STATUS_REJECTED]);
+
+        // Send notification to responder (optional)
+        $this->sendTelegramNotification(
+            $response->responder_id,
+            $user->name,
+            "К сожалению, ваш отклик был отклонен."
+        );
+
+        return response()->json(['message' => 'Manual response rejected successfully']);
     }
 
     /**
@@ -423,6 +646,12 @@ class ResponseController extends Controller
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
+        // Handle manual responses (simple response ID)
+        if (is_numeric($responseId)) {
+            return $this->handleManualRejection($user, (int)$responseId);
+        }
+
+        // Handle matching responses (complex response ID)
         $parts = explode('_', $responseId);
         if (count($parts) !== 4) {
             return response()->json(['error' => 'Invalid response ID'], 400);
@@ -550,6 +779,12 @@ class ResponseController extends Controller
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
+        // Handle manual responses (simple response ID)
+        if (is_numeric($responseId)) {
+            return $this->handleManualCancellation($user, (int)$responseId);
+        }
+
+        // Handle matching responses (complex response ID)
         $parts = explode('_', $responseId);
         if (count($parts) !== 4) {
             return response()->json(['error' => 'Invalid response ID'], 400);
@@ -576,6 +811,35 @@ class ResponseController extends Controller
         $response->delete();
 
         return response()->json(['message' => 'Response cancelled']);
+    }
+
+    /**
+     * Handle manual response cancellation
+     */
+    private function handleManualCancellation(User $user, int $responseId): JsonResponse
+    {
+        // Find the manual response that the responder wants to cancel
+        $response = Response::where('id', $responseId)
+            ->where('responder_id', $user->id) // User must be the responder (who created the response)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->whereIn('status', [Response::STATUS_PENDING, Response::STATUS_WAITING])
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Manual response not found or cannot be cancelled'], 404);
+        }
+
+        // Delete the response record for cancellation
+        $response->delete();
+
+        // Send notification to request owner that response was cancelled
+//        $this->sendTelegramNotification(
+//            $response->user_id,
+//            $user->name,
+//            "Пользователь отменил свой отклик на вашу заявку."
+//        );
+
+        return response()->json(['message' => 'Manual response cancelled successfully']);
     }
 
     /**

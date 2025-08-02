@@ -34,6 +34,7 @@ class IndexRequestResource extends JsonResource
             'type' => $this->type,
             'status' => $this->status,
             'response_status' => $this->response_status ?? null,
+            'response_type' => $this->response_type ?? null,
             'has_responses' => in_array($this->status, ['has_responses', 'matched']),
             'has_reviewed' => $this->has_reviewed ?? false,
             'chat_id' => $this->chat_id ?? null,
