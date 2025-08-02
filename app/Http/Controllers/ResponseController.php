@@ -53,7 +53,7 @@ class ResponseController extends Controller
             // Determine if user is the receiver (can act) or sender (view only)
             $isReceiver = $response->user_id === $user->id;
             $otherUser = $isReceiver ? $response->responder : $response->user;
-            
+
             if ($response->request_type === 'send') {
                 // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
@@ -85,12 +85,12 @@ class ResponseController extends Controller
                         'id' => $otherUser->id,
                         'name' => $otherUser->name,
                         'image' => $otherUser->telegramUser->image ?? null,
-                        'requests_count' => $isReceiver 
+                        'requests_count' => $isReceiver
                             ? ($response->response_type === 'manual'
                                 ? $otherUser->deliveryRequests()->count()
                                 : $otherUser->sendRequests()->count())
                             : ($response->response_type === 'manual'
-                                ? $otherUser->sendRequests()->count()  
+                                ? $otherUser->sendRequests()->count()
                                 : $otherUser->deliveryRequests()->count()),
                     ],
                     'from_location' => $sendRequest->fromLocation->fullRouteName,
@@ -779,6 +779,12 @@ class ResponseController extends Controller
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
+        // Handle manual responses (simple response ID)
+        if (is_numeric($responseId)) {
+            return $this->handleManualCancellation($user, (int)$responseId);
+        }
+
+        // Handle matching responses (complex response ID)
         $parts = explode('_', $responseId);
         if (count($parts) !== 4) {
             return response()->json(['error' => 'Invalid response ID'], 400);
@@ -805,6 +811,35 @@ class ResponseController extends Controller
         $response->delete();
 
         return response()->json(['message' => 'Response cancelled']);
+    }
+
+    /**
+     * Handle manual response cancellation
+     */
+    private function handleManualCancellation(User $user, int $responseId): JsonResponse
+    {
+        // Find the manual response that the responder wants to cancel
+        $response = Response::where('id', $responseId)
+            ->where('responder_id', $user->id) // User must be the responder (who created the response)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->whereIn('status', [Response::STATUS_PENDING, Response::STATUS_WAITING])
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Manual response not found or cannot be cancelled'], 404);
+        }
+
+        // Delete the response record for cancellation
+        $response->delete();
+
+        // Send notification to request owner that response was cancelled
+//        $this->sendTelegramNotification(
+//            $response->user_id,
+//            $user->name,
+//            "Пользователь отменил свой отклик на вашу заявку."
+//        );
+
+        return response()->json(['message' => 'Manual response cancelled successfully']);
     }
 
     /**
