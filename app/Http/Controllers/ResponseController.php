@@ -24,23 +24,36 @@ class ResponseController extends Controller
     /**
      * Get all responses for current user
      * Shows both:
-     * 1. Send requests that deliverer can respond to (status: pending)
-     * 2. Deliverer responses that sender needs to confirm (status: waiting)
+     * 1. Responses received by user (where they can accept/reject)
+     * 2. Responses sent by user (where they can only view status)
      */
     public function index(Request $request): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
-        // Get responses from the database where current user is the recipient
-        $responses = Response::where('user_id', $user->id)
+        // Get responses received by user (where they can accept/reject)
+        $receivedResponses = Response::where('user_id', $user->id)
             ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded'])
             ->with(['responder.telegramUser', 'chat'])
             ->orderByDesc('created_at')
             ->get();
 
+        // Get responses sent by user (where they are the responder)
+        $sentResponses = Response::where('responder_id', $user->id)
+            ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded', 'rejected'])
+            ->with(['user.telegramUser', 'chat'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        $responses = $receivedResponses->merge($sentResponses);
+
         $formattedResponses = [];
 
         foreach ($responses as $response) {
+            // Determine if user is the receiver (can act) or sender (view only)
+            $isReceiver = $response->user_id === $user->id;
+            $otherUser = $isReceiver ? $response->responder : $response->user;
+            
             if ($response->request_type === 'send') {
                 // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
@@ -67,13 +80,18 @@ class ResponseController extends Controller
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
+                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
                     'user' => [
-                        'id' => $response->responder->id,
-                        'name' => $response->responder->name,
-                        'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->response_type === 'manual'
-                            ? ($response->responder->deliveryRequests()->count())
-                            : $response->responder->sendRequests()->count(),
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'image' => $otherUser->telegramUser->image ?? null,
+                        'requests_count' => $isReceiver 
+                            ? ($response->response_type === 'manual'
+                                ? $otherUser->deliveryRequests()->count()
+                                : $otherUser->sendRequests()->count())
+                            : ($response->response_type === 'manual'
+                                ? $otherUser->sendRequests()->count()  
+                                : $otherUser->deliveryRequests()->count()),
                     ],
                     'from_location' => $sendRequest->fromLocation->fullRouteName,
                     'to_location' => $sendRequest->toLocation->fullRouteName,
@@ -86,6 +104,7 @@ class ResponseController extends Controller
                     'status' => $response->status,
                     'created_at' => $response->created_at,
                     'response_type' => $response->response_type === 'manual' ? 'manual' : 'can_deliver',
+                    'direction' => $isReceiver ? 'received' : 'sent',
                 ];
 
             } elseif ($response->request_type === 'delivery') {
@@ -114,13 +133,18 @@ class ResponseController extends Controller
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
+                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
                     'user' => [
-                        'id' => $response->responder->id,
-                        'name' => $response->responder->name,
-                        'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->response_type === 'manual'
-                            ? ($response->responder->sendRequests()->count())
-                            : $response->responder->deliveryRequests()->count(),
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'image' => $otherUser->telegramUser->image ?? null,
+                        'requests_count' => $isReceiver
+                            ? ($response->response_type === 'manual'
+                                ? $otherUser->sendRequests()->count()
+                                : $otherUser->deliveryRequests()->count())
+                            : ($response->response_type === 'manual'
+                                ? $otherUser->deliveryRequests()->count()
+                                : $otherUser->sendRequests()->count()),
                     ],
                     'from_location' => $deliveryRequest->fromLocation->fullRouteName,
                     'to_location' => $deliveryRequest->toLocation->fullRouteName,
@@ -133,6 +157,7 @@ class ResponseController extends Controller
                     'status' => $response->status,
                     'created_at' => $response->created_at,
                     'response_type' => $response->response_type === 'manual' ? 'manual' : 'deliverer_responded',
+                    'direction' => $isReceiver ? 'received' : 'sent',
                     // Original send request info (for matching responses only)
                     'original_request' => $sendRequest ? [
                         'from_location' => $sendRequest->fromLocation->fullRouteName,
@@ -194,21 +219,10 @@ class ResponseController extends Controller
             return response()->json(['error' => 'You have already responded to this request'], 400);
         }
 
-        // Create manual response for request owner (who receives and can accept/reject)
-        $ownerResponse = Response::create([
+        // Create single manual response for request owner (who receives and can accept/reject)
+        $response = Response::create([
             'user_id' => $targetRequest->user_id, // Request owner receives the response
             'responder_id' => $user->id, // User who clicked "Откликнуться"
-            'request_type' => $requestType,
-            'request_id' => 0, // Not used in manual responses
-            'offer_id' => $requestId,
-            'status' => Response::STATUS_PENDING,
-            'response_type' => Response::TYPE_MANUAL
-        ]);
-
-        // Create manual response for sender (who sent the response and can see it in their list)
-        $senderResponse = Response::create([
-            'user_id' => $user->id, // Response sender sees their sent response
-            'responder_id' => $targetRequest->user_id, // Request owner is the "responder" from sender's perspective
             'request_type' => $requestType,
             'request_id' => 0, // Not used in manual responses
             'offer_id' => $requestId,
@@ -225,8 +239,7 @@ class ResponseController extends Controller
 
         return response()->json([
             'message' => 'Manual response created successfully',
-            'owner_response_id' => $ownerResponse->id,
-            'sender_response_id' => $senderResponse->id
+            'response_id' => $response->id
         ]);
     }
 
@@ -320,27 +333,11 @@ class ResponseController extends Controller
             $chat->update(['status' => 'active']);
         }
 
-        // Update response status for the owner's response
+        // Update response status to accepted
         $response->update([
             'status' => Response::STATUS_ACCEPTED,
             'chat_id' => $chat->id
         ]);
-
-        // Also update the sender's response record
-        $senderResponse = Response::where('user_id', $responder->id)
-            ->where('responder_id', $user->id)
-            ->where('request_type', $response->request_type)
-            ->where('offer_id', $response->offer_id)
-            ->where('response_type', Response::TYPE_MANUAL)
-            ->where('status', Response::STATUS_PENDING)
-            ->first();
-
-        if ($senderResponse) {
-            $senderResponse->update([
-                'status' => Response::STATUS_ACCEPTED,
-                'chat_id' => $chat->id
-            ]);
-        }
 
         // Send notification to responder
         $this->sendTelegramNotification(
@@ -370,21 +367,8 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Manual response not found'], 404);
         }
 
-        // Update the owner's response status to rejected
+        // Update response status to rejected
         $response->update(['status' => Response::STATUS_REJECTED]);
-
-        // Also update the sender's response record
-        $senderResponse = Response::where('user_id', $response->responder_id)
-            ->where('responder_id', $user->id)
-            ->where('request_type', $response->request_type)
-            ->where('offer_id', $response->offer_id)
-            ->where('response_type', Response::TYPE_MANUAL)
-            ->where('status', Response::STATUS_PENDING)
-            ->first();
-
-        if ($senderResponse) {
-            $senderResponse->update(['status' => Response::STATUS_REJECTED]);
-        }
 
         // Send notification to responder (optional)
         $this->sendTelegramNotification(
