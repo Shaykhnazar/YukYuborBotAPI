@@ -44,9 +44,9 @@ class ResponseController extends Controller
             if ($response->request_type === 'send') {
                 // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
-                
+
                 if (!$sendRequest) continue;
-                
+
                 // For manual responses, we don't need a delivery request
                 $deliveryRequest = null;
                 if ($response->response_type === 'matching') {
@@ -71,8 +71,8 @@ class ResponseController extends Controller
                         'id' => $response->responder->id,
                         'name' => $response->responder->name,
                         'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->response_type === 'manual' 
-                            ? ($response->request_type === 'send' ? $response->responder->deliveryRequests()->count() : $response->responder->sendRequests()->count())
+                        'requests_count' => $response->response_type === 'manual'
+                            ? ($response->responder->deliveryRequests()->count())
                             : $response->responder->sendRequests()->count(),
                     ],
                     'from_location' => $sendRequest->fromLocation->fullRouteName,
@@ -91,9 +91,9 @@ class ResponseController extends Controller
             } elseif ($response->request_type === 'delivery') {
                 // Get the delivery request (what user clicked on)
                 $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
-                
+
                 if (!$deliveryRequest) continue;
-                
+
                 // For manual responses, we don't need a send request
                 $sendRequest = null;
                 if ($response->response_type === 'matching') {
@@ -118,8 +118,8 @@ class ResponseController extends Controller
                         'id' => $response->responder->id,
                         'name' => $response->responder->name,
                         'image' => $response->responder->telegramUser->image ?? null,
-                        'requests_count' => $response->response_type === 'manual' 
-                            ? ($response->request_type === 'delivery' ? $response->responder->sendRequests()->count() : $response->responder->deliveryRequests()->count())
+                        'requests_count' => $response->response_type === 'manual'
+                            ? ($response->responder->sendRequests()->count())
                             : $response->responder->deliveryRequests()->count(),
                     ],
                     'from_location' => $deliveryRequest->fromLocation->fullRouteName,
@@ -173,22 +173,42 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Invalid request or cannot respond to own request'], 400);
         }
 
-        // Check if user already responded to this request
-        $existingResponse = Response::where('user_id', $targetRequest->user_id)
-            ->where('responder_id', $user->id)
-            ->where('request_type', $requestType)
-            ->where('offer_id', $requestId)
-            ->whereIn('status', ['pending', 'waiting', 'accepted'])
-            ->first();
+        // Check if user already responded to this request (check both perspectives)
+        $existingResponse = Response::where(function($query) use ($targetRequest, $user, $requestType, $requestId) {
+            // Check if user already sent a response to this request owner
+            $query->where('user_id', $targetRequest->user_id)
+                  ->where('responder_id', $user->id)
+                  ->where('request_type', $requestType)
+                  ->where('offer_id', $requestId);
+        })->orWhere(function($query) use ($targetRequest, $user, $requestType, $requestId) {
+            // Or check if user already has a response record for this request
+            $query->where('user_id', $user->id)
+                  ->where('responder_id', $targetRequest->user_id)
+                  ->where('request_type', $requestType)
+                  ->where('offer_id', $requestId);
+        })->whereIn('status', ['pending', 'waiting', 'accepted'])
+          ->where('response_type', Response::TYPE_MANUAL)
+          ->first();
 
         if ($existingResponse) {
             return response()->json(['error' => 'You have already responded to this request'], 400);
         }
 
-        // Create manual response
-        $response = Response::create([
+        // Create manual response for request owner (who receives and can accept/reject)
+        $ownerResponse = Response::create([
             'user_id' => $targetRequest->user_id, // Request owner receives the response
             'responder_id' => $user->id, // User who clicked "Откликнуться"
+            'request_type' => $requestType,
+            'request_id' => 0, // Not used in manual responses
+            'offer_id' => $requestId,
+            'status' => Response::STATUS_PENDING,
+            'response_type' => Response::TYPE_MANUAL
+        ]);
+
+        // Create manual response for sender (who sent the response and can see it in their list)
+        $senderResponse = Response::create([
+            'user_id' => $user->id, // Response sender sees their sent response
+            'responder_id' => $targetRequest->user_id, // Request owner is the "responder" from sender's perspective
             'request_type' => $requestType,
             'request_id' => 0, // Not used in manual responses
             'offer_id' => $requestId,
@@ -205,7 +225,8 @@ class ResponseController extends Controller
 
         return response()->json([
             'message' => 'Manual response created successfully',
-            'response_id' => $response->id
+            'owner_response_id' => $ownerResponse->id,
+            'sender_response_id' => $senderResponse->id
         ]);
     }
 
@@ -299,11 +320,27 @@ class ResponseController extends Controller
             $chat->update(['status' => 'active']);
         }
 
-        // Update response status
+        // Update response status for the owner's response
         $response->update([
             'status' => Response::STATUS_ACCEPTED,
             'chat_id' => $chat->id
         ]);
+
+        // Also update the sender's response record
+        $senderResponse = Response::where('user_id', $responder->id)
+            ->where('responder_id', $user->id)
+            ->where('request_type', $response->request_type)
+            ->where('offer_id', $response->offer_id)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->where('status', Response::STATUS_PENDING)
+            ->first();
+
+        if ($senderResponse) {
+            $senderResponse->update([
+                'status' => Response::STATUS_ACCEPTED,
+                'chat_id' => $chat->id
+            ]);
+        }
 
         // Send notification to responder
         $this->sendTelegramNotification(
@@ -316,6 +353,47 @@ class ResponseController extends Controller
             'chat_id' => $chat->id,
             'message' => 'Manual response accepted successfully'
         ]);
+    }
+
+    /**
+     * Handle manual response rejection
+     */
+    private function handleManualRejection(User $user, int $responseId): JsonResponse
+    {
+        $response = Response::where('id', $responseId)
+            ->where('user_id', $user->id)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->where('status', Response::STATUS_PENDING)
+            ->first();
+
+        if (!$response) {
+            return response()->json(['error' => 'Manual response not found'], 404);
+        }
+
+        // Update the owner's response status to rejected
+        $response->update(['status' => Response::STATUS_REJECTED]);
+
+        // Also update the sender's response record
+        $senderResponse = Response::where('user_id', $response->responder_id)
+            ->where('responder_id', $user->id)
+            ->where('request_type', $response->request_type)
+            ->where('offer_id', $response->offer_id)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->where('status', Response::STATUS_PENDING)
+            ->first();
+
+        if ($senderResponse) {
+            $senderResponse->update(['status' => Response::STATUS_REJECTED]);
+        }
+
+        // Send notification to responder (optional)
+        $this->sendTelegramNotification(
+            $response->responder_id,
+            $user->name,
+            "К сожалению, ваш отклик был отклонен."
+        );
+
+        return response()->json(['message' => 'Manual response rejected successfully']);
     }
 
     /**
@@ -584,6 +662,12 @@ class ResponseController extends Controller
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
+        // Handle manual responses (simple response ID)
+        if (is_numeric($responseId)) {
+            return $this->handleManualRejection($user, (int)$responseId);
+        }
+
+        // Handle matching responses (complex response ID)
         $parts = explode('_', $responseId);
         if (count($parts) !== 4) {
             return response()->json(['error' => 'Invalid response ID'], 400);

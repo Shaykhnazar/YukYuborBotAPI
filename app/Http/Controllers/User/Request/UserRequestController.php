@@ -259,6 +259,7 @@ class UserRequestController extends BaseController
                     $requestCopy->response_id = $response->id;
                     $requestCopy->chat_id = $response->chat_id;
                     $requestCopy->response_status = $response->status;
+                    $requestCopy->response_type = $response->response_type;
                     $requestCopy->responder_user = $response->responder; // This is the other party
                     $requestCopy->setRelation('user', $response->responder); // FIX: Override user relation to show other party
 
