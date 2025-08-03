@@ -165,17 +165,21 @@ class LocationController extends Controller
 
     private function getActiveRequestsForRoute($fromCountryName, $toCountryName): int
     {
-        // Count requests matching this route (using existing string fields for now)
+        // Count requests matching this route using location relationships
         $deliveryCount = DB::table('delivery_requests')
-            ->where('status', 'IN', ['open', 'has_responses'])
-            ->where('from_location', 'ILIKE', '%' . $fromCountryName . '%')
-            ->where('to_location', 'ILIKE', '%' . $toCountryName . '%')
+            ->join('locations as from_loc', 'delivery_requests.from_location_id', '=', 'from_loc.id')
+            ->join('locations as to_loc', 'delivery_requests.to_location_id', '=', 'to_loc.id')
+            ->where('delivery_requests.status', 'IN', ['open', 'has_responses'])
+            ->where('from_loc.name', 'ILIKE', '%' . $fromCountryName . '%')
+            ->where('to_loc.name', 'ILIKE', '%' . $toCountryName . '%')
             ->count();
 
         $sendCount = DB::table('send_requests')
-            ->where('status', 'IN', ['open', 'has_responses'])
-            ->where('from_location', 'ILIKE', '%' . $fromCountryName . '%')
-            ->where('to_location', 'ILIKE', '%' . $toCountryName . '%')
+            ->join('locations as from_loc', 'send_requests.from_location_id', '=', 'from_loc.id')
+            ->join('locations as to_loc', 'send_requests.to_location_id', '=', 'to_loc.id')
+            ->where('send_requests.status', 'IN', ['open', 'has_responses'])
+            ->where('from_loc.name', 'ILIKE', '%' . $fromCountryName . '%')
+            ->where('to_loc.name', 'ILIKE', '%' . $toCountryName . '%')
             ->count();
 
         return $deliveryCount + $sendCount;

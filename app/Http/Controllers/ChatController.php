@@ -555,8 +555,8 @@ class ChatController extends BaseController
             return [
                 'type' => 'send',
                 'id' => $chat->sendRequest->id,
-                'from_location' => $chat->sendRequest->from_location,
-                'to_location' => $chat->sendRequest->to_location,
+                'from_location' => $chat->sendRequest->fromLocation->fullRouteName,
+                'to_location' => $chat->sendRequest->toLocation->fullRouteName,
                 'description' => $chat->sendRequest->description,
                 'price' => $chat->sendRequest->price,
                 'currency' => $chat->sendRequest->currency,
@@ -569,8 +569,8 @@ class ChatController extends BaseController
             return [
                 'type' => 'delivery',
                 'id' => $chat->deliveryRequest->id,
-                'from_location' => $chat->deliveryRequest->from_location,
-                'to_location' => $chat->deliveryRequest->to_location,
+                'from_location' => $chat->deliveryRequest->fromLocation->fullRouteName,
+                'to_location' => $chat->deliveryRequest->toLocation->fullRouteName,
                 'description' => $chat->deliveryRequest->description,
                 'price' => $chat->deliveryRequest->price,
                 'currency' => $chat->deliveryRequest->currency,

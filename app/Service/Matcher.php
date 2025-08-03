@@ -16,13 +16,14 @@ class Matcher
     /**
      * When a SEND request is created, find matching DELIVERY requests
      * and notify the DELIVERY users (potential carriers)
+     * Only creates responses for travelers initially - sender sees nothing until traveler accepts
      */
     public function matchSendRequest(SendRequest $sendRequest): void
     {
         $matchedDeliveries = $this->findMatchingDeliveryRequests($sendRequest);
 
         foreach ($matchedDeliveries as $delivery) {
-            // Create response for deliverer to see send request
+            // Create response for deliverer to see send request (ONLY for traveler initially)
             $this->createResponseRecord(
                 $delivery->user_id,        // deliverer will see this
                 $sendRequest->user_id,     // sender made the offer
@@ -38,13 +39,14 @@ class Matcher
 
     /**
      * When a DELIVERY request is created, find matching SEND requests
+     * Only creates responses for travelers initially - sender sees nothing until traveler accepts
      */
     public function matchDeliveryRequest(DeliveryRequest $deliveryRequest): void
     {
         $matchedSends = $this->findMatchingSendRequests($deliveryRequest);
 
         foreach ($matchedSends as $send) {
-            // Create response for deliverer to see send request
+            // Create response for deliverer to see send request (ONLY for traveler initially)
             $this->createResponseRecord(
                 $deliveryRequest->user_id, // deliverer will see this
                 $send->user_id,            // sender made the offer
