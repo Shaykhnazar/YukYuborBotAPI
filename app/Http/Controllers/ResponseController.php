@@ -54,6 +54,38 @@ class ResponseController extends Controller
             $isReceiver = $response->user_id === $user->id;
             $otherUser = $isReceiver ? $response->responder : $response->user;
 
+            // For matching responses, control visibility based on status and user role
+            if ($response->response_type === 'matching') {
+                if ($response->status === 'pending') {
+                    // For matching responses: deliverer should ALWAYS see it first (deliverer is always initiator)
+                    if ($response->request_type === 'send') {
+                        // For send requests: deliverer is responder_id
+                        if ($response->responder_id !== $user->id) {
+                            continue; // Skip for sender
+                        }
+                    } else { // delivery requests
+                        // For delivery requests: deliverer is user_id (request owner)
+                        if ($response->user_id !== $user->id) {
+                            continue; // Skip for sender
+                        }
+                    }
+                } elseif ($response->status === 'waiting') {
+                    // Show to sender for final acceptance
+                    if ($response->request_type === 'send') {
+                        // For send requests: sender is user_id (request owner)
+                        if ($response->user_id !== $user->id) {
+                            continue;
+                        }
+                    } else { // delivery requests
+                        // For delivery requests: sender is responder_id
+                        if ($response->responder_id !== $user->id) {
+                            continue;
+                        }
+                    }
+                }
+                // For 'responded' and 'accepted' status, show to both users
+            }
+
             if ($response->request_type === 'send') {
                 // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
