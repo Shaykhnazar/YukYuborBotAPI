@@ -42,7 +42,7 @@ class SendRequest extends Model
         return $this->belongsTo(DeliveryRequest::class, 'matched_delivery_id');
     }
 
-    // Responses where this send request is the main request
+    // Matching responses where this send request is the main request
     public function responses(): HasMany
     {
         return $this->hasMany(Response::class, 'request_id', 'id')
@@ -50,6 +50,31 @@ class SendRequest extends Model
                 $query->where('request_type', 'send')
                     ->orWhere('request_type', 'delivery');
             });
+    }
+
+    // Manual responses where someone manually responded to this send request
+    public function manualResponses(): HasMany
+    {
+        return $this->hasMany(Response::class, 'offer_id', 'id')
+            ->where('request_type', 'send')
+            ->where('response_type', 'manual');
+    }
+
+    // All responses (both matching and manual) - returns a query builder, not a relationship
+    public function allResponsesQuery()
+    {
+        return Response::where(function($query) {
+            $query->where(function($subQuery) {
+                // Matching responses: this send request is the primary request
+                $subQuery->where('request_id', $this->id)
+                    ->whereIn('request_type', ['send', 'delivery']);
+            })->orWhere(function($subQuery) {
+                // Manual responses: someone manually responded to this send request
+                $subQuery->where('offer_id', $this->id)
+                    ->where('request_type', 'send')
+                    ->where('response_type', 'manual');
+            });
+        });
     }
 
     // Responses where this send request is offered to delivery requests

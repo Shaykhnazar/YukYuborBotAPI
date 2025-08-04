@@ -55,36 +55,35 @@ class ResponseController extends Controller
             $otherUser = $isReceiver ? $response->responder : $response->user;
 
             // For matching responses, control visibility based on status and user role
-            if ($response->response_type === 'matching') {
+            if ($response->response_type === Response::TYPE_MATCHING) {
                 if ($response->status === 'pending') {
-                    // For matching responses: deliverer should ALWAYS see it first (deliverer is always initiator)
-                    if ($response->request_type === 'send') {
-                        // For send requests: deliverer is responder_id
-                        if ($response->responder_id !== $user->id) {
-                            continue; // Skip for sender
-                        }
-                    } else { // delivery requests
-                        // For delivery requests: deliverer is user_id (request owner)
-                        if ($response->user_id !== $user->id) {
-                            continue; // Skip for sender
-                        }
-                    }
+                  // Deliverer should see first
+                  if ($response->user_id !== $user->id) {
+                      continue; // Skip for sender
+                  }
                 } elseif ($response->status === 'waiting') {
-                    // Show to sender for final acceptance
-                    if ($response->request_type === 'send') {
-                        // For send requests: sender is user_id (request owner)
-                        if ($response->user_id !== $user->id) {
-                            continue;
-                        }
-                    } else { // delivery requests
-                        // For delivery requests: sender is responder_id
-                        if ($response->responder_id !== $user->id) {
-                            continue;
-                        }
+                  // Sender should see for final decision
+                  if ($response->request_type === 'delivery') {
+                      // NEW RECORD: delivery request type, sender is user_id
+                      if ($response->user_id !== $user->id) {
+                          continue; // Skip for deliverer
+                      }
+                  } else { // send requests (shouldn't happen in this flow)
+                      if ($response->responder_id !== $user->id) {
+                          continue;
+                      }
+                  }
+                } elseif ($response->status === 'responded') {
+                    // Hide responded status from both users (deliverer already acted)
+                    continue;
+                } elseif ($response->status === 'accepted') {
+                    // Each user sees other user's request record
+                    if ($response->user_id !== $user->id) {
+                        continue; // Skip if user's own request
                     }
                 }
-                // For 'responded' and 'accepted' status, show to both users
             }
+
 
             if ($response->request_type === 'send') {
                 // Get the send request (what user clicked on)
@@ -112,7 +111,10 @@ class ResponseController extends Controller
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
-                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
+                    'can_act_on' => $response->response_type === Response::TYPE_MATCHING
+                        ? ($response->status === 'pending' ? $response->user_id === $user->id
+                            : ($response->status === 'waiting' && $response->user_id === $user->id))
+                        : $isReceiver,
                     'user' => [
                         'id' => $otherUser->id,
                         'name' => $otherUser->name,
@@ -129,10 +131,10 @@ class ResponseController extends Controller
                     'to_location' => $sendRequest->toLocation->fullRouteName,
                     'from_date' => $sendRequest->from_date,
                     'to_date' => $sendRequest->to_date,
-                    'price' => $sendRequest->price,
-                    'currency' => $sendRequest->currency,
+                    'price' => $response->response_type === 'manual' && $response->price ? $response->price : $sendRequest->price,
+                    'currency' => $response->response_type === 'manual' && $response->currency ? $response->currency : $sendRequest->currency,
                     'size_type' => $sendRequest->size_type,
-                    'description' => $sendRequest->description,
+                    'description' => $response->response_type === 'manual' ? $response->message : $sendRequest->description,
                     'status' => $response->status,
                     'created_at' => $response->created_at,
                     'response_type' => $response->response_type === 'manual' ? 'manual' : 'can_deliver',
@@ -165,7 +167,10 @@ class ResponseController extends Controller
                     'request_id' => $response->request_id,
                     'offer_id' => $response->offer_id,
                     'chat_id' => $response->chat_id,
-                    'can_act_on' => $isReceiver, // Only receiver can accept/reject
+                    'can_act_on' => $response->response_type === Response::TYPE_MATCHING
+                          ? ($response->status === 'pending' ? $response->user_id === $user->id
+                              : ($response->status === 'waiting' && $response->user_id === $user->id))
+                          : $isReceiver,
                     'user' => [
                         'id' => $otherUser->id,
                         'name' => $otherUser->name,
@@ -182,10 +187,10 @@ class ResponseController extends Controller
                     'to_location' => $deliveryRequest->toLocation->fullRouteName,
                     'from_date' => $deliveryRequest->from_date,
                     'to_date' => $deliveryRequest->to_date,
-                    'price' => $deliveryRequest->price,
-                    'currency' => $deliveryRequest->currency,
+                    'price' => $response->response_type === 'manual' && $response->price ? $response->price : $deliveryRequest->price,
+                    'currency' => $response->response_type === 'manual' && $response->currency ? $response->currency : $deliveryRequest->currency,
                     'size_type' => $deliveryRequest->size_type,
-                    'description' => $deliveryRequest->description,
+                    'description' => $response->response_type === 'manual' ? $response->message : $deliveryRequest->description,
                     'status' => $response->status,
                     'created_at' => $response->created_at,
                     'response_type' => $response->response_type === 'manual' ? 'manual' : 'deliverer_responded',
@@ -214,11 +219,15 @@ class ResponseController extends Controller
 
         $validated = $request->validate([
             'request_type' => 'required|in:send,delivery',
-            'request_id' => 'required|integer'
+            'request_id' => 'required|integer',
+            'message' => 'required|string',
+            'currency' => 'nullable|string',
+            'amount' => 'nullable|integer',
         ]);
 
         $requestType = $validated['request_type'];
         $requestId = $validated['request_id'];
+        $message = $validated['message'];
 
         // Get the target request
         if ($requestType === 'send') {
@@ -259,14 +268,26 @@ class ResponseController extends Controller
             'request_id' => 0, // Not used in manual responses
             'offer_id' => $requestId,
             'status' => Response::STATUS_PENDING,
-            'response_type' => Response::TYPE_MANUAL
+            'response_type' => Response::TYPE_MANUAL,
+            'message' => $message,
+            'currency' => $validated['currency'] ?? null,
+            'amount' => $validated['amount'] ?? null
         ]);
 
-        // Send notification to request owner
+        // Send notification to request owner with response details
+        $notificationMessage = "Пользователь откликнулся на вашу заявку!\n\n";
+        $notificationMessage .= "💬 Сообщение: {$message}\n";
+
+        if (!empty($validated['amount']) && !empty($validated['currency'])) {
+            $notificationMessage .= "💰 Предложенная цена: {$validated['amount']} {$validated['currency']}\n";
+        }
+
+        $notificationMessage .= "\n📱 Проверьте отклики в приложении для ответа.";
+
         $this->sendTelegramNotification(
             $targetRequest->user_id,
             $user->name,
-            "Пользователь откликнулся на вашу заявку! Проверьте отклики в приложении."
+            $notificationMessage
         );
 
         return response()->json([
@@ -370,6 +391,9 @@ class ResponseController extends Controller
             'status' => Response::STATUS_ACCEPTED,
             'chat_id' => $chat->id
         ]);
+
+        // Update target request status
+        $targetRequest->update(['status' => 'matched_manually', 'matched_delivery_id' => null]);
 
         // Send notification to responder
         $this->sendTelegramNotification(
