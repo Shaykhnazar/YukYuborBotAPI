@@ -392,6 +392,9 @@ class ResponseController extends Controller
             'chat_id' => $chat->id
         ]);
 
+        // Update target request status
+        $targetRequest->update(['status' => 'matched_manually', 'matched_delivery_id' => null]);
+
         // Send notification to responder
         $this->sendTelegramNotification(
             $responder->id,
