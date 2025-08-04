@@ -26,9 +26,15 @@ class UserRequestController extends BaseController
 
         Log::info('Request filters', $filters);
 
-        // Load responses where user is either the request owner or responder
+        // Load both matching and manual responses where user is either the request owner or responder
         $user->load([
             'sendRequests.responses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
+            'sendRequests.manualResponses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
                         ->orWhere('responder_id', $user->id);
@@ -37,7 +43,16 @@ class UserRequestController extends BaseController
             'sendRequests.responses.chat',
             'sendRequests.responses.responder.telegramUser',
             'sendRequests.responses.user.telegramUser',
+            'sendRequests.manualResponses.chat',
+            'sendRequests.manualResponses.responder.telegramUser',
+            'sendRequests.manualResponses.user.telegramUser',
             'deliveryRequests.responses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
+            'deliveryRequests.manualResponses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
                         ->orWhere('responder_id', $user->id);
@@ -45,7 +60,10 @@ class UserRequestController extends BaseController
             },
             'deliveryRequests.responses.chat',
             'deliveryRequests.responses.responder.telegramUser',
-            'deliveryRequests.responses.user.telegramUser'
+            'deliveryRequests.responses.user.telegramUser',
+            'deliveryRequests.manualResponses.chat',
+            'deliveryRequests.manualResponses.responder.telegramUser',
+            'deliveryRequests.manualResponses.user.telegramUser'
         ]);
 
         $delivery = collect();
@@ -92,10 +110,25 @@ class UserRequestController extends BaseController
                         ->orWhere('responder_id', $user->id);
                 });
             },
+            'sendRequests.manualResponses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
             'sendRequests.responses.chat',
             'sendRequests.responses.responder.telegramUser',
             'sendRequests.responses.user.telegramUser',
+            'sendRequests.manualResponses.chat',
+            'sendRequests.manualResponses.responder.telegramUser',
+            'sendRequests.manualResponses.user.telegramUser',
             'deliveryRequests.responses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
+            'deliveryRequests.manualResponses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
                         ->orWhere('responder_id', $user->id);
@@ -103,7 +136,10 @@ class UserRequestController extends BaseController
             },
             'deliveryRequests.responses.chat',
             'deliveryRequests.responses.responder.telegramUser',
-            'deliveryRequests.responses.user.telegramUser'
+            'deliveryRequests.responses.user.telegramUser',
+            'deliveryRequests.manualResponses.chat',
+            'deliveryRequests.manualResponses.responder.telegramUser',
+            'deliveryRequests.manualResponses.user.telegramUser'
         ]);
 
         $delivery = collect();
@@ -135,10 +171,25 @@ class UserRequestController extends BaseController
                         ->orWhere('responder_id', $user->id);
                 });
             },
+            'sendRequests.manualResponses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
             'sendRequests.responses.chat',
             'sendRequests.responses.responder.telegramUser',
             'sendRequests.responses.user.telegramUser',
+            'sendRequests.manualResponses.chat',
+            'sendRequests.manualResponses.responder.telegramUser',
+            'sendRequests.manualResponses.user.telegramUser',
             'deliveryRequests.responses' => function ($query) use ($user) {
+                $query->where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                        ->orWhere('responder_id', $user->id);
+                });
+            },
+            'deliveryRequests.manualResponses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
                         ->orWhere('responder_id', $user->id);
@@ -146,7 +197,10 @@ class UserRequestController extends BaseController
             },
             'deliveryRequests.responses.chat',
             'deliveryRequests.responses.responder.telegramUser',
-            'deliveryRequests.responses.user.telegramUser'
+            'deliveryRequests.responses.user.telegramUser',
+            'deliveryRequests.manualResponses.chat',
+            'deliveryRequests.manualResponses.responder.telegramUser',
+            'deliveryRequests.manualResponses.user.telegramUser'
         ]);
 
         $delivery = collect();
@@ -243,8 +297,11 @@ class UserRequestController extends BaseController
                 $statusFilter[] = 'closed';
             }
 
+            // Merge both matching responses and manual responses
+            $allResponses = $request->responses->merge($request->manualResponses ?? collect());
+            
             // Filter responses where current user is the request owner (should see responders)
-            $relevantResponses = $request->responses->filter(function($response) use ($currentUser, $statusFilter) {
+            $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
                 return in_array($response->status, $statusFilter) &&
                        $response->user_id == $currentUser->id && // Current user is the request owner
                        $response->responder_id != null &&
