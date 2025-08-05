@@ -41,7 +41,8 @@ class DeliveryController extends BaseController
 
         if ($totalActiveRequests >= $maxActiveRequests) {
             return response()->json([
-                'error' => 'Вы можете иметь максимум ' . $maxActiveRequests . ' активных заявок одновременно'
+                'error' => 'Удалите либо завершите одну из активных заявок, чтобы создать новую.',
+                'errorTitle' => 'Превышен лимит заявок'
             ], 422);
         }
 
