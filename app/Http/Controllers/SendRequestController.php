@@ -82,7 +82,7 @@ class SendRequestController extends BaseController
             }
 
             // Check if request status is completed or matched
-            if (in_array($sendRequest->status, ['matched', 'completed'])) {
+            if (in_array($sendRequest->status, ['matched', 'matched_manually', 'completed'])) {
                 return response()->json([
                     'error' => 'Cannot delete completed or matched request'
                 ], 409);
@@ -146,7 +146,7 @@ class SendRequestController extends BaseController
             return response()->json(['error' => 'Send request not found'], 404);
         }
 
-        if ($sendRequest->status !== 'matched') {
+        if (in_array($sendRequest->status, ['matched', 'matched_manually'])) {
             return response()->json(['error' => 'Can only close matched requests'], 409);
         }
 

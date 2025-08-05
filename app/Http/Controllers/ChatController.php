@@ -446,11 +446,11 @@ class ChatController extends BaseController
         $chat->update(['status' => 'completed']);
 
         // Update related request statuses to completed
-        if ($chat->sendRequest && in_array($chat->sendRequest->status, ['matched', 'active'])) {
+        if ($chat->sendRequest && in_array($chat->sendRequest->status, ['matched', 'matched_manually', 'active'])) {
             $chat->sendRequest->update(['status' => 'completed']);
         }
 
-        if ($chat->deliveryRequest && in_array($chat->deliveryRequest->status, ['matched', 'active'])) {
+        if ($chat->deliveryRequest && in_array($chat->deliveryRequest->status, ['matched', 'matched_manually', 'active'])) {
             $chat->deliveryRequest->update(['status' => 'completed']);
         }
 

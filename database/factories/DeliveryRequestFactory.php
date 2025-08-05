@@ -38,7 +38,7 @@ class DeliveryRequestFactory extends Factory
             }
             $locations = Location::limit(10)->get();
         }
-        
+
         $fromLocation = $locations->random();
         $availableToLocations = $locations->where('id', '!=', $fromLocation->id);
         $toLocation = $availableToLocations->isNotEmpty() ? $availableToLocations->random() : $fromLocation;
@@ -53,7 +53,7 @@ class DeliveryRequestFactory extends Factory
                 'Маленькая', 'Средняя', 'Большая', 'Очень большая', 'Не указана', null
             ]),
             'description' => $this->faker->optional(0.7)->paragraph(1),
-            'status' => $this->faker->randomElement(['open', 'has_responses', 'matched', 'completed', 'closed']),
+            'status' => $this->faker->randomElement(['open', 'has_responses', 'matched', 'matched_manually', 'completed', 'closed']),
             'price' => $this->faker->optional(0.5)->numberBetween(30000, 300000), // Delivery fee in som
             'currency' => function (array $attributes) {
                 return $attributes['price'] ? $this->faker->randomElement(['UZS', 'USD']) : null;
