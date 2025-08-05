@@ -236,7 +236,7 @@ class UserRequestController extends BaseController
     {
         return match ($status) {
             'active' => $requests->filter(function ($request) {
-                return in_array($request->status, ['open', 'has_responses', 'matched']);
+                return in_array($request->status, ['open', 'has_responses', 'matched', 'matched_manually']);
             }),
             'closed' => $requests->filter(function ($request) {
                 return in_array($request->status, ['completed', 'closed']);
@@ -299,7 +299,7 @@ class UserRequestController extends BaseController
 
             // Merge both matching responses and manual responses
             $allResponses = $request->responses->merge($request->manualResponses ?? collect());
-            
+
             // Filter responses where current user is the request owner (should see responders)
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
                 return in_array($response->status, $statusFilter) &&
@@ -318,7 +318,7 @@ class UserRequestController extends BaseController
                     $requestCopy->response_status = $response->status;
                     $requestCopy->response_type = $response->response_type;
                     $requestCopy->responder_user = $response->responder; // This is the other party
-                    $requestCopy->setRelation('user', $response->responder); // FIX: Override user relation to show other party
+                    // Keep original user relation - it should show the request owner (current user)
 
                     // FIX: Check if original request is closed first
                     if ($request->status === 'closed') {

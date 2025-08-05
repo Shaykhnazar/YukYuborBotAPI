@@ -41,7 +41,8 @@ class DeliveryController extends BaseController
 
         if ($totalActiveRequests >= $maxActiveRequests) {
             return response()->json([
-                'error' => 'Вы можете иметь максимум ' . $maxActiveRequests . ' активных заявок одновременно'
+                'error' => 'Удалите либо завершите одну из активных заявок, чтобы создать новую.',
+                'errorTitle' => 'Превышен лимит заявок'
             ], 422);
         }
 
@@ -79,7 +80,7 @@ class DeliveryController extends BaseController
             }
 
             // Check if request status is completed or matched
-            if (in_array($deliveryRequest->status, ['matched', 'completed'])) {
+            if (in_array($deliveryRequest->status, ['matched', 'matched_manually', 'completed'])) {
                 return response()->json([
                     'error' => 'Cannot delete completed or matched request'
                 ], 409);
@@ -143,7 +144,7 @@ class DeliveryController extends BaseController
             return response()->json(['error' => 'Delivery request not found'], 404);
         }
 
-        if ($deliveryRequest->status !== 'matched') {
+        if (!in_array($deliveryRequest->status, ['matched', 'matched_manually'])) {
             return response()->json(['error' => 'Can only close matched requests'], 409);
         }
 
