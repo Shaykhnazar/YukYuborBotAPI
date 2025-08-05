@@ -318,7 +318,7 @@ class UserRequestController extends BaseController
                     $requestCopy->response_status = $response->status;
                     $requestCopy->response_type = $response->response_type;
                     $requestCopy->responder_user = $response->responder; // This is the other party
-                    $requestCopy->setRelation('user', $response->responder); // FIX: Override user relation to show other party
+                    // Keep original user relation - it should show the request owner (current user)
 
                     // FIX: Check if original request is closed first
                     if ($request->status === 'closed') {
