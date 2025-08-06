@@ -40,7 +40,7 @@ class ResponseController extends Controller
 
         // Get responses sent by user (where they are the responder)
         $sentResponses = Response::where('responder_id', $user->id)
-            ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded', 'rejected'])
+            ->whereIn('status', ['pending', 'waiting', 'accepted', 'responded'])
             ->with(['user.telegramUser', 'chat'])
             ->orderByDesc('created_at')
             ->get();
