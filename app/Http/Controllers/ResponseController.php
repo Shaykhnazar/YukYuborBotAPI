@@ -74,8 +74,10 @@ class ResponseController extends Controller
                       }
                   }
                 } elseif ($response->status === 'responded') {
-                    // Hide responded status from both users (deliverer already acted)
-                    continue;
+                    // Show responded status to the responder (traveller who acted), hide from request owner
+                    if ($response->responder_id !== $user->id) {
+                        continue; // Skip if user is not the responder
+                    }
                 } elseif ($response->status === 'accepted') {
                     // Each user sees other user's request record
                     if ($response->user_id !== $user->id) {
