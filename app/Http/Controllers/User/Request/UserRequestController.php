@@ -292,20 +292,19 @@ class UserRequestController extends BaseController
             // FIX: For closed requests, include 'closed' status in the filter
             $statusFilter = ['accepted', 'waiting', 'pending', 'responded'];
 
-            // If request is closed, also include closed responses
-            if ($request->status === 'closed') {
+            // If request is closed or completed, also include closed responses
+            if (in_array($request->status, ['closed', 'completed'])) {
                 $statusFilter[] = 'closed';
             }
 
             // Merge both matching responses and manual responses
             $allResponses = $request->responses->merge($request->manualResponses ?? collect());
 
-            // Filter responses where current user is the request owner (should see responders)
+            // Filter responses where current user is involved (either as request owner or responder)
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
                 return in_array($response->status, $statusFilter) &&
-                       $response->user_id == $currentUser->id && // Current user is the request owner
-                       $response->responder_id != null &&
-                       $response->responder_id != $currentUser->id; // Don't show self as responder
+                       ($response->user_id == $currentUser->id || $response->responder_id == $currentUser->id) &&
+                       $response->responder_id != null;
             });
 
             if ($relevantResponses->isNotEmpty()) {
@@ -320,9 +319,9 @@ class UserRequestController extends BaseController
                     $requestCopy->responder_user = $response->responder; // This is the other party
                     // Keep original user relation - it should show the request owner (current user)
 
-                    // FIX: Check if original request is closed first
-                    if ($request->status === 'closed') {
-                        $requestCopy->status = 'closed'; // Keep closed status
+                    // FIX: Check if original request is closed or completed first
+                    if (in_array($request->status, ['closed', 'completed'])) {
+                        $requestCopy->status = $request->status; // Keep original status
                     } else if ($response->status === 'closed') {
                         $requestCopy->status = 'closed'; // Keep closed status from response
                     } else if ($response->status === 'accepted' || $response->status === 'waiting') {

@@ -146,7 +146,7 @@ class SendRequestController extends BaseController
             return response()->json(['error' => 'Send request not found'], 404);
         }
 
-        if (in_array($sendRequest->status, ['matched', 'matched_manually'])) {
+        if (!in_array($sendRequest->status, ['matched', 'matched_manually'])) {
             return response()->json(['error' => 'Can only close matched requests'], 409);
         }
 
