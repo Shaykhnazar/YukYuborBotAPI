@@ -343,7 +343,7 @@ class ResponseController extends Controller
     private function handleManualAcceptance(User $user, int $responseId): JsonResponse
     {
         $response = Response::where('id', $responseId)
-            ->where('user_id', $user->id)
+            ->where('responder_id', $user->id)
             ->where('response_type', Response::TYPE_MANUAL)
             ->where('status', Response::STATUS_PENDING)
             ->first();
@@ -416,7 +416,7 @@ class ResponseController extends Controller
     private function handleManualRejection(User $user, int $responseId): JsonResponse
     {
         $response = Response::where('id', $responseId)
-            ->where('user_id', $user->id)
+            ->where('responder_id', $user->id)
             ->where('response_type', Response::TYPE_MANUAL)
             ->where('status', Response::STATUS_PENDING)
             ->first();
