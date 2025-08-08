@@ -62,21 +62,14 @@ class ResponseController extends Controller
                       continue; // Skip for sender
                   }
                 } elseif ($response->status === 'waiting') {
-                  // Sender should see for final decision
-                  if ($response->request_type === 'delivery') {
-                      // NEW RECORD: delivery request type, sender is user_id
-                      if ($response->user_id !== $user->id) {
-                          continue; // Skip for deliverer
-                      }
-                  } else { // send requests (shouldn't happen in this flow)
-                      if ($response->responder_id !== $user->id) {
-                          continue;
-                      }
-                  }
+                    // Show if user is not responder
+                    if ($response->responder_id === $user->id) {
+                        continue; // Skip if user is the response receiver
+                    }
                 } elseif ($response->status === 'responded') {
-                    // Show responded status to the responder (traveller who acted), hide from request owner
-                    if ($response->responder_id !== $user->id) {
-                        continue; // Skip if user is not the responder
+                    // Show responded status to the user who received the response (deliverer who owns the request)
+                    if ($response->user_id !== $user->id) {
+                        continue; // Skip if user is not the response receiver
                     }
                 } elseif ($response->status === 'accepted') {
                     // Each user sees other user's request record
