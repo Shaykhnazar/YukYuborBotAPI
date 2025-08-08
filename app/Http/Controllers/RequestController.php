@@ -43,22 +43,33 @@ class RequestController extends Controller
             ->whereIn('status', ['open', 'has_responses'])
             /*->where('user_id', '!=', $currentUser->id)*/; //  now user can see own requests on requests page
 
-        /* -----------------  Route filter (country-aware)  ----------------- */
+        /* -----------------  Route filter (country-aware with reverse direction)  ----------------- */
         if (!empty($filters['from_location_id']) && !empty($filters['to_location_id'])) {
             $fromId = $filters['from_location_id'];
             $toId   = $filters['to_location_id'];
 
             foreach ([$delivery, $send] as $q) {
-                // origin
-                $q->where(function ($q) use ($fromId) {
-                    $q->whereHas('fromLocation', fn ($l) => $l->where('parent_id', $fromId))
-                        ->orWhere('from_location_id', $fromId);
-                });
-
-                // destination
-                $q->where(function ($q) use ($toId) {
-                    $q->whereHas('toLocation', fn ($l) => $l->where('parent_id', $toId))
-                        ->orWhere('to_location_id', $toId);
+                $q->where(function ($mainQuery) use ($fromId, $toId) {
+                    // Forward direction: from_location matches fromId AND to_location matches toId
+                    $mainQuery->where(function ($forwardQuery) use ($fromId, $toId) {
+                        $forwardQuery->where(function ($fromQuery) use ($fromId) {
+                            $fromQuery->whereHas('fromLocation', fn ($l) => $l->where('parent_id', $fromId))
+                                     ->orWhere('from_location_id', $fromId);
+                        })->where(function ($toQuery) use ($toId) {
+                            $toQuery->whereHas('toLocation', fn ($l) => $l->where('parent_id', $toId))
+                                   ->orWhere('to_location_id', $toId);
+                        });
+                    })
+                    // Reverse direction: from_location matches toId AND to_location matches fromId  
+                    ->orWhere(function ($reverseQuery) use ($fromId, $toId) {
+                        $reverseQuery->where(function ($fromQuery) use ($toId) {
+                            $fromQuery->whereHas('fromLocation', fn ($l) => $l->where('parent_id', $toId))
+                                     ->orWhere('from_location_id', $toId);
+                        })->where(function ($toQuery) use ($fromId) {
+                            $toQuery->whereHas('toLocation', fn ($l) => $l->where('parent_id', $fromId))
+                                   ->orWhere('to_location_id', $fromId);
+                        });
+                    });
                 });
             }
         }
