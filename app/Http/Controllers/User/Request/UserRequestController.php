@@ -30,8 +30,7 @@ class UserRequestController extends BaseController
         $user->load([
             'sendRequests.responses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
-                    $q->where('user_id', $user->id)
-                        ->orWhere('responder_id', $user->id);
+                    $q->where('user_id', $user->id);
                 });
             },
             'sendRequests.manualResponses' => function ($query) use ($user) {
@@ -48,8 +47,7 @@ class UserRequestController extends BaseController
             'sendRequests.manualResponses.user.telegramUser',
             'deliveryRequests.responses' => function ($query) use ($user) {
                 $query->where(function($q) use ($user) {
-                    $q->where('user_id', $user->id)
-                        ->orWhere('responder_id', $user->id);
+                    $q->where('user_id', $user->id);
                 });
             },
             'deliveryRequests.manualResponses' => function ($query) use ($user) {
