@@ -117,6 +117,11 @@ class DeliveryRequest extends Model
         return $query->where('status', 'open');
     }
 
+    public function scopeClosed($query)
+    {
+        return $query->whereIn('status', ['closed', 'completed']);
+    }
+
     public function scopeForRoute($query, $fromLocationId, $toLocationId)
     {
         return $query->where('from_location_id', $fromLocationId)

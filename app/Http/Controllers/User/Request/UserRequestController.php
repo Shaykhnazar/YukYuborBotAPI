@@ -365,13 +365,7 @@ class UserRequestController extends BaseController
         }
 
         // Get the other user ID from the request object
-        $otherUserId = null;
-
-        if (isset($request->user->id)) {
-            $otherUserId = $request->user->id;
-        } elseif (isset($request->responder_user->id)) {
-            $otherUserId = $request->responder_user->id;
-        }
+        $otherUserId = $request->responder_user->id ?? null;
 
         if (!$otherUserId) {
             Log::info('No other user found in request object, returning false');

@@ -123,17 +123,17 @@ class ResponseController extends Controller
                         'image' => $otherUser->telegramUser->image ?? null,
                         'requests_count' => $isReceiver
                             ? ($response->response_type === 'manual'
-                                ? $otherUser->deliveryRequests()->count()
-                                : $otherUser->sendRequests()->count())
+                                ? $otherUser->deliveryRequests()->closed()->count()
+                                : $otherUser->sendRequests()->closed()->count())
                             : ($response->response_type === 'manual'
-                                ? $otherUser->sendRequests()->count()
-                                : $otherUser->deliveryRequests()->count()),
+                                ? $otherUser->sendRequests()->closed()->count()
+                                : $otherUser->deliveryRequests()->closed()->count()),
                     ],
                     'from_location' => $sendRequest->fromLocation->fullRouteName,
                     'to_location' => $sendRequest->toLocation->fullRouteName,
                     'from_date' => $sendRequest->from_date,
                     'to_date' => $sendRequest->to_date,
-                    'price' => $response->response_type === 'manual' && $response->price ? $response->price : $sendRequest->price,
+                    'price' => $response->response_type === 'manual' && $response->amount ? $response->amount : $sendRequest->price,
                     'currency' => $response->response_type === 'manual' && $response->currency ? $response->currency : $sendRequest->currency,
                     'size_type' => $sendRequest->size_type,
                     'description' => $response->response_type === 'manual' ? $response->message : $sendRequest->description,
@@ -141,6 +141,14 @@ class ResponseController extends Controller
                     'created_at' => $response->created_at,
                     'response_type' => $response->response_type === 'manual' ? 'manual' : 'can_deliver',
                     'direction' => $isReceiver ? 'received' : 'sent',
+                    // Original send request info (for matching responses only)
+                    'original_request' => $sendRequest ? [
+                        'from_location' => $sendRequest->fromLocation->fullRouteName,
+                        'to_location' => $sendRequest->toLocation->fullRouteName,
+                        'description' => $sendRequest->description,
+                        'price' => $sendRequest->price,
+                        'currency' => $sendRequest->currency,
+                    ] : null
                 ];
 
             } elseif ($response->request_type === 'delivery') {
@@ -179,17 +187,17 @@ class ResponseController extends Controller
                         'image' => $otherUser->telegramUser->image ?? null,
                         'requests_count' => $isReceiver
                             ? ($response->response_type === 'manual'
-                                ? $otherUser->sendRequests()->count()
-                                : $otherUser->deliveryRequests()->count())
+                                ? $otherUser->sendRequests()->closed()->count()
+                                : $otherUser->deliveryRequests()->closed()->count())
                             : ($response->response_type === 'manual'
-                                ? $otherUser->deliveryRequests()->count()
-                                : $otherUser->sendRequests()->count()),
+                                ? $otherUser->deliveryRequests()->closed()->count()
+                                : $otherUser->sendRequests()->closed()->count()),
                     ],
                     'from_location' => $deliveryRequest->fromLocation->fullRouteName,
                     'to_location' => $deliveryRequest->toLocation->fullRouteName,
                     'from_date' => $deliveryRequest->from_date,
                     'to_date' => $deliveryRequest->to_date,
-                    'price' => $response->response_type === 'manual' && $response->price ? $response->price : $deliveryRequest->price,
+                    'price' => $response->response_type === 'manual' && $response->amount ? $response->amount : $deliveryRequest->price,
                     'currency' => $response->response_type === 'manual' && $response->currency ? $response->currency : $deliveryRequest->currency,
                     'size_type' => $deliveryRequest->size_type,
                     'description' => $response->response_type === 'manual' ? $response->message : $deliveryRequest->description,
@@ -367,7 +375,7 @@ class ResponseController extends Controller
     private function handleManualAcceptance(User $user, int $responseId): JsonResponse
     {
         $response = Response::where('id', $responseId)
-            ->where('responder_id', $user->id)
+            ->where('user_id', $user->id)
             ->where('response_type', Response::TYPE_MANUAL)
             ->where('status', Response::STATUS_PENDING)
             ->first();
@@ -419,7 +427,7 @@ class ResponseController extends Controller
         ]);
 
         // Update target request status
-        $targetRequest->update(['status' => 'matched_manually', 'matched_delivery_id' => null]);
+        $targetRequest->update(['status' => 'matched_manually']);
 
         // Send notification to responder
         $this->sendTelegramNotification(
