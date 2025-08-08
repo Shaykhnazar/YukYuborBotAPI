@@ -121,12 +121,23 @@ class DeliveryRequestFactory extends Factory
     /**
      * Delivery request with specific route
      */
-    public function withRoute(int $fromLocationId, int $toLocationId): static
+    public function withRoute($fromLocation, $toLocation): static
     {
-        return $this->state(fn (array $attributes) => [
-            'from_location_id' => $fromLocationId,
-            'to_location_id' => $toLocationId,
-        ]);
+        return $this->state(function (array $attributes) use ($fromLocation, $toLocation) {
+            // Handle both location names (strings) and IDs (integers)
+            $fromLocationId = is_string($fromLocation) 
+                ? Location::where('name', $fromLocation)->first()?->id ?? Location::inRandomOrder()->first()->id
+                : $fromLocation;
+                
+            $toLocationId = is_string($toLocation)
+                ? Location::where('name', $toLocation)->first()?->id ?? Location::inRandomOrder()->first()->id  
+                : $toLocation;
+
+            return [
+                'from_location_id' => $fromLocationId,
+                'to_location_id' => $toLocationId,
+            ];
+        });
     }
 
     /**
