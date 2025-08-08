@@ -241,40 +241,64 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Invalid request or cannot respond to own request'], 400);
         }
 
-        // Check if user already responded to this request (check both perspectives)
-        $existingResponse = Response::where(function($query) use ($targetRequest, $user, $requestType, $requestId) {
-            // Check if user already sent a response to this request owner
-            $query->where('user_id', $targetRequest->user_id)
-                  ->where('responder_id', $user->id)
-                  ->where('request_type', $requestType)
-                  ->where('offer_id', $requestId);
-        })->orWhere(function($query) use ($targetRequest, $user, $requestType, $requestId) {
-            // Or check if user already has a response record for this request
-            $query->where('user_id', $user->id)
-                  ->where('responder_id', $targetRequest->user_id)
-                  ->where('request_type', $requestType)
-                  ->where('offer_id', $requestId);
+        // Check if user already has an active response to this request
+        $activeResponse = Response::where(function($query) use ($targetRequest, $user, $requestType, $requestId) {
+            $query->where(function($subQuery) use ($targetRequest, $user, $requestType, $requestId) {
+                // Check if user already sent a response to this request owner
+                $subQuery->where('user_id', $targetRequest->user_id)
+                        ->where('responder_id', $user->id)
+                        ->where('request_type', $requestType)
+                        ->where('offer_id', $requestId);
+            })->orWhere(function($subQuery) use ($targetRequest, $user, $requestType, $requestId) {
+                // Or check if user already has a response record for this request
+                $subQuery->where('user_id', $user->id)
+                        ->where('responder_id', $targetRequest->user_id)
+                        ->where('request_type', $requestType)
+                        ->where('offer_id', $requestId);
+            });
         })->whereIn('status', ['pending', 'waiting', 'accepted'])
           ->where('response_type', Response::TYPE_MANUAL)
           ->first();
 
-        if ($existingResponse) {
+        if ($activeResponse) {
             return response()->json(['error' => 'You have already responded to this request'], 400);
         }
 
-        // Create single manual response for request owner (who receives and can accept/reject)
-        $response = Response::create([
-            'user_id' => $targetRequest->user_id, // Request owner receives the response
-            'responder_id' => $user->id, // User who clicked "Откликнуться"
-            'request_type' => $requestType,
-            'request_id' => 0, // Not used in manual responses
-            'offer_id' => $requestId,
-            'status' => Response::STATUS_PENDING,
-            'response_type' => Response::TYPE_MANUAL,
-            'message' => $message,
-            'currency' => $validated['currency'] ?? null,
-            'amount' => $validated['amount'] ?? null
-        ]);
+        // Check if there's a rejected response that we can reuse
+        $rejectedResponse = Response::where('user_id', $targetRequest->user_id)
+            ->where('responder_id', $user->id)
+            ->where('request_type', $requestType)
+            ->where('offer_id', $requestId)
+            ->where('status', Response::STATUS_REJECTED)
+            ->where('response_type', Response::TYPE_MANUAL)
+            ->first();
+
+        // Either update existing rejected response or create new one
+        if ($rejectedResponse) {
+            // Reuse the rejected response by updating it
+            $rejectedResponse->update([
+                'status' => Response::STATUS_PENDING,
+                'message' => $message,
+                'currency' => $validated['currency'] ?? null,
+                'amount' => $validated['amount'] ?? null,
+                'updated_at' => now()
+            ]);
+            $response = $rejectedResponse;
+        } else {
+            // Create new manual response for request owner (who receives and can accept/reject)
+            $response = Response::create([
+                'user_id' => $targetRequest->user_id, // Request owner receives the response
+                'responder_id' => $user->id, // User who clicked "Откликнуться"
+                'request_type' => $requestType,
+                'request_id' => 0, // Not used in manual responses
+                'offer_id' => $requestId,
+                'status' => Response::STATUS_PENDING,
+                'response_type' => Response::TYPE_MANUAL,
+                'message' => $message,
+                'currency' => $validated['currency'] ?? null,
+                'amount' => $validated['amount'] ?? null
+            ]);
+        }
 
         // Send notification to request owner with response details
         $notificationMessage = "Пользователь откликнулся на вашу заявку!\n\n";
@@ -416,7 +440,7 @@ class ResponseController extends Controller
     private function handleManualRejection(User $user, int $responseId): JsonResponse
     {
         $response = Response::where('id', $responseId)
-            ->where('responder_id', $user->id)
+            ->where('user_id', $user->id)
             ->where('response_type', Response::TYPE_MANUAL)
             ->where('status', Response::STATUS_PENDING)
             ->first();
