@@ -37,8 +37,11 @@ class ChatController extends BaseController
                 'sender.telegramUser',
                 'receiver.telegramUser',
                 'latestMessage',
-                'sendRequest',
-                'deliveryRequest'
+                'sendRequest.fromLocation',
+                'sendRequest.toLocation',
+                'deliveryRequest.fromLocation',
+                'deliveryRequest.toLocation',
+                'response'
             ])
             ->get()
             ->unique(function ($chat) use ($user) {
@@ -94,8 +97,11 @@ class ChatController extends BaseController
                 'sender.telegramUser',
                 'receiver.telegramUser',
                 'messages.sender.telegramUser',
-                'sendRequest',
-                'deliveryRequest'
+                'sendRequest.fromLocation',
+                'sendRequest.toLocation',
+                'deliveryRequest.fromLocation',
+                'deliveryRequest.toLocation',
+                'response'
             ])
             ->firstOrFail();
 
@@ -555,6 +561,7 @@ class ChatController extends BaseController
             return [
                 'type' => 'send',
                 'id' => $chat->sendRequest->id,
+                'user_id' => $chat->sendRequest->user_id,
                 'from_location' => $chat->sendRequest->fromLocation->fullRouteName,
                 'to_location' => $chat->sendRequest->toLocation->fullRouteName,
                 'description' => $chat->sendRequest->description,
@@ -562,6 +569,7 @@ class ChatController extends BaseController
                 'currency' => $chat->sendRequest->currency,
                 'to_date' => $chat->sendRequest->to_date,
                 'status' => $chat->sendRequest->status,
+                'response_type' => $chat->response ? $chat->response->response_type : 'unknown',
             ];
         }
 
@@ -569,6 +577,7 @@ class ChatController extends BaseController
             return [
                 'type' => 'delivery',
                 'id' => $chat->deliveryRequest->id,
+                'user_id' => $chat->deliveryRequest->user_id,
                 'from_location' => $chat->deliveryRequest->fromLocation->fullRouteName,
                 'to_location' => $chat->deliveryRequest->toLocation->fullRouteName,
                 'description' => $chat->deliveryRequest->description,
@@ -577,6 +586,7 @@ class ChatController extends BaseController
                 'from_date' => $chat->deliveryRequest->from_date,
                 'to_date' => $chat->deliveryRequest->to_date,
                 'status' => $chat->deliveryRequest->status,
+                'response_type' => $chat->response ? $chat->response->response_type : 'unknown',
             ];
         }
 

@@ -33,13 +33,11 @@ class RequestController extends Controller
         /* -----------------  Base queries  ----------------- */
         $delivery = DeliveryRequest::query()
             ->selectRaw("delivery_requests.*, 'delivery' as type")
-            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
             ->whereIn('status', ['open', 'has_responses'])
             /*->where('user_id', '!=', $currentUser->id)*/; //  now user can see own requests on requests page
 
         $send = SendRequest::query()
             ->selectRaw("send_requests.*, 'send' as type")
-            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
             ->whereIn('status', ['open', 'has_responses'])
             /*->where('user_id', '!=', $currentUser->id)*/; //  now user can see own requests on requests page
 
@@ -60,7 +58,7 @@ class RequestController extends Controller
                                    ->orWhere('to_location_id', $toId);
                         });
                     })
-                    // Reverse direction: from_location matches toId AND to_location matches fromId  
+                    // Reverse direction: from_location matches toId AND to_location matches fromId
                     ->orWhere(function ($reverseQuery) use ($fromId, $toId) {
                         $reverseQuery->where(function ($fromQuery) use ($toId) {
                             $fromQuery->whereHas('fromLocation', fn ($l) => $l->where('parent_id', $toId))
@@ -102,6 +100,9 @@ class RequestController extends Controller
         $results = $union->orderByDesc('created_at')
                          ->paginate($perPage, ['*'], 'page', $page);
 
+        // Load relationships after pagination for better performance
+        $this->loadRelationshipsAfterPagination($results);
+
         /* -----------------  Response  ----------------- */
         return response()->json([
             'data' => IndexRequestResource::collection($results),
@@ -113,6 +114,47 @@ class RequestController extends Controller
                 'has_more'     => $results->hasMorePages(),
             ]
         ]);
+    }
+
+    /**
+     * Load relationships after pagination to avoid UNION query conflicts
+     */
+    private function loadRelationshipsAfterPagination($results)
+    {
+        $deliveryIds = [];
+        $sendIds = [];
+
+        // Separate IDs by type
+        foreach ($results->items() as $item) {
+            if ($item->type === 'delivery') {
+                $deliveryIds[] = $item->id;
+            } else {
+                $sendIds[] = $item->id;
+            }
+        }
+
+        // Load delivery requests with relationships
+        $deliveryRequests = DeliveryRequest::whereIn('id', $deliveryIds)
+            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
+            ->get()
+            ->keyBy('id');
+
+        // Load send requests with relationships
+        $sendRequests = SendRequest::whereIn('id', $sendIds)
+            ->with(['user.telegramUser', 'fromLocation', 'toLocation'])
+            ->get()
+            ->keyBy('id');
+
+        // Merge the loaded relationships back into the paginated results
+        foreach ($results->items() as $item) {
+            if ($item->type === 'delivery' && isset($deliveryRequests[$item->id])) {
+                $loadedRequest = $deliveryRequests[$item->id];
+                $item->setRelations($loadedRequest->getRelations());
+            } elseif ($item->type === 'send' && isset($sendRequests[$item->id])) {
+                $loadedRequest = $sendRequests[$item->id];
+                $item->setRelations($loadedRequest->getRelations());
+            }
+        }
     }
 
 }

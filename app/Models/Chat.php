@@ -52,4 +52,10 @@ class Chat extends Model
             ->where('is_read', false)
             ->count();
     }
+
+    public function response(): HasOne
+    {
+        return $this->hasOne(Response::class, 'chat_id', 'id')
+            ->whereIn('status', ['accepted', 'waiting']);
+    }
 }
