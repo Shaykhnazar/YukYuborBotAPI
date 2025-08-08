@@ -157,24 +157,15 @@ class DeliveryController extends BaseController
             // FIX: Also update the matched send request
             if ($deliveryRequest->matched_send_id) {
                 $sendRequest = \App\Models\SendRequest::find($deliveryRequest->matched_send_id);
-                if ($sendRequest) {
-                    $sendRequest->update(['status' => 'closed']);
-                }
+                $sendRequest?->update(['status' => 'closed']);
             }
 
-            // FIX: Update all related responses to closed
+            // Close ALL responses that involve this request (in either field)
             Response::where(function($query) use ($id) {
-                $query->where(function($subQuery) use ($id) {
-                    // Responses where this delivery request is the main request
-                    $subQuery->where('request_type', 'delivery')
-                        ->where('request_id', $id);
-                })->orWhere(function($subQuery) use ($id) {
-                    // Responses where this delivery request appears as an offer
-                    $subQuery->where('request_type', 'send')
-                        ->where('offer_id', $id);
-                });
+                $query->where('request_id', $id)
+                    ->orWhere('offer_id', $id);
             })
-                ->whereIn('status', ['accepted', 'waiting'])
+                ->whereIn('status', ['accepted', 'waiting', 'responded', 'pending'])
                 ->update(['status' => 'closed']);
 
             // FIX: Update chat status to closed
