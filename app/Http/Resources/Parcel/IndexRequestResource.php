@@ -23,10 +23,10 @@ class IndexRequestResource extends JsonResource
 
         // Calculate type-specific request counts (only closed/completed requests)
         $sendRequestsCount = $displayUser->sendRequests()
-            ->whereIn('status', ['completed', 'closed'])
+            ->closed()
             ->count();
         $deliveryRequestsCount = $displayUser->deliveryRequests()
-            ->whereIn('status', ['completed', 'closed'])
+            ->closed()
             ->count();
 
         return [

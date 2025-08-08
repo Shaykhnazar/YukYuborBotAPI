@@ -156,3 +156,9 @@ DTOs (Data Transfer Objects) are used for request validation and data structurin
 - Tailwind CSS integration
 - Axios for HTTP client
 - Laravel Vite Plugin for seamless Laravel integration
+
+
+## Importand notice!
+
+We have not used to laravel migrations in this project instead we use raw PostgreSQL query,
+so if you want to know about the structure ask me about it

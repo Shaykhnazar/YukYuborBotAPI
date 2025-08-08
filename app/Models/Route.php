@@ -66,23 +66,35 @@ class Route extends Model
         return $this->countActiveRequests();
     }
 
-    // Method to count active requests
+    // Method to count active requests (including reverse direction)
     public function countActiveRequests(): int
     {
         $fromIds = $this->from_location_ids;
         $toIds = $this->to_location_ids;
 
-        $sendCount = SendRequest::whereIn('from_location_id', $fromIds)
+        // Forward direction counts
+        $sendForwardCount = SendRequest::whereIn('from_location_id', $fromIds)
             ->whereIn('to_location_id', $toIds)
             ->whereIn('status', ['open', 'has_responses'])
             ->count();
 
-        $deliveryCount = DeliveryRequest::whereIn('from_location_id', $fromIds)
+        $deliveryForwardCount = DeliveryRequest::whereIn('from_location_id', $fromIds)
             ->whereIn('to_location_id', $toIds)
             ->whereIn('status', ['open', 'has_responses'])
             ->count();
 
-        return $sendCount + $deliveryCount;
+        // Reverse direction counts
+        $sendReverseCount = SendRequest::whereIn('from_location_id', $toIds)
+            ->whereIn('to_location_id', $fromIds)
+            ->whereIn('status', ['open', 'has_responses'])
+            ->count();
+
+        $deliveryReverseCount = DeliveryRequest::whereIn('from_location_id', $toIds)
+            ->whereIn('to_location_id', $fromIds)
+            ->whereIn('status', ['open', 'has_responses'])
+            ->count();
+
+        return $sendForwardCount + $deliveryForwardCount + $sendReverseCount + $deliveryReverseCount;
     }
 
     // Static method to load routes with counts efficiently
@@ -106,8 +118,9 @@ class Route extends Model
             $routeKey = "route_{$route->id}";
             $routeKeys[$routeKey] = $route->id;
 
+            // Forward direction: from_location_id IN fromIds AND to_location_id IN toIds
             $unionQueries[] = "
-                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'send' as type
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'send_forward' as type
                 FROM send_requests
                 WHERE status IN ('open','has_responses')
                   AND from_location_id IN ({$fromIds})
@@ -115,11 +128,28 @@ class Route extends Model
             ";
 
             $unionQueries[] = "
-                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'delivery' as type
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'delivery_forward' as type
                 FROM delivery_requests
                 WHERE status IN ('open','has_responses')
                   AND from_location_id IN ({$fromIds})
                   AND to_location_id IN ({$toIds})
+            ";
+
+            // Reverse direction: from_location_id IN toIds AND to_location_id IN fromIds
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'send_reverse' as type
+                FROM send_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$toIds})
+                  AND to_location_id IN ({$fromIds})
+            ";
+
+            $unionQueries[] = "
+                SELECT '{$routeKey}' as route_key, COUNT(*) as cnt, 'delivery_reverse' as type
+                FROM delivery_requests
+                WHERE status IN ('open','has_responses')
+                  AND from_location_id IN ({$toIds})
+                  AND to_location_id IN ({$fromIds})
             ";
         }
 
