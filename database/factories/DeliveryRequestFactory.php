@@ -25,27 +25,9 @@ class DeliveryRequestFactory extends Factory
         $fromDate = $this->faker->dateTimeBetween('now', '+30 days');
         $toDate = $this->faker->dateTimeBetween($fromDate, $fromDate->format('Y-m-d') . ' +15 days');
 
-        // Get random locations from database, or create some if none exist
-        $locations = Location::inRandomOrder()->limit(10)->get();
-        if ($locations->isEmpty()) {
-            // Create some basic locations if none exist
-            $locationNames = ['Tashkent', 'Samarkand', 'Bukhara', 'Andijan', 'Namangan'];
-            foreach ($locationNames as $name) {
-                Location::firstOrCreate(['name' => $name], [
-                    'type' => 'city',
-                    'is_active' => true
-                ]);
-            }
-            $locations = Location::limit(10)->get();
-        }
-
-        $fromLocation = $locations->random();
-        $availableToLocations = $locations->where('id', '!=', $fromLocation->id);
-        $toLocation = $availableToLocations->isNotEmpty() ? $availableToLocations->random() : $fromLocation;
-
         return [
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
+            'from_location_id' => Location::factory(),
+            'to_location_id' => Location::factory(),
             'user_id' => User::factory(),
             'from_date' => $fromDate,
             'to_date' => $toDate,
