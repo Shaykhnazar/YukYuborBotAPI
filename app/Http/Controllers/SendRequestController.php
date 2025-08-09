@@ -105,7 +105,7 @@ class SendRequestController extends BaseController
             })->delete();
 
             // Delete any chats related to this send request
-            Chat::where('send_request_id', $id)->update(['status' => 'closed']);
+//            Chat::where('send_request_id', $id)->update(['status' => 'closed']);
 
             // Delete the request
             $sendRequest->delete();
@@ -173,11 +173,11 @@ class SendRequestController extends BaseController
                 ->update(['status' => 'closed']);
 
             // FIX: Update chat status to closed
-            Chat::where('send_request_id', $id)
-                ->update([
-                    'send_request_id' => null,
-                    'status' => 'closed'
-                ]);
+//            Chat::where('send_request_id', $id)
+//                ->update([
+//                    'send_request_id' => null,
+//                    'status' => 'closed'
+//                ]);
 
             DB::commit();
 

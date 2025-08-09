@@ -239,12 +239,15 @@ class ChatController extends BaseController
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
-// First check for any existing chat between these two users
+        // First check for any existing chat between these two users
         $existingChat = Chat::where(function ($query) use ($user, $request) {
-            $query->where('sender_id', $user->id)
-                ->where('receiver_id', $request->other_user_id)
-                ->orWhere('sender_id', $request->other_user_id)
-                ->where('receiver_id', $user->id);
+            $query->where(function ($subQuery) use ($user, $request) {
+                $subQuery->where('sender_id', $user->id)
+                    ->where('receiver_id', $request->other_user_id);
+            })->orWhere(function ($subQuery) use ($user, $request) {
+                $subQuery->where('sender_id', $request->other_user_id)
+                    ->where('receiver_id', $user->id);
+            });
         })->first();
 
         if ($existingChat) {
@@ -539,7 +542,7 @@ class ChatController extends BaseController
         $bothRequestsCompleted = ($chat->sendRequest && $chat->deliveryRequest) &&
                                 ($sendCompleted && $deliveryCompleted);
 
-        $isCompleted = $bothRequestsCompleted;
+        $isCompleted = /*$bothRequestsCompleted*/ false;
 
         Log::info('🔍 Chat completion analysis', [
             'chat_id' => $chat->id,
