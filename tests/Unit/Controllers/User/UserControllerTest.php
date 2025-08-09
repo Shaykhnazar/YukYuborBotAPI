@@ -270,7 +270,7 @@ class UserControllerTest extends TestCase
         
         $this->assertArrayHasKey('with_us', $data['user']);
         $this->assertIsString($data['user']['with_us']);
-        $this->assertStringContains('С нами уже', $data['user']['with_us']);
+        $this->assertStringContainsString('С нами уже', $data['user']['with_us']);
     }
 
     public function test_user_data_excludes_telegram_user_in_main_object()
@@ -328,7 +328,7 @@ class UserControllerTest extends TestCase
         $data = json_decode($response->getContent(), true);
         
         // Should use the custom Russian locale
-        $this->assertStringContains('С нами уже', $data['user']['with_us']);
+        $this->assertStringContainsString('С нами уже', $data['user']['with_us']);
     }
 
     public function test_show_method_works_with_user_without_telegram_user()

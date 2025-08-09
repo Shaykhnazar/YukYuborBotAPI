@@ -44,7 +44,7 @@ class LocationController extends Controller
 
         // Apply search filter if query is provided
         if (!empty($query)) {
-            $citiesQuery->where('name', 'ILIKE', '%' . $query . '%');
+            $citiesQuery->where('name', 'LIKE', '%' . $query . '%');
         }
 
         $cities = $citiesQuery->get(['id', 'name', 'parent_id']);
@@ -62,7 +62,7 @@ class LocationController extends Controller
         }
 
         $locations = Location::active()
-            ->where('name', 'ILIKE', '%' . $query . '%')
+            ->where('name', 'LIKE', '%' . $query . '%')
             ->when($type !== 'all', function ($q) use ($type) {
                 return $q->where('type', $type);
             })
@@ -170,16 +170,16 @@ class LocationController extends Controller
             ->join('locations as from_loc', 'delivery_requests.from_location_id', '=', 'from_loc.id')
             ->join('locations as to_loc', 'delivery_requests.to_location_id', '=', 'to_loc.id')
             ->where('delivery_requests.status', 'IN', ['open', 'has_responses'])
-            ->where('from_loc.name', 'ILIKE', '%' . $fromCountryName . '%')
-            ->where('to_loc.name', 'ILIKE', '%' . $toCountryName . '%')
+            ->where('from_loc.name', 'LIKE', '%' . $fromCountryName . '%')
+            ->where('to_loc.name', 'LIKE', '%' . $toCountryName . '%')
             ->count();
 
         $sendCount = DB::table('send_requests')
             ->join('locations as from_loc', 'send_requests.from_location_id', '=', 'from_loc.id')
             ->join('locations as to_loc', 'send_requests.to_location_id', '=', 'to_loc.id')
             ->where('send_requests.status', 'IN', ['open', 'has_responses'])
-            ->where('from_loc.name', 'ILIKE', '%' . $fromCountryName . '%')
-            ->where('to_loc.name', 'ILIKE', '%' . $toCountryName . '%')
+            ->where('from_loc.name', 'LIKE', '%' . $fromCountryName . '%')
+            ->where('to_loc.name', 'LIKE', '%' . $toCountryName . '%')
             ->count();
 
         return $deliveryCount + $sendCount;

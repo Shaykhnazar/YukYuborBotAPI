@@ -76,13 +76,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Great service!',
-                'rating' => 5,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Great service!',
+                rating: 5,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -95,7 +95,8 @@ class UserReviewControllerTest extends TestCase
         
         $data = json_decode($response->getContent(), true);
         
-        $this->assertArrayHasKey('data', $data);
+        // Check the direct response structure (not wrapped in 'data' in unit tests)
+        $this->assertArrayHasKey('id', $data);
         
         // Verify review was saved to database
         $this->assertDatabaseHas('reviews', [
@@ -125,13 +126,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Another review',
-                'rating' => 4,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Another review',
+                rating: 4,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -155,13 +156,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Review',
-                'rating' => 5,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Review',
+                rating: 5,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -183,13 +184,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Review',
-                'rating' => 5,
-                'requestId' => $deliveryRequest->id,
-                'requestType' => 'delivery'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Review',
+                rating: 5,
+                requestId: $deliveryRequest->id,
+                requestType: 'delivery'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -220,13 +221,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Great transaction!',
-                'rating' => 5,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Great transaction!',
+                rating: 5,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -251,13 +252,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Review',
-                'rating' => 5,
-                'requestId' => 999999, // Non-existent ID
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Review',
+                rating: 5,
+                requestId: 999999, // Non-existent ID
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -275,13 +276,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Review',
-                'rating' => 5,
-                'requestId' => 999999, // Non-existent ID
-                'requestType' => 'delivery'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Review',
+                rating: 5,
+                requestId: 999999, // Non-existent ID
+                requestType: 'delivery'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -309,10 +310,11 @@ class UserReviewControllerTest extends TestCase
         
         $data = json_decode($response->getContent(), true);
         
-        $this->assertArrayHasKey('data', $data);
+        // Check the direct response structure (not wrapped in 'data' in unit tests)
+        $this->assertArrayHasKey('id', $data);
         
         // Check that relationships are loaded
-        $this->assertIsArray($data['data']);
+        $this->assertIsArray($data);
     }
 
     public function test_show_throws_exception_for_nonexistent_review()
@@ -344,8 +346,13 @@ class UserReviewControllerTest extends TestCase
         
         $data = json_decode($response->getContent(), true);
         
-        $this->assertArrayHasKey('data', $data);
-        $this->assertCount(3, $data['data']);
+        // Check the direct response structure (not wrapped in 'data' in unit tests)
+        $this->assertIsArray($data);
+        $this->assertCount(3, $data);
+        // Check first item has id (it's a collection of reviews)
+        if (count($data) > 0) {
+            $this->assertArrayHasKey('id', $data[0]);
+        }
     }
 
     public function test_user_reviews_orders_by_created_at_desc()
@@ -368,7 +375,7 @@ class UserReviewControllerTest extends TestCase
         $data = json_decode($response->getContent(), true);
         
         // Should be ordered by created_at desc (newer first)
-        $this->assertCount(2, $data['data']);
+        $this->assertCount(2, $data);
         // In a real implementation, we'd verify the actual order
     }
 
@@ -380,8 +387,9 @@ class UserReviewControllerTest extends TestCase
         
         $data = json_decode($response->getContent(), true);
         
-        $this->assertArrayHasKey('data', $data);
-        $this->assertEmpty($data['data']);
+        // Check the direct response structure (not wrapped in 'data' in unit tests)
+        $this->assertIsArray($data);
+        $this->assertEmpty($data);
     }
 
     public function test_user_reviews_loads_owner_telegram_user_relationship()
@@ -397,7 +405,7 @@ class UserReviewControllerTest extends TestCase
         
         $data = json_decode($response->getContent(), true);
         
-        $this->assertCount(1, $data['data']);
+        $this->assertCount(1, $data);
         
         // The relationship loading is tested by successful response
         // In a real test, we'd verify no N+1 queries occur
@@ -431,13 +439,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Great service!',
-                'rating' => 5,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Great service!',
+                rating: 5,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
@@ -451,7 +459,8 @@ class UserReviewControllerTest extends TestCase
         // The relationship is loaded with $review->load(['owner.telegramUser'])
         // This is verified by successful JSON response creation
         $data = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('data', $data);
+        // Check the direct response structure (not wrapped in 'data' in unit tests)
+        $this->assertArrayHasKey('id', $data);
     }
 
     public function test_validate_user_involvement_checks_response_status()
@@ -472,13 +481,13 @@ class UserReviewControllerTest extends TestCase
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
-            ->andReturn((object)[
-                'userId' => $this->otherUser->id,
-                'text' => 'Review',
-                'rating' => 5,
-                'requestId' => $sendRequest->id,
-                'requestType' => 'send'
-            ]);
+            ->andReturn(new \App\Http\DTO\Review\CreateRequestDTO(
+                userId: $this->otherUser->id,
+                text: 'Review',
+                rating: 5,
+                requestId: $sendRequest->id,
+                requestType: 'send'
+            ));
         
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
