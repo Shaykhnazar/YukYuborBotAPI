@@ -310,17 +310,13 @@ class LocationControllerTest extends TestCase
     {
         $request = new Request([
             'telegram_id' => '123456789',
-            'from_location' => '',
+            'from_location' => '',  // Empty string should fail validation
             'to_location' => 'Paris',
         ]);
         
-        $this->tgService->shouldReceive('getUserByTelegramId')
-            ->with($request)
-            ->once()
-            ->andReturn($this->user);
+        // Don't mock getUserByTelegramId since validation will fail before it's called
         
         // This should trigger validation error before reaching the controller logic
-        // In a real test, we'd use form request validation
         $this->expectException(\Illuminate\Validation\ValidationException::class);
         
         $this->controller->suggestRoute($request);

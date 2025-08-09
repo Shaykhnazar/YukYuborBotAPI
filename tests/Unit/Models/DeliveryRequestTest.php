@@ -121,12 +121,16 @@ class DeliveryRequestTest extends TestCase
 
     public function test_scope_open()
     {
+        // Clear existing data and create specific test data
+        DeliveryRequest::query()->delete();
+        
+        DeliveryRequest::factory()->create(['status' => 'open']);
         DeliveryRequest::factory()->create(['status' => 'open']);
         DeliveryRequest::factory()->create(['status' => 'closed']);
         
         $openRequests = DeliveryRequest::open()->get();
         
-        $this->assertCount(2, $openRequests); // Including the one from setUp
+        $this->assertCount(2, $openRequests);
         $openRequests->each(function ($request) {
             $this->assertEquals('open', $request->status);
         });
@@ -134,6 +138,9 @@ class DeliveryRequestTest extends TestCase
 
     public function test_scope_closed()
     {
+        // Clear existing data and create specific test data
+        DeliveryRequest::query()->delete();
+        
         DeliveryRequest::factory()->create(['status' => 'closed']);
         DeliveryRequest::factory()->create(['status' => 'completed']);
         DeliveryRequest::factory()->create(['status' => 'open']);
@@ -189,10 +196,13 @@ class DeliveryRequestTest extends TestCase
 
     public function test_get_route_display_attribute_fallback()
     {
-        $deliveryRequest = DeliveryRequest::factory()->create([
-            'from_location_id' => 999,
-            'to_location_id' => 998
-        ]);
+        // Create a delivery request with location IDs but without loading the relationships
+        // This tests the fallback when fromLocation/toLocation relationships return null
+        $deliveryRequest = new DeliveryRequest();
+        $deliveryRequest->from_location_id = 999;
+        $deliveryRequest->to_location_id = 998;
+        $deliveryRequest->fromLocation = null;
+        $deliveryRequest->toLocation = null;
         
         $routeDisplay = $deliveryRequest->getRouteDisplayAttribute();
         
@@ -283,7 +293,9 @@ class DeliveryRequestTest extends TestCase
             'to_location_id' => $this->toLocation->id,
             'description' => 'Test description',
             'price' => 200,
-            'status' => 'open'
+            'status' => 'open',
+            'from_date' => now()->format('Y-m-d'),
+            'to_date' => now()->addDays(7)->format('Y-m-d')
         ];
         
         $deliveryRequest = DeliveryRequest::create($data);

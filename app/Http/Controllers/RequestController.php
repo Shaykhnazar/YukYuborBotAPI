@@ -77,15 +77,15 @@ class RequestController extends Controller
             $searchTerm = '%' . $filters['search'] . '%';
 
             $delivery->where(function ($q) use ($searchTerm) {
-                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'ILIKE', $searchTerm))
-                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'ILIKE', $searchTerm))
-                  ->orWhere('description', 'ILIKE', $searchTerm);
+                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'LIKE', $searchTerm))
+                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'LIKE', $searchTerm))
+                  ->orWhere('description', 'LIKE', $searchTerm);
             });
 
             $send->where(function ($q) use ($searchTerm) {
-                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'ILIKE', $searchTerm))
-                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'ILIKE', $searchTerm))
-                  ->orWhere('description', 'ILIKE', $searchTerm);
+                $q->whereHas('fromLocation', fn($b) => $b->where('name', 'LIKE', $searchTerm))
+                  ->orWhereHas('toLocation',   fn($b) => $b->where('name', 'LIKE', $searchTerm))
+                  ->orWhere('description', 'LIKE', $searchTerm);
             });
         }
 
