@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use App\Services\GoogleSheetsService;
 
 class User extends Authenticatable
 {
@@ -58,5 +59,29 @@ class User extends Authenticatable
             ->with(['sender', 'receiver', 'latestMessage'])
             ->orderByDesc('updated_at')
             ->get();
+    }
+
+    /**
+     * Boot method to handle Google Sheets integration
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($user) {
+            try {
+                // Automatically add user to Google Sheets when created
+                // Run in background to avoid blocking user creation
+                dispatch(function () use ($user) {
+                    app(GoogleSheetsService::class)->recordAddUser($user);
+                })->afterResponse();
+            } catch (\Exception $e) {
+                // Log error but don't fail user creation
+                \Log::error('Failed to add user to Google Sheets during creation', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        });
     }
 }

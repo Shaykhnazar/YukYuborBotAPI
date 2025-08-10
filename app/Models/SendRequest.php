@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
+use App\Services\GoogleSheetsService;
 
 class SendRequest extends Model
 {
@@ -164,5 +165,46 @@ class SendRequest extends Model
         return $this->toLocation->type === 'country'
             ? $this->toLocation
             : $this->toLocation->parent;
+    }
+
+    /**
+     * Boot method to handle Google Sheets integration
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($request) {
+            try {
+                // Automatically add send request to Google Sheets when created
+                // Run in background to avoid blocking request creation
+                dispatch(function () use ($request) {
+                    app(GoogleSheetsService::class)->recordAddSendRequest($request);
+                })->afterResponse();
+            } catch (\Exception $e) {
+                // Log error but don't fail request creation
+                \Log::error('Failed to add send request to Google Sheets during creation', [
+                    'request_id' => $request->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        });
+
+        static::updated(function ($request) {
+            try {
+                // Update Google Sheets when request status changes to closed
+                if ($request->isDirty('status') && in_array($request->status, ['closed', 'completed'])) {
+                    dispatch(function () use ($request) {
+                        app(GoogleSheetsService::class)->recordCloseSendRequest($request->id);
+                    })->afterResponse();
+                }
+            } catch (\Exception $e) {
+                // Log error but don't fail request update
+                \Log::error('Failed to update send request in Google Sheets during update', [
+                    'request_id' => $request->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        });
     }
 }

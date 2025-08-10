@@ -11,6 +11,7 @@
         "laravel/reverb": "^1.5",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.8",
+        "revolution/laravel-google-sheets": "^7.1",
         "smskin/laravel-tgwebapp-auth": "^1.0"
     },
     "require-dev": {

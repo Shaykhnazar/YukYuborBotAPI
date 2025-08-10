@@ -107,7 +107,7 @@ class GoogleSheetsService
     private function initializeClient()
     {
         try {
-            $credentialsPath = storage_path('app/google-service-account.json');
+            $credentialsPath = config('google.service_account_credentials_json');
             return Sheets::spreadsheet($this->spreadsheetId);
         } catch (Exception $e) {
             Log::error('Google Sheets client initialization failed: ' . $e->getMessage());
