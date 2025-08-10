@@ -180,10 +180,13 @@ class SendRequestTest extends TestCase
 
     public function test_get_route_display_attribute_fallback()
     {
-        $sendRequest = SendRequest::factory()->create([
-            'from_location_id' => 999,
-            'to_location_id' => 998
-        ]);
+        // Create a send request with location IDs but without loading the relationships
+        // This tests the fallback when fromLocation/toLocation relationships return null
+        $sendRequest = new SendRequest();
+        $sendRequest->from_location_id = 999;
+        $sendRequest->to_location_id = 998;
+        $sendRequest->fromLocation = null;
+        $sendRequest->toLocation = null;
         
         $routeDisplay = $sendRequest->getRouteDisplayAttribute();
         
@@ -274,7 +277,9 @@ class SendRequestTest extends TestCase
             'to_location_id' => $this->toLocation->id,
             'description' => 'Test description',
             'price' => 200,
-            'status' => 'open'
+            'status' => 'open',
+            'from_date' => now()->format('Y-m-d'),
+            'to_date' => now()->addDays(7)->format('Y-m-d')
         ];
         
         $sendRequest = SendRequest::create($data);

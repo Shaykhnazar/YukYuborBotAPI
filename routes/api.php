@@ -12,6 +12,7 @@ use App\Http\Controllers\TestUsersController;
 use App\Http\Controllers\User\Request\UserRequestController;
 use App\Http\Controllers\User\Review\UserReviewController;
 use App\Http\Controllers\User\UserController;
+use App\Http\Controllers\Api\GoogleSheetsController;
 use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
@@ -108,6 +109,24 @@ Route::middleware($middleware)->group(function () {
     Route::get('/routes', [RouteController::class, 'index']);
     // DEBUG
     Route::get('/debug-requests', [UserRequestController::class, 'debug']);
+
+    // Google Sheets Integration routes
+    Route::prefix('google-sheets')->controller(GoogleSheetsController::class)->group(function () {
+        // Get worksheet information
+        Route::get('/worksheet-info', 'getWorksheetInfo');
+        // Get data from specific worksheet
+        Route::get('/worksheet-data', 'getWorksheetData');
+        // Sync all database data to Google Sheets
+        Route::post('/sync-all', 'syncAllData');
+        // Export custom data to Google Sheets
+        Route::post('/export', 'exportData');
+        // Initialize worksheets with proper headers
+        Route::post('/initialize', 'initializeWorksheets');
+        // Test Google Sheets connection
+        Route::get('/test-connection', 'testConnection');
+        // Get Google Sheets statistics
+        Route::get('/statistics', 'getStatistics');
+    });
 });
 
 Route::get('/place', [PlaceController::class, 'index'])->middleware(['throttle:60,1']);

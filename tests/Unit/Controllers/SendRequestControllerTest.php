@@ -3,6 +3,7 @@
 namespace Tests\Unit\Controllers;
 
 use App\Http\Controllers\SendRequestController;
+use App\Http\Requests\Send\CreateSendRequest;
 use App\Service\TelegramUserService;
 use App\Service\Matcher;
 use App\Models\User;
@@ -27,16 +28,16 @@ class SendRequestControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->userService = Mockery::mock(TelegramUserService::class);
         $this->matcher = Mockery::mock(Matcher::class);
         $this->controller = new SendRequestController($this->userService, $this->matcher);
-        
+
         $this->user = User::factory()->create([
             'name' => 'Test User',
             'links_balance' => 5
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->user->id,
             'telegram' => '123456789'
@@ -49,6 +50,28 @@ class SendRequestControllerTest extends TestCase
         parent::tearDown();
     }
 
+    private function createMockRequest(array $requestData, bool $expectsDTO = true): CreateSendRequest
+    {
+        $mockRequest = Mockery::mock(CreateSendRequest::class);
+
+        if ($expectsDTO) {
+            $mockRequest->shouldReceive('getDTO')
+                ->once()
+                ->andReturn(new \App\Http\DTO\SendRequest\CreateSendRequestDTO(
+                    fromLocId: $requestData['from_location_id'],
+                    toLocId: $requestData['to_location_id'],
+                    desc: $requestData['description'] ?? null,
+                    toDate: \Carbon\CarbonImmutable::parse($requestData['to_date']),
+                    price: $requestData['price'] ?? null,
+                    currency: $requestData['currency'] ?? null
+                ));
+        } else {
+            $mockRequest->shouldReceive('getDTO')->never();
+        }
+
+        return $mockRequest;
+    }
+
     public function test_create_enforces_active_requests_limit()
     {
         // Create 2 active send requests
@@ -56,17 +79,17 @@ class SendRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         // Create 1 active delivery request
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
@@ -74,22 +97,24 @@ class SendRequestControllerTest extends TestCase
             'description' => 'Test package',
             'price' => 100,
             'currency' => 'USD'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData, false);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         $this->assertEquals(422, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertArrayHasKey('error', $data);
         $this->assertArrayHasKey('errorTitle', $data);
-        $this->assertStringContains('Превышен лимит заявок', $data['errorTitle']);
+        $this->assertStringContainsString('Превышен лимит заявок', $data['errorTitle']);
     }
 
     public function test_create_allows_request_when_under_limit()
@@ -99,11 +124,11 @@ class SendRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
@@ -111,18 +136,20 @@ class SendRequestControllerTest extends TestCase
             'description' => 'Test package',
             'price' => 100,
             'currency' => 'USD'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Should not get a 422 status (limit exceeded)
         $this->assertNotEquals(422, $response->getStatusCode());
     }
@@ -134,30 +161,32 @@ class SendRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Test package'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData, false);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         $this->assertEquals(422, $response->getStatusCode());
     }
 
@@ -168,39 +197,41 @@ class SendRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'closed'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'closed'
         ]);
-        
+
         // Create 1 open request (under limit)
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Test package'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Should be allowed since closed requests don't count
         $this->assertNotEquals(422, $response->getStatusCode());
     }
@@ -209,8 +240,8 @@ class SendRequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
@@ -218,19 +249,21 @@ class SendRequestControllerTest extends TestCase
             'description' => 'Test package',
             'price' => 100,
             'currency' => 'USD'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once()
             ->with(Mockery::type(SendRequest::class));
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Verify matcher was called
         $this->matcher->shouldHaveReceived('matchSendRequest');
     }
@@ -239,8 +272,8 @@ class SendRequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
@@ -248,18 +281,20 @@ class SendRequestControllerTest extends TestCase
             'description' => 'Test package for delivery',
             'price' => 150,
             'currency' => 'EUR'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Verify send request was saved to database
         $this->assertDatabaseHas('send_requests', [
             'user_id' => $this->user->id,
@@ -276,25 +311,27 @@ class SendRequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Free delivery'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         $this->assertDatabaseHas('send_requests', [
             'user_id' => $this->user->id,
             'description' => 'Free delivery',
@@ -307,25 +344,27 @@ class SendRequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Test status'
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         $this->assertDatabaseHas('send_requests', [
             'user_id' => $this->user->id,
             'status' => 'open'
@@ -336,11 +375,11 @@ class SendRequestControllerTest extends TestCase
     {
         // Test that constructor dependencies are properly injected
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $userServiceProperty = $reflection->getProperty('userService');
         $userServiceProperty->setAccessible(true);
         $this->assertInstanceOf(TelegramUserService::class, $userServiceProperty->getValue($this->controller));
-        
+
         $matcherProperty = $reflection->getProperty('matcher');
         $matcherProperty->setAccessible(true);
         $this->assertInstanceOf(Matcher::class, $matcherProperty->getValue($this->controller));
@@ -354,24 +393,26 @@ class SendRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
-        $request = new Request([
+
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData, false);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Should be blocked at 3 requests
         $this->assertEquals(422, $response->getStatusCode());
     }
@@ -380,28 +421,30 @@ class SendRequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Test with only required fields
-        $request = new Request([
+        $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-        ]);
-        
+        ];
+
+        $createSendRequest = $this->createMockRequest($requestData);
+
         $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($request)
+            ->with($createSendRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchSendRequest')
             ->once();
-        
-        $response = $this->controller->create($request);
-        
+
+        $response = $this->controller->create($createSendRequest);
+
         // Should succeed with minimal data
         $this->assertNotEquals(422, $response->getStatusCode());
-        
+
         $this->assertDatabaseHas('send_requests', [
             'user_id' => $this->user->id,
             'from_location_id' => $fromLocation->id,

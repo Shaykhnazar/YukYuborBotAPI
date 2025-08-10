@@ -71,10 +71,7 @@ class ResponseTest extends TestCase
     public function test_send_request_relationship()
     {
         $sendRequest = SendRequest::factory()->create();
-        $response = Response::factory()->create([
-            'offer_id' => $sendRequest->id,
-            'request_type' => 'send'
-        ]);
+        $response = Response::factory()->forSendRequest($sendRequest)->create();
         
         $this->assertInstanceOf(SendRequest::class, $response->sendRequest);
         $this->assertEquals($sendRequest->id, $response->sendRequest->id);
@@ -83,10 +80,7 @@ class ResponseTest extends TestCase
     public function test_delivery_request_relationship()
     {
         $deliveryRequest = DeliveryRequest::factory()->create();
-        $response = Response::factory()->create([
-            'offer_id' => $deliveryRequest->id,
-            'request_type' => 'delivery'
-        ]);
+        $response = Response::factory()->forDeliveryRequest($deliveryRequest)->create();
         
         $this->assertInstanceOf(DeliveryRequest::class, $response->deliveryRequest);
         $this->assertEquals($deliveryRequest->id, $response->deliveryRequest->id);
@@ -95,10 +89,7 @@ class ResponseTest extends TestCase
     public function test_get_request_attribute_for_send_request()
     {
         $sendRequest = SendRequest::factory()->create();
-        $response = Response::factory()->create([
-            'offer_id' => $sendRequest->id,
-            'request_type' => 'send'
-        ]);
+        $response = Response::factory()->forSendRequest($sendRequest)->create();
         
         $this->assertInstanceOf(SendRequest::class, $response->getRequestAttribute());
         $this->assertEquals($sendRequest->id, $response->getRequestAttribute()->id);
@@ -107,10 +98,7 @@ class ResponseTest extends TestCase
     public function test_get_request_attribute_for_delivery_request()
     {
         $deliveryRequest = DeliveryRequest::factory()->create();
-        $response = Response::factory()->create([
-            'offer_id' => $deliveryRequest->id,
-            'request_type' => 'delivery'
-        ]);
+        $response = Response::factory()->forDeliveryRequest($deliveryRequest)->create();
         
         $this->assertInstanceOf(DeliveryRequest::class, $response->getRequestAttribute());
         $this->assertEquals($deliveryRequest->id, $response->getRequestAttribute()->id);
@@ -125,12 +113,16 @@ class ResponseTest extends TestCase
 
     public function test_scope_pending()
     {
+        // Clear existing data and create specific test data
+        Response::query()->delete();
+        
+        Response::factory()->create(['status' => Response::STATUS_PENDING]);
         Response::factory()->create(['status' => Response::STATUS_PENDING]);
         Response::factory()->create(['status' => Response::STATUS_ACCEPTED]);
         
         $pendingResponses = Response::pending()->get();
         
-        $this->assertCount(2, $pendingResponses); // Including the one from setUp
+        $this->assertCount(2, $pendingResponses);
         $pendingResponses->each(function ($response) {
             $this->assertEquals(Response::STATUS_PENDING, $response->status);
         });
@@ -207,12 +199,17 @@ class ResponseTest extends TestCase
 
     public function test_guarded_false_allows_mass_assignment()
     {
+        $sendRequest = SendRequest::factory()->create();
+        $deliveryRequest = DeliveryRequest::factory()->create();
+        
         $data = [
             'user_id' => $this->user->id,
             'responder_id' => $this->responder->id,
             'status' => Response::STATUS_ACCEPTED,
             'response_type' => Response::TYPE_MANUAL,
             'request_type' => 'send',
+            'request_id' => $deliveryRequest->id,
+            'offer_id' => $sendRequest->id,
             'message' => 'Test message'
         ];
         

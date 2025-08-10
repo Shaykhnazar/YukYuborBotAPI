@@ -25,12 +25,8 @@ class RouteControllerTest extends TestCase
 
     public function test_index_returns_all_routes_by_default()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
+        // Create 3 different routes
         Route::factory()->count(3)->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
@@ -43,20 +39,18 @@ class RouteControllerTest extends TestCase
 
     public function test_index_filters_active_routes_when_requested()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
+        // Create active route
+        Route::factory()->create([
+            'is_active' => true
+        ]);
         
-        // Create active routes
-        Route::factory()->count(2)->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
+        // Create another active route with different locations
+        Route::factory()->create([
             'is_active' => true
         ]);
         
         // Create inactive route
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => false
         ]);
         
@@ -72,19 +66,12 @@ class RouteControllerTest extends TestCase
 
     public function test_index_orders_by_priority_when_specified()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'priority' => 3,
             'is_active' => true
         ]);
         
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'priority' => 1,
             'is_active' => true
         ]);
@@ -128,12 +115,7 @@ class RouteControllerTest extends TestCase
 
     public function test_index_applies_with_active_requests_counts()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
@@ -160,18 +142,11 @@ class RouteControllerTest extends TestCase
 
     public function test_index_handles_boolean_active_parameter()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => false
         ]);
         
@@ -185,12 +160,7 @@ class RouteControllerTest extends TestCase
 
     public function test_index_handles_false_active_parameter()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
@@ -204,12 +174,7 @@ class RouteControllerTest extends TestCase
 
     public function test_index_ignores_invalid_order_by_parameter()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
@@ -224,19 +189,12 @@ class RouteControllerTest extends TestCase
 
     public function test_index_combines_active_and_priority_filters()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true,
             'priority' => 1
         ]);
         
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => false,
             'priority' => 2
         ]);
@@ -252,12 +210,7 @@ class RouteControllerTest extends TestCase
 
     public function test_index_uses_route_resource_collection()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true
         ]);
         
@@ -321,12 +274,7 @@ class RouteControllerTest extends TestCase
 
     public function test_index_query_building_logic()
     {
-        $fromLocation = Location::factory()->create(['type' => 'country']);
-        $toLocation = Location::factory()->create(['type' => 'country']);
-        
         Route::factory()->create([
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
             'is_active' => true,
             'priority' => 1
         ]);
