@@ -25,16 +25,23 @@ class GoogleSheetsService
     private function initializeClient()
     {
         try {
-            $credentialsPath = config('google.service_account_credentials_json');
+            $credentialsPath = config('google.service.file');
+            $serviceEnabled = config('google.service.enable');
+
+            if (!$serviceEnabled) {
+                throw new Exception('Google service account authentication is not enabled. Set GOOGLE_SERVICE_ENABLED=true in your .env file');
+            }
 
             if (!file_exists($credentialsPath)) {
                 throw new Exception('Google service account credentials file not found at: ' . $credentialsPath);
             }
 
             if (!$this->spreadsheetId) {
-                throw new Exception('Google Sheets spreadsheet ID not configured');
+                throw new Exception('Google Sheets spreadsheet ID not configured. Set GOOGLE_SHEETS_SPREADSHEET_ID in your .env file');
             }
 
+            // The revolution/laravel-google-sheets package automatically uses the service account
+            // configuration from config/google.php when service.enable is true
             return Sheets::spreadsheet($this->spreadsheetId);
         } catch (Exception $e) {
             Log::error('Google Sheets client initialization failed: ' . $e->getMessage());
