@@ -4,7 +4,8 @@
       "Bash(vendor\\bin\\phpunit:*)",
       "Bash(./vendor/bin/phpunit:*)",
       "Bash(vendor/bin/phpunit:*)",
-      "Bash(php -l:*)"
+      "Bash(php -l:*)",
+      "Bash(composer require:*)"
     ],
     "deny": []
   }
