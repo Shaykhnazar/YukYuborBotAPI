@@ -159,6 +159,8 @@ return [
         /*
          * Package Service Providers...
          */
+        Revolution\Google\Sheets\Providers\SheetsServiceProvider::class,
+        Revolution\Google\Client\Providers\GoogleServiceProvider::class,
 
         /*
          * Application Service Providers...
