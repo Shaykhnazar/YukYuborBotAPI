@@ -138,9 +138,14 @@ class GoogleSheetsService
                 '' // Время ожидания принятия
             ];
 
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet('Deliver requests')
-                ->append([$data]);
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Deliver requests');
+            
+            // Find the next empty row and append data starting from column A
+            $values = $sheet->all();
+            $nextRow = count($values) + 1;
+            
+            // Use range to specify exactly where to place the data (starting from column A)
+            $sheet->range("A{$nextRow}:R{$nextRow}")->update([$data]);
 
             Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -187,9 +192,14 @@ class GoogleSheetsService
                 '' // Время ожидания принятия
             ];
 
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet('Send requests')
-                ->append([$data]);
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Send requests');
+            
+            // Find the next empty row and append data starting from column A
+            $values = $sheet->all();
+            $nextRow = count($values) + 1;
+            
+            // Use range to specify exactly where to place the data (starting from column A)
+            $sheet->range("A{$nextRow}:R{$nextRow}")->update([$data]);
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -421,24 +431,47 @@ class GoogleSheetsService
                     $currentTime = Carbon::now()->toISOString();
                     $rowNum = $rowIndex + 1;
 
-                    // Column L: Response received (получен/не получен)
-                    $sheet->range("L" . $rowNum)->update([["получен"]]);
+                    if ($requestType === 'send') {
+                        // Send requests sheet columns
+                        // Column L: Response received (получен/не получен)
+                        $sheet->range("L" . $rowNum)->update([["получен"]]);
 
-                    if ($isFirstResponse) {
-                        // Column N: Time of first response received
-                        $sheet->range("N" . $rowNum)->update([[$currentTime]]);
-                        
-                        // Column O: Waiting time for first response (calculated)
-                        $createdAt = isset($row[9]) ? $row[9] : '';
-                        if ($createdAt) {
-                            $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                            $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                        if ($isFirstResponse) {
+                            // Column N: Time of first response received
+                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
+                            
+                            // Column O: Waiting time for first response (calculated)
+                            $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - дата создания
+                            if ($createdAt) {
+                                $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                            }
                         }
-                    }
 
-                    // Column M: Number of responses received (increment)
-                    $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
-                    $sheet->range("M" . $rowNum)->update([[$currentCount + 1]]);
+                        // Column M: Number of responses received (increment)
+                        $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
+                        $sheet->range("M" . $rowNum)->update([[$currentCount + 1]]);
+                    } else {
+                        // Delivery requests sheet columns (same structure as Send requests)
+                        // Column L: Response received (Ответ получен)
+                        $sheet->range("L" . $rowNum)->update([["получен"]]);
+
+                        if ($isFirstResponse) {
+                            // Column N: Time of first response received
+                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
+                            
+                            // Column O: Waiting time for first response (calculated)
+                            $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - Создано
+                            if ($createdAt) {
+                                $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                            }
+                        }
+
+                        // Column M: Number of responses received (increment)
+                        $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
+                        $sheet->range("M" . $rowNum)->update([[$currentCount + 1]]);
+                    }
 
                     Log::info("Request response tracking updated in Google Sheets", [
                         'worksheet' => $worksheetName,
@@ -477,17 +510,34 @@ class GoogleSheetsService
                     $currentTime = Carbon::now()->toISOString();
                     $rowNum = $rowIndex + 1;
 
-                    // Column P: Response accepted (принят)
-                    $sheet->range("P" . $rowNum)->update([["принят"]]);
+                    if ($requestType === 'send') {
+                        // Send requests sheet columns
+                        // Column P: Response accepted (принят)
+                        $sheet->range("P" . $rowNum)->update([["принят"]]);
 
-                    // Column Q: Time response accepted
-                    $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
+                        // Column Q: Time response accepted
+                        $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
 
-                    // Column R: Waiting time for acceptance (calculated)
-                    $firstResponseTime = isset($row[13]) ? $row[13] : '';
-                    if ($firstResponseTime) {
-                        $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                        $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
+                        // Column R: Waiting time for acceptance (calculated)
+                        $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
+                        if ($firstResponseTime) {
+                            $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                            $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
+                        }
+                    } else {
+                        // Delivery requests sheet columns (same structure as Send requests)
+                        // Column P: Response accepted (принят)
+                        $sheet->range("P" . $rowNum)->update([["принят"]]);
+
+                        // Column Q: Time response accepted
+                        $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
+
+                        // Column R: Waiting time for acceptance (calculated)
+                        $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
+                        if ($firstResponseTime) {
+                            $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                            $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
+                        }
                     }
 
                     Log::info("Request acceptance tracking updated in Google Sheets", [
