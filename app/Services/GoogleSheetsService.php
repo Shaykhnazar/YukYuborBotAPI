@@ -322,7 +322,10 @@ class GoogleSheetsService
         // Sync Delivery Requests
         try {
             $requests = DeliveryRequest::with(['user', 'fromLocation', 'toLocation'])->get();
-            $requestData = [['ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At']];
+            $requestData = [[
+                'ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At',
+                'Ответ получен', 'Количество ответов', 'Время ожидания первого ответа', 'Ответ принят', 'Время принятия ответа', 'Время ожидания принятия'
+            ]];
 
             foreach ($requests as $request) {
                 $requestData[] = [
@@ -336,7 +339,13 @@ class GoogleSheetsService
                     $request->description ?? '',
                     $request->status ?? 'open',
                     $request->created_at->toISOString(),
-                    $request->updated_at->toISOString()
+                    $request->updated_at->toISOString(),
+                    'не получен', // Default: Response not received
+                    0, // Default: 0 responses
+                    '', // Default: Empty waiting time for first response
+                    'не принят', // Default: Response not accepted
+                    '', // Default: Empty time response accepted
+                    '' // Default: Empty waiting time for acceptance
                 ];
             }
 
@@ -349,7 +358,10 @@ class GoogleSheetsService
         // Sync Send Requests
         try {
             $requests = SendRequest::with(['user', 'fromLocation', 'toLocation'])->get();
-            $requestData = [['ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At']];
+            $requestData = [[
+                'ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At',
+                'Ответ получен', 'Количество ответов', 'Время ожидания первого ответа', 'Ответ принят', 'Время принятия ответа', 'Время ожидания принятия'
+            ]];
 
             foreach ($requests as $request) {
                 $requestData[] = [
@@ -363,7 +375,13 @@ class GoogleSheetsService
                     $request->description ?? '',
                     $request->status ?? 'open',
                     $request->created_at->toISOString(),
-                    $request->updated_at->toISOString()
+                    $request->updated_at->toISOString(),
+                    'не получен', // Default: Response not received
+                    0, // Default: 0 responses
+                    '', // Default: Empty waiting time for first response
+                    'не принят', // Default: Response not accepted
+                    '', // Default: Empty time response accepted
+                    '' // Default: Empty waiting time for acceptance
                 ];
             }
 
@@ -374,6 +392,152 @@ class GoogleSheetsService
         }
 
         return $results;
+    }
+
+    /**
+     * Update response tracking columns when response is received
+     */
+    public function updateRequestResponseReceived($requestType, $requestId, $isFirstResponse = false): bool
+    {
+        try {
+            $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
+            $values = $sheet->all();
+
+            foreach ($values as $rowIndex => $row) {
+                if (isset($row[0]) && $row[0] == $requestId) {
+                    $currentTime = Carbon::now()->toISOString();
+                    $updates = [];
+
+                    // Column L: Response received (получен/не получен)
+                    $updates["L" . ($rowIndex + 1)] = [["получен"]];
+
+                    if ($isFirstResponse) {
+                        // Column N: Time of first response received
+                        $updates["N" . ($rowIndex + 1)] = [[$currentTime]];
+                        
+                        // Column O: Waiting time for first response (calculated)
+                        $createdAt = isset($row[9]) ? $row[9] : '';
+                        if ($createdAt) {
+                            $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                            $updates["O" . ($rowIndex + 1)] = [[$waitingTime]];
+                        }
+                    }
+
+                    // Column M: Number of responses received (increment)
+                    $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
+                    $updates["M" . ($rowIndex + 1)] = [[$currentCount + 1]];
+
+                    // Apply all updates
+                    foreach ($updates as $cell => $value) {
+                        $sheet->update($cell, $value);
+                    }
+
+                    Log::info("Request response tracking updated in Google Sheets", [
+                        'worksheet' => $worksheetName,
+                        'request_id' => $requestId,
+                        'is_first_response' => $isFirstResponse,
+                        'response_count' => $currentCount + 1
+                    ]);
+                    return true;
+                }
+            }
+
+            Log::warning("Request ID {$requestId} not found in {$worksheetName}");
+            return false;
+        } catch (Exception $e) {
+            Log::error("Failed to update response tracking in Google Sheets", [
+                'worksheet' => $worksheetName ?? 'unknown',
+                'request_id' => $requestId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Update response tracking columns when response is accepted
+     */
+    public function updateRequestResponseAccepted($requestType, $requestId): bool
+    {
+        try {
+            $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
+            $values = $sheet->all();
+
+            foreach ($values as $rowIndex => $row) {
+                if (isset($row[0]) && $row[0] == $requestId) {
+                    $currentTime = Carbon::now()->toISOString();
+                    $updates = [];
+
+                    // Column P: Response accepted (принят)
+                    $updates["P" . ($rowIndex + 1)] = [["принят"]];
+
+                    // Column Q: Time response accepted
+                    $updates["Q" . ($rowIndex + 1)] = [[$currentTime]];
+
+                    // Column R: Waiting time for acceptance (calculated)
+                    $firstResponseTime = isset($row[13]) ? $row[13] : '';
+                    if ($firstResponseTime) {
+                        $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                        $updates["R" . ($rowIndex + 1)] = [[$acceptanceWaitingTime]];
+                    }
+
+                    // Apply all updates
+                    foreach ($updates as $cell => $value) {
+                        $sheet->update($cell, $value);
+                    }
+
+                    Log::info("Request acceptance tracking updated in Google Sheets", [
+                        'worksheet' => $worksheetName,
+                        'request_id' => $requestId
+                    ]);
+                    return true;
+                }
+            }
+
+            Log::warning("Request ID {$requestId} not found in {$worksheetName}");
+            return false;
+        } catch (Exception $e) {
+            Log::error("Failed to update acceptance tracking in Google Sheets", [
+                'worksheet' => $worksheetName ?? 'unknown',
+                'request_id' => $requestId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Calculate waiting time between two timestamps
+     */
+    private function calculateWaitingTime($startTime, $endTime): string
+    {
+        try {
+            $start = Carbon::parse($startTime);
+            $end = Carbon::parse($endTime);
+            $diffInMinutes = $end->diffInMinutes($start);
+            
+            if ($diffInMinutes < 60) {
+                return "{$diffInMinutes} минут";
+            } elseif ($diffInMinutes < 1440) { // Less than 24 hours
+                $hours = floor($diffInMinutes / 60);
+                $minutes = $diffInMinutes % 60;
+                return "{$hours} часов {$minutes} минут";
+            } else { // More than 24 hours
+                $days = floor($diffInMinutes / 1440);
+                $remainingMinutes = $diffInMinutes % 1440;
+                $hours = floor($remainingMinutes / 60);
+                return "{$days} дней {$hours} часов";
+            }
+        } catch (Exception $e) {
+            Log::error('Failed to calculate waiting time', [
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'error' => $e->getMessage()
+            ]);
+            return 'Ошибка расчета';
+        }
     }
 
     /**
@@ -388,12 +552,18 @@ class GoogleSheetsService
             $usersHeaders = ['ID', 'Name', 'Phone', 'City', 'Created_At', 'Telegram_Username', 'Telegram_ID'];
             $results['users'] = $this->batchExport('Users', [$usersHeaders]);
 
-            // Initialize Deliver requests worksheet
-            $deliveryHeaders = ['ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At'];
+            // Initialize Deliver requests worksheet with new tracking columns
+            $deliveryHeaders = [
+                'ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At',
+                'Ответ получен', 'Количество ответов', 'Время ожидания первого ответа', 'Ответ принят', 'Время принятия ответа', 'Время ожидания принятия'
+            ];
             $results['delivery_requests'] = $this->batchExport('Deliver requests', [$deliveryHeaders]);
 
-            // Initialize Send requests worksheet
-            $sendHeaders = ['ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At'];
+            // Initialize Send requests worksheet with new tracking columns
+            $sendHeaders = [
+                'ID', 'User_Info', 'From_Location', 'To_Location', 'From_Date', 'To_Date', 'Size_Type', 'Description', 'Status', 'Created_At', 'Updated_At',
+                'Ответ получен', 'Количество ответов', 'Время ожидания первого ответа', 'Ответ принят', 'Время принятия ответа', 'Время ожидания принятия'
+            ];
             $results['send_requests'] = $this->batchExport('Send requests', [$sendHeaders]);
 
             Log::info('Google Sheets worksheets initialized successfully');
