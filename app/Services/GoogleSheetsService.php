@@ -407,31 +407,26 @@ class GoogleSheetsService
             foreach ($values as $rowIndex => $row) {
                 if (isset($row[0]) && $row[0] == $requestId) {
                     $currentTime = Carbon::now()->toISOString();
-                    $updates = [];
+                    $rowNum = $rowIndex + 1;
 
                     // Column L: Response received (получен/не получен)
-                    $updates["L" . ($rowIndex + 1)] = [["получен"]];
+                    $sheet->update("L" . $rowNum, [["получен"]]);
 
                     if ($isFirstResponse) {
                         // Column N: Time of first response received
-                        $updates["N" . ($rowIndex + 1)] = [[$currentTime]];
+                        $sheet->update("N" . $rowNum, [[$currentTime]]);
                         
                         // Column O: Waiting time for first response (calculated)
                         $createdAt = isset($row[9]) ? $row[9] : '';
                         if ($createdAt) {
                             $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                            $updates["O" . ($rowIndex + 1)] = [[$waitingTime]];
+                            $sheet->update("O" . $rowNum, [[$waitingTime]]);
                         }
                     }
 
                     // Column M: Number of responses received (increment)
                     $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
-                    $updates["M" . ($rowIndex + 1)] = [[$currentCount + 1]];
-
-                    // Apply all updates
-                    foreach ($updates as $cell => $value) {
-                        $sheet->update($cell, $value);
-                    }
+                    $sheet->update("M" . $rowNum, [[$currentCount + 1]]);
 
                     Log::info("Request response tracking updated in Google Sheets", [
                         'worksheet' => $worksheetName,
@@ -468,24 +463,19 @@ class GoogleSheetsService
             foreach ($values as $rowIndex => $row) {
                 if (isset($row[0]) && $row[0] == $requestId) {
                     $currentTime = Carbon::now()->toISOString();
-                    $updates = [];
+                    $rowNum = $rowIndex + 1;
 
                     // Column P: Response accepted (принят)
-                    $updates["P" . ($rowIndex + 1)] = [["принят"]];
+                    $sheet->update("P" . $rowNum, [["принят"]]);
 
                     // Column Q: Time response accepted
-                    $updates["Q" . ($rowIndex + 1)] = [[$currentTime]];
+                    $sheet->update("Q" . $rowNum, [[$currentTime]]);
 
                     // Column R: Waiting time for acceptance (calculated)
                     $firstResponseTime = isset($row[13]) ? $row[13] : '';
                     if ($firstResponseTime) {
                         $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                        $updates["R" . ($rowIndex + 1)] = [[$acceptanceWaitingTime]];
-                    }
-
-                    // Apply all updates
-                    foreach ($updates as $cell => $value) {
-                        $sheet->update($cell, $value);
+                        $sheet->update("R" . $rowNum, [[$acceptanceWaitingTime]]);
                     }
 
                     Log::info("Request acceptance tracking updated in Google Sheets", [
