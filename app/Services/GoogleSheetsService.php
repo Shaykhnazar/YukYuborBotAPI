@@ -129,7 +129,13 @@ class GoogleSheetsService
                 $request->description ?? '',
                 $request->status ?? 'open',
                 $request->created_at->toISOString(),
-                $request->updated_at->toISOString()
+                $request->updated_at->toISOString(),
+                'не получен', // Ответ получен
+                0, // Количество ответов
+                '', // Время ожидания первого ответа
+                'не принят', // Ответ принят
+                '', // Время принятия ответа
+                '' // Время ожидания принятия
             ];
 
             Sheets::spreadsheet($this->spreadsheetId)
@@ -172,7 +178,13 @@ class GoogleSheetsService
                 $request->description ?? '',
                 $request->status ?? 'open',
                 $request->created_at->toISOString(),
-                $request->updated_at->toISOString()
+                $request->updated_at->toISOString(),
+                'не получен', // Ответ получен
+                0, // Количество ответов
+                '', // Время ожидания первого ответа
+                'не принят', // Ответ принят
+                '', // Время принятия ответа
+                '' // Время ожидания принятия
             ];
 
             Sheets::spreadsheet($this->spreadsheetId)
@@ -506,19 +518,56 @@ class GoogleSheetsService
         try {
             $start = Carbon::parse($startTime);
             $end = Carbon::parse($endTime);
-            $diffInMinutes = $end->diffInMinutes($start);
+            $diffInSeconds = $end->diffInSeconds($start);
             
-            if ($diffInMinutes < 60) {
-                return "{$diffInMinutes} минут";
-            } elseif ($diffInMinutes < 1440) { // Less than 24 hours
-                $hours = floor($diffInMinutes / 60);
-                $minutes = $diffInMinutes % 60;
-                return "{$hours} часов {$minutes} минут";
+            if ($diffInSeconds < 60) {
+                return "{$diffInSeconds} секунд";
+            } elseif ($diffInSeconds < 3600) { // Less than 1 hour
+                $minutes = floor($diffInSeconds / 60);
+                $seconds = $diffInSeconds % 60;
+                if ($seconds > 0) {
+                    return "{$minutes} минут {$seconds} секунд";
+                } else {
+                    return "{$minutes} минут";
+                }
+            } elseif ($diffInSeconds < 86400) { // Less than 24 hours
+                $hours = floor($diffInSeconds / 3600);
+                $remainingSeconds = $diffInSeconds % 3600;
+                $minutes = floor($remainingSeconds / 60);
+                $seconds = $remainingSeconds % 60;
+                
+                $result = "{$hours} час";
+                if ($hours > 1 && $hours < 5) $result = "{$hours} часа";
+                if ($hours >= 5) $result = "{$hours} часов";
+                
+                if ($minutes > 0) {
+                    $result .= " {$minutes} минут";
+                }
+                if ($seconds > 0) {
+                    $result .= " {$seconds} секунд";
+                }
+                return $result;
             } else { // More than 24 hours
-                $days = floor($diffInMinutes / 1440);
-                $remainingMinutes = $diffInMinutes % 1440;
-                $hours = floor($remainingMinutes / 60);
-                return "{$days} дней {$hours} часов";
+                $days = floor($diffInSeconds / 86400);
+                $remainingSeconds = $diffInSeconds % 86400;
+                $hours = floor($remainingSeconds / 3600);
+                $remainingSeconds = $remainingSeconds % 3600;
+                $minutes = floor($remainingSeconds / 60);
+                
+                $result = "{$days} ";
+                if ($days == 1) $result .= "день";
+                elseif ($days < 5) $result .= "дня";
+                else $result .= "дней";
+                
+                if ($hours > 0) {
+                    if ($hours == 1) $result .= " {$hours} час";
+                    elseif ($hours < 5) $result .= " {$hours} часа";
+                    else $result .= " {$hours} часов";
+                }
+                if ($minutes > 0) {
+                    $result .= " {$minutes} минут";
+                }
+                return $result;
             }
         } catch (Exception $e) {
             Log::error('Failed to calculate waiting time', [
