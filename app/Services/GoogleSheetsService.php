@@ -410,23 +410,23 @@ class GoogleSheetsService
                     $rowNum = $rowIndex + 1;
 
                     // Column L: Response received (получен/не получен)
-                    $sheet->update("L" . $rowNum, [["получен"]]);
+                    $sheet->range("L" . $rowNum)->update([["получен"]]);
 
                     if ($isFirstResponse) {
                         // Column N: Time of first response received
-                        $sheet->update("N" . $rowNum, [[$currentTime]]);
+                        $sheet->range("N" . $rowNum)->update([[$currentTime]]);
                         
                         // Column O: Waiting time for first response (calculated)
                         $createdAt = isset($row[9]) ? $row[9] : '';
                         if ($createdAt) {
                             $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                            $sheet->update("O" . $rowNum, [[$waitingTime]]);
+                            $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
                         }
                     }
 
                     // Column M: Number of responses received (increment)
                     $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
-                    $sheet->update("M" . $rowNum, [[$currentCount + 1]]);
+                    $sheet->range("M" . $rowNum)->update([[$currentCount + 1]]);
 
                     Log::info("Request response tracking updated in Google Sheets", [
                         'worksheet' => $worksheetName,
@@ -466,16 +466,16 @@ class GoogleSheetsService
                     $rowNum = $rowIndex + 1;
 
                     // Column P: Response accepted (принят)
-                    $sheet->update("P" . $rowNum, [["принят"]]);
+                    $sheet->range("P" . $rowNum)->update([["принят"]]);
 
                     // Column Q: Time response accepted
-                    $sheet->update("Q" . $rowNum, [[$currentTime]]);
+                    $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
 
                     // Column R: Waiting time for acceptance (calculated)
                     $firstResponseTime = isset($row[13]) ? $row[13] : '';
                     if ($firstResponseTime) {
                         $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                        $sheet->update("R" . $rowNum, [[$acceptanceWaitingTime]]);
+                        $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
                     }
 
                     Log::info("Request acceptance tracking updated in Google Sheets", [
