@@ -149,10 +149,10 @@ class GoogleSheetsService
             Log::info('Delivery request record appended to Google Sheets', [
                 'request_id' => $request->id
             ]);
-            
+
             // Add a small delay to let Google Sheets process the append
             usleep(250000); // 0.25 seconds
-            
+
             // Try a simple reverse search from the end for the just-appended record
             $this->findAndCacheRecentlyAppendedRow('Deliver requests', $request->id);
 
@@ -208,10 +208,10 @@ class GoogleSheetsService
             Log::info('Send request record appended to Google Sheets', [
                 'request_id' => $request->id
             ]);
-            
+
             // Add a small delay to let Google Sheets process the append
             usleep(250000); // 0.25 seconds
-            
+
             // Try a simple reverse search from the end for the just-appended record
             $this->findAndCacheRecentlyAppendedRow('Send requests', $request->id);
 
@@ -254,7 +254,7 @@ class GoogleSheetsService
             $batchSize = 100;
             $startRow = 1;
 
-            while ($startRow <= 1000) { // Reasonable limit to prevent infinite loop
+            while ($startRow <= 500) { // Reasonable limit to prevent infinite loop
                 $endRow = $startRow + $batchSize - 1;
                 $batchRange = "A{$startRow}:K{$endRow}"; // Only need columns A-K for this operation
 
@@ -512,7 +512,7 @@ class GoogleSheetsService
             $batchSize = 100;
             $startRow = 1;
 
-            while (!$found && $startRow <= 1000) { // Reasonable limit to prevent infinite loop
+            while (!$found && $startRow <= 500) { // Reasonable limit to prevent infinite loop
                 $endRow = $startRow + $batchSize - 1;
                 $batchRange = "A{$startRow}:Q{$endRow}";
 
@@ -729,10 +729,10 @@ class GoogleSheetsService
     {
         try {
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
-            
+
             // Step 1: Dynamically determine the actual sheet dimensions
             $actualSheetSize = $this->getActualSheetSize($sheet, $worksheetName);
-            
+
             if (!$actualSheetSize) {
                 Log::warning("Could not determine sheet size", [
                     'worksheet' => $worksheetName,
@@ -740,23 +740,23 @@ class GoogleSheetsService
                 ]);
                 return null;
             }
-            
+
             Log::debug("Determined actual sheet size", [
                 'worksheet' => $worksheetName,
                 'max_row' => $actualSheetSize,
                 'request_id' => $requestId
             ]);
-            
+
             // Step 2: Search backwards from the actual end in dynamic batches
             $batchSize = 50;
             $searchStart = max(2, $actualSheetSize - ($batchSize * 5)); // Start 5 batches back from end
-            
+
             for ($currentStart = $actualSheetSize; $currentStart >= $searchStart; $currentStart -= $batchSize) {
                 $batchStart = max(2, $currentStart - $batchSize + 1);
                 $batchEnd = min($currentStart, $actualSheetSize);
-                
+
                 if ($batchStart > $batchEnd) continue;
-                
+
                 try {
                     Log::debug("Searching batch dynamically", [
                         'worksheet' => $worksheetName,
@@ -764,25 +764,25 @@ class GoogleSheetsService
                         'range' => "A{$batchStart}:A{$batchEnd}",
                         'batch_size' => $batchEnd - $batchStart + 1
                     ]);
-                    
+
                     $values = $sheet->range("A{$batchStart}:A{$batchEnd}")->get();
-                    
+
                     if (is_array($values)) {
                         foreach ($values as $index => $row) {
                             if (isset($row[0]) && $row[0] == $requestId) {
                                 $actualRow = $batchStart + $index;
-                                
+
                                 // Cache the position
                                 $cacheKey = "gsheets:row:{$worksheetName}:{$requestId}";
                                 Cache::forever($cacheKey, $actualRow);
-                                
+
                                 Log::info("Found and cached recently appended row", [
                                     'worksheet' => $worksheetName,
                                     'request_id' => $requestId,
                                     'row' => $actualRow,
                                     'sheet_size' => $actualSheetSize
                                 ]);
-                                
+
                                 return $actualRow;
                             }
                         }
@@ -796,15 +796,15 @@ class GoogleSheetsService
                     continue;
                 }
             }
-            
+
             // Step 3: If not found in recent batches, try a broader forward search
             Log::info("Not found in recent batches, trying broader search", [
                 'worksheet' => $worksheetName,
                 'request_id' => $requestId
             ]);
-            
+
             return $this->findAndCacheRowPosition($worksheetName, $requestId);
-            
+
         } catch (Exception $e) {
             Log::error("Error finding recently appended row", [
                 'worksheet' => $worksheetName,
@@ -814,7 +814,7 @@ class GoogleSheetsService
             return null;
         }
     }
-    
+
     /**
      * Dynamically determine the actual size of the sheet
      */
@@ -825,7 +825,7 @@ class GoogleSheetsService
             $low = 1;
             $high = 5000; // Start with a reasonable upper bound
             $lastValidRow = 1;
-            
+
             // First, find a reasonable upper bound by doubling
             $testRow = 100;
             while ($testRow <= 10000) {
@@ -843,11 +843,11 @@ class GoogleSheetsService
                     break;
                 }
             }
-            
+
             // Now binary search between $lastValidRow and $high
             while ($low <= $high) {
                 $mid = intval(($low + $high) / 2);
-                
+
                 try {
                     $result = $sheet->range("A{$mid}:A{$mid}")->get();
                     if (!empty($result) && isset($result[0][0]) && !empty(trim($result[0][0]))) {
@@ -863,14 +863,14 @@ class GoogleSheetsService
                     $high = $mid - 1;
                 }
             }
-            
+
             Log::info("Determined actual sheet size via binary search", [
                 'worksheet' => $worksheetName,
                 'last_row_with_data' => $lastValidRow
             ]);
-            
+
             return $lastValidRow;
-            
+
         } catch (Exception $e) {
             Log::error("Error determining sheet size", [
                 'worksheet' => $worksheetName,
@@ -889,7 +889,7 @@ class GoogleSheetsService
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
 
             // First try a broader search to get approximate sheet size
-            $maxRowsToCheck = 1000;
+            $maxRowsToCheck = 500;
 
             // Search in reverse order (most recent first) since new records are appended
             for ($batchStart = $maxRowsToCheck; $batchStart >= 2; $batchStart -= 100) {
