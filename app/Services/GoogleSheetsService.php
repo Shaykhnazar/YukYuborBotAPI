@@ -143,40 +143,24 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Deliver requests');
 
-            // More efficient approach: use append() method instead of calculating row position
-            // This avoids the timeout issue with large sheets
+            // Use append() and then find the actual row position for caching
             try {
                 $sheet->append([$data]);
-                Log::info('Delivery request record appended to Google Sheets using append()', [
+                
+                Log::info('Delivery request record appended to Google Sheets', [
                     'request_id' => $request->id
                 ]);
+                
+                // Find the actual row position by searching for the request ID
+                // This is more reliable than guessing
+                $this->findAndCacheRowPosition('Deliver requests', $request->id);
+                
             } catch (Exception $appendError) {
-                // Fallback: try to find next row with a limited range check
-                Log::warning('Append failed, trying fallback method', [
+                Log::error('Failed to append delivery request to Google Sheets', [
                     'error' => $appendError->getMessage(),
                     'request_id' => $request->id
                 ]);
-                
-                // Check only the first few columns of a reasonable range to find last row
-                $testRange = $sheet->range('A1:A1000')->get(); // Check only column A for performance
-                $nextRow = 2; // Default to row 2 (after header)
-                
-                if (is_array($testRange) && !empty($testRange)) {
-                    // Find the last non-empty row
-                    for ($i = count($testRange) - 1; $i >= 0; $i--) {
-                        if (!empty($testRange[$i][0])) {
-                            $nextRow = $i + 2; // +1 for array index, +1 for next row
-                            break;
-                        }
-                    }
-                }
-                
-                Log::info('Delivery request fallback row calculation', [
-                    'calculated_next_row' => $nextRow,
-                    'request_id' => $request->id
-                ]);
-                
-                $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+                return false;
             }
 
             Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
@@ -226,49 +210,24 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Send requests');
 
-            // More efficient approach: use append() method instead of calculating row position
-            // This avoids the timeout issue with large sheets
+            // Use append() and then find the actual row position for caching
             try {
                 $sheet->append([$data]);
                 
-                // Try to cache the row position by finding where it was added
-                // This is approximate but helps with future updates
-                $allRows = $sheet->range('A:A')->get();
-                if (is_array($allRows)) {
-                    $rowPosition = count($allRows);
-                    Cache::put("gsheets.row_position.Send requests.{$request->id}", $rowPosition, now()->addHours(24));
-                }
-                
-                Log::info('Send request record appended to Google Sheets using append()', [
+                Log::info('Send request record appended to Google Sheets', [
                     'request_id' => $request->id
                 ]);
+                
+                // Find the actual row position by searching for the request ID
+                // This is more reliable than guessing
+                $this->findAndCacheRowPosition('Send requests', $request->id);
+                
             } catch (Exception $appendError) {
-                // Fallback: try to find next row with a limited range check
-                Log::warning('Append failed, trying fallback method', [
+                Log::error('Failed to append send request to Google Sheets', [
                     'error' => $appendError->getMessage(),
                     'request_id' => $request->id
                 ]);
-                
-                // Check only the first few columns of a reasonable range to find last row
-                $testRange = $sheet->range('A1:A1000')->get(); // Check only column A for performance
-                $nextRow = 2; // Default to row 2 (after header)
-                
-                if (is_array($testRange) && !empty($testRange)) {
-                    // Find the last non-empty row
-                    for ($i = count($testRange) - 1; $i >= 0; $i--) {
-                        if (!empty($testRange[$i][0])) {
-                            $nextRow = $i + 2; // +1 for array index, +1 for next row
-                            break;
-                        }
-                    }
-                }
-                
-                Log::info('Send request fallback row calculation', [
-                    'calculated_next_row' => $nextRow,
-                    'request_id' => $request->id
-                ]);
-                
-                $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+                return false;
             }
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
@@ -522,62 +481,23 @@ class GoogleSheetsService
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
             
-            // Try to get cached row position first
-            $cacheKey = "gsheets.row_position.{$worksheetName}.{$requestId}";
-            $cachedRowNum = Cache::get($cacheKey);
+            Log::info("GoogleSheetsService: Starting updateRequestResponseReceived", [
+                'request_type' => $requestType,
+                'request_id' => $requestId,
+                'worksheet' => $worksheetName,
+                'is_first_response' => $isFirstResponse
+            ]);
             
-            if ($cachedRowNum) {
-                // Try to update directly using cached position
-                try {
-                    $cachedRow = $sheet->range("A{$cachedRowNum}:Q{$cachedRowNum}")->get();
-                    if (isset($cachedRow[0][0]) && $cachedRow[0][0] == $requestId) {
-                        // Cache hit - update directly
-                        $this->performResponseReceivedUpdate($sheet, $cachedRow[0], $cachedRowNum, $isFirstResponse, $requestId, $worksheetName);
-                        return true;
-                    } else {
-                        // Cache miss - clear cache
-                        Cache::forget($cacheKey);
-                    }
-                } catch (Exception $cacheError) {
-                    Cache::forget($cacheKey);
-                }
-            }
-
-            // Fallback: search in batches to avoid timeout
-            $found = false;
-            $batchSize = 100;
-            $startRow = 1;
+            // Use the reliable row finding method
+            $rowPosition = $this->findRowPosition($worksheetName, $requestId);
             
-            while (!$found && $startRow <= 1000) { // Reasonable limit to prevent infinite loop
-                $endRow = $startRow + $batchSize - 1;
-                $batchRange = "A{$startRow}:Q{$endRow}";
+            if ($rowPosition) {
+                // Get the full row data
+                $rowData = $sheet->range("A{$rowPosition}:Q{$rowPosition}")->get();
                 
-                try {
-                    $values = $sheet->range($batchRange)->get();
-                    
-                    if (is_array($values) && !empty($values)) {
-                        foreach ($values as $rowIndex => $row) {
-                            if (isset($row[0]) && $row[0] == $requestId) {
-                                $actualRowNum = $startRow + $rowIndex; // Actual row number in sheet
-                                
-                                // Cache the row position for future updates
-                                Cache::put($cacheKey, $actualRowNum, now()->addHours(24));
-                                
-                                $this->performResponseReceivedUpdate($sheet, $row, $actualRowNum, $isFirstResponse, $requestId, $worksheetName);
-                                return true;
-                            }
-                        }
-                    }
-                    
-                    $startRow += $batchSize;
-                } catch (Exception $batchError) {
-                    Log::warning("Batch search failed in updateRequestResponseReceived", [
-                        'worksheet' => $worksheetName,
-                        'request_id' => $requestId,
-                        'batch_range' => $batchRange,
-                        'error' => $batchError->getMessage()
-                    ]);
-                    break;
+                if (isset($rowData[0])) {
+                    $this->performResponseReceivedUpdate($sheet, $rowData[0], $rowPosition, $isFirstResponse, $requestId, $worksheetName);
+                    return true;
                 }
             }
 
@@ -787,6 +707,89 @@ class GoogleSheetsService
             'response_count' => $currentCount + 1,
             'row_number' => $actualRowNum
         ]);
+    }
+
+    /**
+     * Find row position for a request (with caching)
+     */
+    private function findRowPosition(string $worksheetName, int $requestId): ?int
+    {
+        // Try cache first
+        $cacheKey = "gsheets.row_position.{$worksheetName}.{$requestId}";
+        $cachedRow = Cache::get($cacheKey);
+        
+        if ($cachedRow) {
+            // Verify cache is still valid
+            try {
+                $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
+                $testRow = $sheet->range("A{$cachedRow}:A{$cachedRow}")->get();
+                
+                if (isset($testRow[0][0]) && $testRow[0][0] == $requestId) {
+                    return $cachedRow; // Cache is valid
+                } else {
+                    // Cache is invalid, remove it
+                    Cache::forget($cacheKey);
+                }
+            } catch (Exception $e) {
+                Cache::forget($cacheKey);
+            }
+        }
+        
+        // Search for the row and cache the result
+        return $this->findAndCacheRowPosition($worksheetName, $requestId);
+    }
+
+    /**
+     * Find and cache the row position for a request
+     */
+    private function findAndCacheRowPosition(string $worksheetName, int $requestId): ?int
+    {
+        try {
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
+            
+            // Search in smaller batches starting from the end (most recent records)
+            $batchSize = 50;
+            $maxRows = 500; // Reasonable limit
+            
+            for ($startRow = 2; $startRow <= $maxRows; $startRow += $batchSize) {
+                $endRow = $startRow + $batchSize - 1;
+                $values = $sheet->range("A{$startRow}:A{$endRow}")->get();
+                
+                if (is_array($values)) {
+                    foreach ($values as $index => $row) {
+                        if (isset($row[0]) && $row[0] == $requestId) {
+                            $actualRow = $startRow + $index;
+                            
+                            // Cache the position
+                            $cacheKey = "gsheets.row_position.{$worksheetName}.{$requestId}";
+                            Cache::put($cacheKey, $actualRow, now()->addHours(24));
+                            
+                            Log::info("Found and cached row position", [
+                                'worksheet' => $worksheetName,
+                                'request_id' => $requestId,
+                                'row' => $actualRow
+                            ]);
+                            
+                            return $actualRow;
+                        }
+                    }
+                }
+            }
+            
+            Log::warning("Could not find row position for request", [
+                'worksheet' => $worksheetName,
+                'request_id' => $requestId
+            ]);
+            
+            return null;
+        } catch (Exception $e) {
+            Log::error("Error finding row position", [
+                'worksheet' => $worksheetName,
+                'request_id' => $requestId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 
     /**
