@@ -437,14 +437,11 @@ class GoogleSheetsService
                         $sheet->range("L" . $rowNum)->update([["получен"]]);
 
                         if ($isFirstResponse) {
-                            // Column N: Time of first response received
-                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
-
-                            // Column O: Waiting time for first response (calculated)
+                            // Column N: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - дата создания
                             if ($createdAt) {
                                 $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                                $sheet->range("N" . $rowNum)->update([[$waitingTime]]);
                             }
                         }
 
@@ -457,14 +454,12 @@ class GoogleSheetsService
                         $sheet->range("L" . $rowNum)->update([["получен"]]);
 
                         if ($isFirstResponse) {
-                            // Column N: Time of first response received
-                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
 
-                            // Column O: Waiting time for first response (calculated)
+                            // Column N: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - Создано
                             if ($createdAt) {
                                 $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                                $sheet->range("N" . $rowNum)->update([[$waitingTime]]);
                             }
                         }
 
@@ -568,7 +563,7 @@ class GoogleSheetsService
         try {
             $start = Carbon::parse($startTime);
             $end = Carbon::parse($endTime);
-            $diffInSeconds = $end->diffInSeconds($start);
+            $diffInSeconds = $start->diffInSeconds($end);
 
             if ($diffInSeconds < 60) {
                 return "{$diffInSeconds} секунд";
