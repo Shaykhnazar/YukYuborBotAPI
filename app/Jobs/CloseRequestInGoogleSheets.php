@@ -24,10 +24,7 @@ class CloseRequestInGoogleSheets implements ShouldQueue
      */
     public int $timeout = 120;
 
-    /**
-     * The name of the connection the job should be sent to.
-     */
-    public $connection = 'redis';
+
 
     public function __construct(
         private readonly string $requestType, // 'send' or 'delivery'

@@ -25,10 +25,7 @@ class RecordDeliveryRequestToGoogleSheets implements ShouldQueue
      */
     public int $timeout = 120;
 
-    /**
-     * The name of the connection the job should be sent to.
-     */
-    public $connection = 'redis';
+
 
 
 
