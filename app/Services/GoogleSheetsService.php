@@ -139,13 +139,13 @@ class GoogleSheetsService
             ];
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Deliver requests');
-            
+
             // Find the next empty row and append data starting from column A
             $values = $sheet->all();
             $nextRow = count($values) + 1;
-            
+
             // Use range to specify exactly where to place the data (starting from column A)
-            $sheet->range("A{$nextRow}:R{$nextRow}")->update([$data]);
+            $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
 
             Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -193,13 +193,13 @@ class GoogleSheetsService
             ];
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Send requests');
-            
+
             // Find the next empty row and append data starting from column A
             $values = $sheet->all();
             $nextRow = count($values) + 1;
-            
+
             // Use range to specify exactly where to place the data (starting from column A)
-            $sheet->range("A{$nextRow}:R{$nextRow}")->update([$data]);
+            $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -439,7 +439,7 @@ class GoogleSheetsService
                         if ($isFirstResponse) {
                             // Column N: Time of first response received
                             $sheet->range("N" . $rowNum)->update([[$currentTime]]);
-                            
+
                             // Column O: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - дата создания
                             if ($createdAt) {
@@ -459,7 +459,7 @@ class GoogleSheetsService
                         if ($isFirstResponse) {
                             // Column N: Time of first response received
                             $sheet->range("N" . $rowNum)->update([[$currentTime]]);
-                            
+
                             // Column O: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - Создано
                             if ($createdAt) {
@@ -512,31 +512,31 @@ class GoogleSheetsService
 
                     if ($requestType === 'send') {
                         // Send requests sheet columns
-                        // Column P: Response accepted (принят)
-                        $sheet->range("P" . $rowNum)->update([["принят"]]);
+                        // Column O: Response accepted (принят)
+                        $sheet->range("O" . $rowNum)->update([["принят"]]);
 
-                        // Column Q: Time response accepted
-                        $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
+                        // Column P: Time response accepted
+                        $sheet->range("P" . $rowNum)->update([[$currentTime]]);
 
-                        // Column R: Waiting time for acceptance (calculated)
+                        // Column Q: Waiting time for acceptance (calculated)
                         $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
                         if ($firstResponseTime) {
                             $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                            $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
+                            $sheet->range("Q" . $rowNum)->update([[$acceptanceWaitingTime]]);
                         }
                     } else {
                         // Delivery requests sheet columns (same structure as Send requests)
-                        // Column P: Response accepted (принят)
-                        $sheet->range("P" . $rowNum)->update([["принят"]]);
+                        // Column O: Response accepted (принят)
+                        $sheet->range("O" . $rowNum)->update([["принят"]]);
 
-                        // Column Q: Time response accepted
-                        $sheet->range("Q" . $rowNum)->update([[$currentTime]]);
+                        // Column P: Time response accepted
+                        $sheet->range("P" . $rowNum)->update([[$currentTime]]);
 
-                        // Column R: Waiting time for acceptance (calculated)
+                        // Column Q: Waiting time for acceptance (calculated)
                         $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
                         if ($firstResponseTime) {
                             $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                            $sheet->range("R" . $rowNum)->update([[$acceptanceWaitingTime]]);
+                            $sheet->range("Q" . $rowNum)->update([[$acceptanceWaitingTime]]);
                         }
                     }
 
@@ -569,7 +569,7 @@ class GoogleSheetsService
             $start = Carbon::parse($startTime);
             $end = Carbon::parse($endTime);
             $diffInSeconds = $end->diffInSeconds($start);
-            
+
             if ($diffInSeconds < 60) {
                 return "{$diffInSeconds} секунд";
             } elseif ($diffInSeconds < 3600) { // Less than 1 hour
@@ -585,11 +585,11 @@ class GoogleSheetsService
                 $remainingSeconds = $diffInSeconds % 3600;
                 $minutes = floor($remainingSeconds / 60);
                 $seconds = $remainingSeconds % 60;
-                
+
                 $result = "{$hours} час";
                 if ($hours > 1 && $hours < 5) $result = "{$hours} часа";
                 if ($hours >= 5) $result = "{$hours} часов";
-                
+
                 if ($minutes > 0) {
                     $result .= " {$minutes} минут";
                 }
@@ -603,12 +603,12 @@ class GoogleSheetsService
                 $hours = floor($remainingSeconds / 3600);
                 $remainingSeconds = $remainingSeconds % 3600;
                 $minutes = floor($remainingSeconds / 60);
-                
+
                 $result = "{$days} ";
                 if ($days == 1) $result .= "день";
                 elseif ($days < 5) $result .= "дня";
                 else $result .= "дней";
-                
+
                 if ($hours > 0) {
                     if ($hours == 1) $result .= " {$hours} час";
                     elseif ($hours < 5) $result .= " {$hours} часа";
