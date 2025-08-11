@@ -13,7 +13,7 @@ use App\Models\SendRequest;
 
 class GoogleSheetsService
 {
-    protected $spreadsheetId;
+    protected string $spreadsheetId;
 
     public function __construct()
     {
@@ -22,23 +22,24 @@ class GoogleSheetsService
 
     /**
      * Initialize Google Sheets client with service account
+     * @throws Exception
      */
-    private function initializeClient()
+    private function initializeClient(): \Revolution\Google\Sheets\SheetsClient|Sheets
     {
         try {
             $credentialsPath = config('google.service.file');
             $serviceEnabled = config('google.service.enable');
 
             if (!$serviceEnabled) {
-                throw new Exception('Google service account authentication is not enabled. Set GOOGLE_SERVICE_ENABLED=true in your .env file');
+                throw new \RuntimeException('Google service account authentication is not enabled. Set GOOGLE_SERVICE_ENABLED=true in your .env file');
             }
 
             if (!file_exists($credentialsPath)) {
-                throw new Exception('Google service account credentials file not found at: ' . $credentialsPath);
+                throw new \RuntimeException('Google service account credentials file not found at: ' . $credentialsPath);
             }
 
             if (!$this->spreadsheetId) {
-                throw new Exception('Google Sheets spreadsheet ID not configured. Set GOOGLE_SHEETS_SPREADSHEET_ID in your .env file');
+                throw new \RuntimeException('Google Sheets spreadsheet ID not configured. Set GOOGLE_SHEETS_SPREADSHEET_ID in your .env file');
             }
 
             // The revolution/laravel-google-sheets package automatically uses the service account
@@ -527,15 +528,39 @@ class GoogleSheetsService
     private function calculateWaitingTime($startTime, $endTime): string
     {
         try {
-            $start = Carbon::parse($startTime);
-            $end   = Carbon::parse($endTime);
+            $interval = Carbon::parse($startTime)->diff(Carbon::parse($endTime));
 
-            // Gives natural language like: "1 час 5 минут"
-            return $start->diff($end)->forHumans([
-                'join'  => true, // join parts together
-                'parts' => 3,    // number of time units
-                'short' => false // use full words instead of abbreviations
-            ]);
+            if ($interval->days > 0) {
+                return trim(sprintf(
+                    "%d %s %s %s %s %s",
+                    $interval->days,
+                    $this->pluralRu($interval->days, 'день', 'дня', 'дней'),
+                    $interval->h > 0 ? $interval->h . ' ' . $this->pluralRu($interval->h, 'час', 'часа', 'часов') : '',
+                    $interval->i > 0 ? $interval->i . ' минут' : '',
+                    $interval->s > 0 ? $interval->s . ' секунд' : '',
+                    ''
+                ));
+            }
+
+            if ($interval->h > 0) {
+                return trim(sprintf(
+                    "%d %s %s %s",
+                    $interval->h,
+                    $this->pluralRu($interval->h, 'час', 'часа', 'часов'),
+                    $interval->i > 0 ? $interval->i . ' минут' : '',
+                    $interval->s > 0 ? $interval->s . ' секунд' : ''
+                ));
+            }
+
+            if ($interval->i > 0) {
+                return trim(sprintf(
+                    "%d минут %s",
+                    $interval->i,
+                    $interval->s > 0 ? $interval->s . ' секунд' : ''
+                ));
+            }
+
+            return $interval->s . ' секунд';
         } catch (Exception $e) {
             Log::error('Failed to calculate waiting time', [
                 'start_time' => $startTime,
@@ -544,6 +569,16 @@ class GoogleSheetsService
             ]);
             return 'Ошибка расчета';
         }
+    }
+
+    private function pluralRu($number, $one, $few, $many)
+    {
+        $n = abs($number) % 100;
+        $n1 = $n % 10;
+        if ($n > 10 && $n < 20) return $many;
+        if ($n1 > 1 && $n1 < 5) return $few;
+        if ($n1 == 1) return $one;
+        return $many;
     }
 
     /**
