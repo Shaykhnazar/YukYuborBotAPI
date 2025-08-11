@@ -25,9 +25,9 @@ class CloseRequestInGoogleSheets implements ShouldQueue
     public int $timeout = 120;
 
     /**
-     * The name of the queue the job should be sent to.
+     * The name of the connection the job should be sent to.
      */
-    public $queue = 'gsheets';
+    public $connection = 'redis';
 
     public function __construct(
         private readonly string $requestType, // 'send' or 'delivery'
@@ -37,7 +37,7 @@ class CloseRequestInGoogleSheets implements ShouldQueue
     public function handle(GoogleSheetsService $googleSheetsService): void
     {
         try {
-            $result = $this->requestType === 'send' 
+            $result = $this->requestType === 'send'
                 ? $googleSheetsService->recordCloseSendRequest($this->requestId)
                 : $googleSheetsService->recordCloseDeliveryRequest($this->requestId);
 
