@@ -295,20 +295,47 @@ class GoogleSheetsService
     {
         try {
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
-            $values = $sheet->all();
+            
+            // More efficient approach: search in batches to avoid timeout
+            $batchSize = 100;
+            $startRow = 1;
+            
+            while ($startRow <= 1000) { // Reasonable limit to prevent infinite loop
+                $endRow = $startRow + $batchSize - 1;
+                $batchRange = "A{$startRow}:K{$endRow}"; // Only need columns A-K for this operation
+                
+                try {
+                    $values = $sheet->range($batchRange)->get();
+                    
+                    if (is_array($values) && !empty($values)) {
+                        foreach ($values as $rowIndex => $row) {
+                            if (isset($row[0]) && $row[0] == $requestId) {
+                                $actualRowNum = $startRow + $rowIndex; // Actual row number in sheet
+                                
+                                // Update status column (index 8) and updated_at column (index 10)
+                                $sheet->range("I" . $actualRowNum)->update([[$status]]);
+                                $sheet->range("K" . $actualRowNum)->update([[Carbon::now()->toISOString()]]);
 
-            foreach ($values as $rowIndex => $row) {
-                if (isset($row[0]) && $row[0] == $requestId) {
-                    // Update status column (index 8) and updated_at column (index 10)
-                    $sheet->range("I" . ($rowIndex + 1))->update([[$status]]);
-                    $sheet->range("K" . ($rowIndex + 1))->update([[Carbon::now()->toISOString()]]);
-
-                    Log::info("Request status updated in Google Sheets", [
+                                Log::info("Request status updated in Google Sheets", [
+                                    'worksheet' => $worksheetName,
+                                    'request_id' => $requestId,
+                                    'status' => $status,
+                                    'row_number' => $actualRowNum
+                                ]);
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    $startRow += $batchSize;
+                } catch (Exception $batchError) {
+                    Log::warning("Batch search failed in updateRequestStatus", [
                         'worksheet' => $worksheetName,
                         'request_id' => $requestId,
-                        'status' => $status
+                        'batch_range' => $batchRange,
+                        'error' => $batchError->getMessage()
                     ]);
-                    return true;
+                    break;
                 }
             }
 
@@ -484,38 +511,62 @@ class GoogleSheetsService
         try {
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
-            $values = $sheet->all();
+            
+            // More efficient approach: search in batches to avoid timeout
+            $found = false;
+            $batchSize = 100;
+            $startRow = 1;
+            
+            while (!$found && $startRow <= 1000) { // Reasonable limit to prevent infinite loop
+                $endRow = $startRow + $batchSize - 1;
+                $batchRange = "A{$startRow}:Q{$endRow}";
+                
+                try {
+                    $values = $sheet->range($batchRange)->get();
+                    
+                    if (is_array($values) && !empty($values)) {
+                        foreach ($values as $rowIndex => $row) {
+                            if (isset($row[0]) && $row[0] == $requestId) {
+                                $currentTime = Carbon::now()->toISOString();
+                                $actualRowNum = $startRow + $rowIndex; // Actual row number in sheet
+                                
+                                // Column L: Response received (Ответ получен)
+                                $sheet->range("L" . $actualRowNum)->update([["получен"]]);
 
-            foreach ($values as $rowIndex => $row) {
-                if (isset($row[0]) && $row[0] == $requestId) {
-                    $currentTime = Carbon::now()->toISOString();
-                    $rowNum = $rowIndex + 1;
+                                if ($isFirstResponse) {
+                                    // Column N: Waiting time for first response (calculated)
+                                    $createdAt = $row[9] ?? ''; // Column J (index 9) - Создано
+                                    if ($createdAt) {
+                                        $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                                        $sheet->range("N" . $actualRowNum)->update([[$waitingTime]]);
+                                    }
+                                }
 
-                    // Delivery requests sheet columns (same structure as Send requests)
-                    // Column L: Response received (Ответ получен)
-                    $sheet->range("L" . $rowNum)->update([["получен"]]);
+                                // Column M: Number of responses received (increment)
+                                $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
+                                $sheet->range("M" . $actualRowNum)->update([[$currentCount + 1]]);
 
-                    if ($isFirstResponse) {
-
-                        // Column N: Waiting time for first response (calculated)
-                        $createdAt = $row[9] ?? ''; // Column J (index 9) - Создано
-                        if ($createdAt) {
-                            $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                            $sheet->range("N" . $rowNum)->update([[$waitingTime]]);
+                                Log::info("Request response tracking updated in Google Sheets", [
+                                    'worksheet' => $worksheetName,
+                                    'request_id' => $requestId,
+                                    'is_first_response' => $isFirstResponse,
+                                    'response_count' => $currentCount + 1,
+                                    'row_number' => $actualRowNum
+                                ]);
+                                return true;
+                            }
                         }
                     }
-
-                    // Column M: Number of responses received (increment)
-                    $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
-                    $sheet->range("M" . $rowNum)->update([[$currentCount + 1]]);
-
-                    Log::info("Request response tracking updated in Google Sheets", [
+                    
+                    $startRow += $batchSize;
+                } catch (Exception $batchError) {
+                    Log::warning("Batch search failed in updateRequestResponseReceived", [
                         'worksheet' => $worksheetName,
                         'request_id' => $requestId,
-                        'is_first_response' => $isFirstResponse,
-                        'response_count' => $currentCount + 1
+                        'batch_range' => $batchRange,
+                        'error' => $batchError->getMessage()
                     ]);
-                    return true;
+                    break;
                 }
             }
 
@@ -539,41 +590,66 @@ class GoogleSheetsService
         try {
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
-            $values = $sheet->all();
-
-            foreach ($values as $rowIndex => $row) {
-                if (isset($row[0]) && $row[0] == $requestId) {
-                    $currentTime = Carbon::now()->toISOString();
-                    $rowNum = $rowIndex + 1;
-
-                    // Delivery requests sheet columns (same structure as Send requests)
-                    // Column O: Response accepted (принят)
-                    $sheet->range("O" . $rowNum)->update([["принят"]]);
-
-                    // Column P: Time response accepted
-                    $sheet->range("P" . $rowNum)->update([[$currentTime]]);
-
-                    // Column Q: Waiting time for acceptance (calculated)
-                    $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
-                    if ($firstResponseTime) {
-                        $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                        $sheet->range("Q" . $rowNum)->update([[$acceptanceWaitingTime]]);
-                    }
-
-                    // Update status column to "matched" when response is accepted
-                    $sheet->range("I" . $rowNum)->update([["matched"]]);
+            
+            // More efficient approach: search in batches to avoid timeout
+            $found = false;
+            $batchSize = 100;
+            $startRow = 1;
+            
+            while (!$found && $startRow <= 1000) { // Reasonable limit to prevent infinite loop
+                $endRow = $startRow + $batchSize - 1;
+                $batchRange = "A{$startRow}:Q{$endRow}";
+                
+                try {
+                    $values = $sheet->range($batchRange)->get();
                     
-                    Log::info("Request status updated to 'matched' in Google Sheets", [
+                    if (is_array($values) && !empty($values)) {
+                        foreach ($values as $rowIndex => $row) {
+                            if (isset($row[0]) && $row[0] == $requestId) {
+                                $currentTime = Carbon::now()->toISOString();
+                                $actualRowNum = $startRow + $rowIndex; // Actual row number in sheet
+
+                                // Column O: Response accepted (принят)
+                                $sheet->range("O" . $actualRowNum)->update([["принят"]]);
+
+                                // Column P: Time response accepted
+                                $sheet->range("P" . $actualRowNum)->update([[$currentTime]]);
+
+                                // Column Q: Waiting time for acceptance (calculated)
+                                $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
+                                if ($firstResponseTime) {
+                                    $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                                    $sheet->range("Q" . $actualRowNum)->update([[$acceptanceWaitingTime]]);
+                                }
+
+                                // Update status column to "matched" when response is accepted
+                                $sheet->range("I" . $actualRowNum)->update([["matched"]]);
+                                
+                                Log::info("Request status updated to 'matched' in Google Sheets", [
+                                    'worksheet' => $worksheetName,
+                                    'request_id' => $requestId,
+                                    'row_number' => $actualRowNum
+                                ]);
+
+                                Log::info("Request acceptance tracking updated in Google Sheets", [
+                                    'worksheet' => $worksheetName,
+                                    'request_id' => $requestId,
+                                    'row_number' => $actualRowNum
+                                ]);
+                                return true;
+                            }
+                        }
+                    }
+                    
+                    $startRow += $batchSize;
+                } catch (Exception $batchError) {
+                    Log::warning("Batch search failed in updateRequestResponseAccepted", [
                         'worksheet' => $worksheetName,
                         'request_id' => $requestId,
-                        'row_number' => $rowNum
+                        'batch_range' => $batchRange,
+                        'error' => $batchError->getMessage()
                     ]);
-
-                    Log::info("Request acceptance tracking updated in Google Sheets", [
-                        'worksheet' => $worksheetName,
-                        'request_id' => $requestId
-                    ]);
-                    return true;
+                    break;
                 }
             }
 
