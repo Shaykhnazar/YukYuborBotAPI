@@ -218,8 +218,8 @@ class GoogleSheetsService
             foreach ($values as $rowIndex => $row) {
                 if (isset($row[0]) && $row[0] == $requestId) {
                     // Update status column (index 8) and updated_at column (index 10)
-                    $sheet->update("I" . ($rowIndex + 1), [[$status]]);
-                    $sheet->update("K" . ($rowIndex + 1), [[Carbon::now()->toISOString()]]);
+                    $sheet->range("I" . ($rowIndex + 1))->update([[$status]]);
+                    $sheet->range("K" . ($rowIndex + 1))->update([[Carbon::now()->toISOString()]]);
 
                     Log::info("Request status updated in Google Sheets", [
                         'worksheet' => $worksheetName,

@@ -19,6 +19,15 @@ class ResponseObserver
      */
     public function created(Response $response): void
     {
+        Log::info('ResponseObserver: Response created', [
+            'response_id' => $response->id,
+            'response_type' => $response->response_type,
+            'request_type' => $response->request_type,
+            'offer_id' => $response->offer_id,
+            'request_id' => $response->request_id,
+            'status' => $response->status
+        ]);
+
         // Dispatch after response to avoid blocking the user request
         dispatch(function () use ($response) {
             $this->updateResponseTracking($response, true);
@@ -47,6 +56,14 @@ class ResponseObserver
         try {
             // Determine which request received the response
             $targetRequest = $this->getTargetRequest($response);
+            
+            Log::info('ResponseObserver: Target request determined', [
+                'response_id' => $response->id,
+                'response_type' => $response->response_type,
+                'target_request_found' => !is_null($targetRequest),
+                'target_request_type' => $targetRequest ? get_class($targetRequest) : null,
+                'target_request_id' => $targetRequest?->id
+            ]);
             
             if (!$targetRequest) {
                 Log::warning('Could not determine target request for response tracking', [
