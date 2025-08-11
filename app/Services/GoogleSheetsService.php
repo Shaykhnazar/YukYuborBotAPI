@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\CarbonInterface;
 use Revolution\Google\Sheets\Facades\Sheets;
 use Carbon\Carbon;
 use Exception;
@@ -437,14 +438,11 @@ class GoogleSheetsService
                         $sheet->range("L" . $rowNum)->update([["получен"]]);
 
                         if ($isFirstResponse) {
-                            // Column N: Time of first response received
-                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
-
-                            // Column O: Waiting time for first response (calculated)
+                            // Column N: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - дата создания
                             if ($createdAt) {
                                 $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                                $sheet->range("N" . $rowNum)->update([[$waitingTime]]);
                             }
                         }
 
@@ -457,14 +455,12 @@ class GoogleSheetsService
                         $sheet->range("L" . $rowNum)->update([["получен"]]);
 
                         if ($isFirstResponse) {
-                            // Column N: Time of first response received
-                            $sheet->range("N" . $rowNum)->update([[$currentTime]]);
 
-                            // Column O: Waiting time for first response (calculated)
+                            // Column N: Waiting time for first response (calculated)
                             $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - Создано
                             if ($createdAt) {
                                 $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                                $sheet->range("O" . $rowNum)->update([[$waitingTime]]);
+                                $sheet->range("N" . $rowNum)->update([[$waitingTime]]);
                             }
                         }
 
@@ -565,68 +561,14 @@ class GoogleSheetsService
      */
     private function calculateWaitingTime($startTime, $endTime): string
     {
-        try {
-            $start = Carbon::parse($startTime);
-            $end = Carbon::parse($endTime);
-            $diffInSeconds = $end->diffInSeconds($start);
-
-            if ($diffInSeconds < 60) {
-                return "{$diffInSeconds} секунд";
-            } elseif ($diffInSeconds < 3600) { // Less than 1 hour
-                $minutes = floor($diffInSeconds / 60);
-                $seconds = $diffInSeconds % 60;
-                if ($seconds > 0) {
-                    return "{$minutes} минут {$seconds} секунд";
-                } else {
-                    return "{$minutes} минут";
-                }
-            } elseif ($diffInSeconds < 86400) { // Less than 24 hours
-                $hours = floor($diffInSeconds / 3600);
-                $remainingSeconds = $diffInSeconds % 3600;
-                $minutes = floor($remainingSeconds / 60);
-                $seconds = $remainingSeconds % 60;
-
-                $result = "{$hours} час";
-                if ($hours > 1 && $hours < 5) $result = "{$hours} часа";
-                if ($hours >= 5) $result = "{$hours} часов";
-
-                if ($minutes > 0) {
-                    $result .= " {$minutes} минут";
-                }
-                if ($seconds > 0) {
-                    $result .= " {$seconds} секунд";
-                }
-                return $result;
-            } else { // More than 24 hours
-                $days = floor($diffInSeconds / 86400);
-                $remainingSeconds = $diffInSeconds % 86400;
-                $hours = floor($remainingSeconds / 3600);
-                $remainingSeconds = $remainingSeconds % 3600;
-                $minutes = floor($remainingSeconds / 60);
-
-                $result = "{$days} ";
-                if ($days == 1) $result .= "день";
-                elseif ($days < 5) $result .= "дня";
-                else $result .= "дней";
-
-                if ($hours > 0) {
-                    if ($hours == 1) $result .= " {$hours} час";
-                    elseif ($hours < 5) $result .= " {$hours} часа";
-                    else $result .= " {$hours} часов";
-                }
-                if ($minutes > 0) {
-                    $result .= " {$minutes} минут";
-                }
-                return $result;
-            }
-        } catch (Exception $e) {
-            Log::error('Failed to calculate waiting time', [
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'error' => $e->getMessage()
+        return Carbon::parse($startTime)
+            ->locale('ru')          // Russian inflection
+            ->diffForHumans($endTime, [
+                'syntax' => CarbonInterface::DIFF_ABSOLUTE,
+                'parts'  => 3,       // days, hours, minutes
+                'join'   => ' ',     // glue between parts
+                'options' => CarbonInterface::ROUND,
             ]);
-            return 'Ошибка расчета';
-        }
     }
 
     /**
