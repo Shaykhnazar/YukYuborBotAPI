@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use App\Services\GoogleSheetsService;
+use App\Jobs\RecordUserToGoogleSheets;
 
 class User extends Authenticatable
 {
@@ -70,14 +70,13 @@ class User extends Authenticatable
 
         static::created(function ($user) {
             try {
-                // Automatically add user to Google Sheets when created
-                // Run in background to avoid blocking user creation
-                dispatch(function () use ($user) {
-                    app(GoogleSheetsService::class)->recordAddUser($user);
-                })->afterResponse();
+                // Dispatch queued job to add user to Google Sheets
+                RecordUserToGoogleSheets::dispatch($user->id)
+                    ->delay(now()->addSeconds(1))
+                    ->onQueue('gsheets');
             } catch (\Exception $e) {
                 // Log error but don't fail user creation
-                \Log::error('Failed to add user to Google Sheets during creation', [
+                \Log::error('Failed to dispatch user Google Sheets job during creation', [
                     'user_id' => $user->id,
                     'error' => $e->getMessage()
                 ]);
