@@ -615,10 +615,10 @@ class GoogleSheetsService
                                 // Column P: Time response accepted
                                 $sheet->range("P" . $actualRowNum)->update([[$currentTime]]);
 
-                                // Column Q: Waiting time for acceptance (calculated)
-                                $firstResponseTime = isset($row[13]) ? $row[13] : ''; // Column N (index 13)
-                                if ($firstResponseTime) {
-                                    $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                                // Column Q: Waiting time for acceptance (calculated from created_at to acceptance time)
+                                $createdAt = isset($row[9]) ? $row[9] : ''; // Column J (index 9) - Created_at timestamp
+                                if ($createdAt) {
+                                    $acceptanceWaitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
                                     $sheet->range("Q" . $actualRowNum)->update([[$acceptanceWaitingTime]]);
                                 }
 
@@ -671,6 +671,28 @@ class GoogleSheetsService
     private function calculateWaitingTime($startTime, $endTime): string
     {
         try {
+            // Check if startTime is already a calculated waiting time string (not a timestamp)
+            if (!empty($startTime) && (
+                strpos($startTime, 'минут') !== false || 
+                strpos($startTime, 'секунд') !== false ||
+                strpos($startTime, 'час') !== false ||
+                strpos($startTime, 'день') !== false ||
+                strpos($startTime, 'дней') !== false ||
+                strpos($startTime, 'дня') !== false
+            )) {
+                // This is already a calculated waiting time, return it as-is
+                Log::info('Waiting time already calculated, returning existing value', [
+                    'existing_value' => $startTime
+                ]);
+                return $startTime;
+            }
+
+            // Check if startTime is empty or invalid
+            if (empty($startTime)) {
+                Log::warning('Start time is empty, cannot calculate waiting time');
+                return 'Нет данных';
+            }
+
             $interval = Carbon::parse($startTime)->diff(Carbon::parse($endTime));
 
             if ($interval->days > 0) {
