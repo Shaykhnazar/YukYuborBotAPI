@@ -142,12 +142,41 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Deliver requests');
 
-            // Find the next empty row and append data starting from column A
-            $values = $sheet->all();
-            $nextRow = count($values) + 1;
-
-            // Use range to specify exactly where to place the data (starting from column A)
-            $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+            // More efficient approach: use append() method instead of calculating row position
+            // This avoids the timeout issue with large sheets
+            try {
+                $sheet->append([$data]);
+                Log::info('Delivery request record appended to Google Sheets using append()', [
+                    'request_id' => $request->id
+                ]);
+            } catch (Exception $appendError) {
+                // Fallback: try to find next row with a limited range check
+                Log::warning('Append failed, trying fallback method', [
+                    'error' => $appendError->getMessage(),
+                    'request_id' => $request->id
+                ]);
+                
+                // Check only the first few columns of a reasonable range to find last row
+                $testRange = $sheet->range('A1:A1000')->get(); // Check only column A for performance
+                $nextRow = 2; // Default to row 2 (after header)
+                
+                if (is_array($testRange) && !empty($testRange)) {
+                    // Find the last non-empty row
+                    for ($i = count($testRange) - 1; $i >= 0; $i--) {
+                        if (!empty($testRange[$i][0])) {
+                            $nextRow = $i + 2; // +1 for array index, +1 for next row
+                            break;
+                        }
+                    }
+                }
+                
+                Log::info('Delivery request fallback row calculation', [
+                    'calculated_next_row' => $nextRow,
+                    'request_id' => $request->id
+                ]);
+                
+                $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+            }
 
             Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -196,12 +225,41 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Send requests');
 
-            // Find the next empty row and append data starting from column A
-            $values = $sheet->all();
-            $nextRow = count($values) + 1;
-
-            // Use range to specify exactly where to place the data (starting from column A)
-            $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+            // More efficient approach: use append() method instead of calculating row position
+            // This avoids the timeout issue with large sheets
+            try {
+                $sheet->append([$data]);
+                Log::info('Send request record appended to Google Sheets using append()', [
+                    'request_id' => $request->id
+                ]);
+            } catch (Exception $appendError) {
+                // Fallback: try to find next row with a limited range check
+                Log::warning('Append failed, trying fallback method', [
+                    'error' => $appendError->getMessage(),
+                    'request_id' => $request->id
+                ]);
+                
+                // Check only the first few columns of a reasonable range to find last row
+                $testRange = $sheet->range('A1:A1000')->get(); // Check only column A for performance
+                $nextRow = 2; // Default to row 2 (after header)
+                
+                if (is_array($testRange) && !empty($testRange)) {
+                    // Find the last non-empty row
+                    for ($i = count($testRange) - 1; $i >= 0; $i--) {
+                        if (!empty($testRange[$i][0])) {
+                            $nextRow = $i + 2; // +1 for array index, +1 for next row
+                            break;
+                        }
+                    }
+                }
+                
+                Log::info('Send request fallback row calculation', [
+                    'calculated_next_row' => $nextRow,
+                    'request_id' => $request->id
+                ]);
+                
+                $sheet->range("A{$nextRow}:Q{$nextRow}")->update([$data]);
+            }
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -501,6 +559,15 @@ class GoogleSheetsService
                         $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
                         $sheet->range("Q" . $rowNum)->update([[$acceptanceWaitingTime]]);
                     }
+
+                    // Update status column to "matched" when response is accepted
+                    $sheet->range("I" . $rowNum)->update([["matched"]]);
+                    
+                    Log::info("Request status updated to 'matched' in Google Sheets", [
+                        'worksheet' => $worksheetName,
+                        'request_id' => $requestId,
+                        'row_number' => $rowNum
+                    ]);
 
                     Log::info("Request acceptance tracking updated in Google Sheets", [
                         'worksheet' => $worksheetName,

@@ -26,6 +26,10 @@ class ResponseObserver
 
         // Dispatch queued job to update Google Sheets tracking
         UpdateGoogleSheetsResponseTracking::dispatch($response->id, true);
+        
+        Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsResponseTracking job', [
+            'response_id' => $response->id
+        ]);
     }
 
     /**
@@ -42,6 +46,10 @@ class ResponseObserver
             
             // Dispatch queued job to update Google Sheets acceptance tracking
             UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id);
+            
+            Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [
+                'response_id' => $response->id
+            ]);
         }
     }
 
