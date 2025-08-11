@@ -150,15 +150,11 @@ class GoogleSheetsService
                 'request_id' => $request->id
             ]);
             
-            // Now search for the actual row position to cache it reliably
-            $actualRowPosition = $this->findAndCacheRowPosition('Deliver requests', $request->id);
+            // Add a small delay to let Google Sheets process the append
+            usleep(250000); // 0.25 seconds
             
-            if ($actualRowPosition) {
-                Log::info('Delivery request row position cached', [
-                    'request_id' => $request->id,
-                    'row_number' => $actualRowPosition
-                ]);
-            }
+            // Try a simple reverse search from the end for the just-appended record
+            $this->findAndCacheRecentlyAppendedRow('Deliver requests', $request->id);
 
             return true;
         } catch (Exception $appendError) {
@@ -213,15 +209,11 @@ class GoogleSheetsService
                 'request_id' => $request->id
             ]);
             
-            // Now search for the actual row position to cache it reliably
-            $actualRowPosition = $this->findAndCacheRowPosition('Send requests', $request->id);
+            // Add a small delay to let Google Sheets process the append
+            usleep(250000); // 0.25 seconds
             
-            if ($actualRowPosition) {
-                Log::info('Send request row position cached', [
-                    'request_id' => $request->id,
-                    'row_number' => $actualRowPosition
-                ]);
-            }
+            // Try a simple reverse search from the end for the just-appended record
+            $this->findAndCacheRecentlyAppendedRow('Send requests', $request->id);
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
@@ -728,6 +720,164 @@ class GoogleSheetsService
         ]);
 
         return $this->findAndCacheRowPosition($worksheetName, $requestId);
+    }
+
+    /**
+     * Find and cache recently appended row (universal dynamic approach)
+     */
+    private function findAndCacheRecentlyAppendedRow(string $worksheetName, int $requestId): ?int
+    {
+        try {
+            $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
+            
+            // Step 1: Dynamically determine the actual sheet dimensions
+            $actualSheetSize = $this->getActualSheetSize($sheet, $worksheetName);
+            
+            if (!$actualSheetSize) {
+                Log::warning("Could not determine sheet size", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId
+                ]);
+                return null;
+            }
+            
+            Log::debug("Determined actual sheet size", [
+                'worksheet' => $worksheetName,
+                'max_row' => $actualSheetSize,
+                'request_id' => $requestId
+            ]);
+            
+            // Step 2: Search backwards from the actual end in dynamic batches
+            $batchSize = 50;
+            $searchStart = max(2, $actualSheetSize - ($batchSize * 5)); // Start 5 batches back from end
+            
+            for ($currentStart = $actualSheetSize; $currentStart >= $searchStart; $currentStart -= $batchSize) {
+                $batchStart = max(2, $currentStart - $batchSize + 1);
+                $batchEnd = min($currentStart, $actualSheetSize);
+                
+                if ($batchStart > $batchEnd) continue;
+                
+                try {
+                    Log::debug("Searching batch dynamically", [
+                        'worksheet' => $worksheetName,
+                        'request_id' => $requestId,
+                        'range' => "A{$batchStart}:A{$batchEnd}",
+                        'batch_size' => $batchEnd - $batchStart + 1
+                    ]);
+                    
+                    $values = $sheet->range("A{$batchStart}:A{$batchEnd}")->get();
+                    
+                    if (is_array($values)) {
+                        foreach ($values as $index => $row) {
+                            if (isset($row[0]) && $row[0] == $requestId) {
+                                $actualRow = $batchStart + $index;
+                                
+                                // Cache the position
+                                $cacheKey = "gsheets:row:{$worksheetName}:{$requestId}";
+                                Cache::forever($cacheKey, $actualRow);
+                                
+                                Log::info("Found and cached recently appended row", [
+                                    'worksheet' => $worksheetName,
+                                    'request_id' => $requestId,
+                                    'row' => $actualRow,
+                                    'sheet_size' => $actualSheetSize
+                                ]);
+                                
+                                return $actualRow;
+                            }
+                        }
+                    }
+                } catch (Exception $batchError) {
+                    Log::debug("Batch search failed, trying previous batch", [
+                        'worksheet' => $worksheetName,
+                        'range' => "A{$batchStart}:A{$batchEnd}",
+                        'error' => $batchError->getMessage()
+                    ]);
+                    continue;
+                }
+            }
+            
+            // Step 3: If not found in recent batches, try a broader forward search
+            Log::info("Not found in recent batches, trying broader search", [
+                'worksheet' => $worksheetName,
+                'request_id' => $requestId
+            ]);
+            
+            return $this->findAndCacheRowPosition($worksheetName, $requestId);
+            
+        } catch (Exception $e) {
+            Log::error("Error finding recently appended row", [
+                'worksheet' => $worksheetName,
+                'request_id' => $requestId,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Dynamically determine the actual size of the sheet
+     */
+    private function getActualSheetSize($sheet, string $worksheetName): ?int
+    {
+        try {
+            // Binary search approach to find the actual last row efficiently
+            $low = 1;
+            $high = 5000; // Start with a reasonable upper bound
+            $lastValidRow = 1;
+            
+            // First, find a reasonable upper bound by doubling
+            $testRow = 100;
+            while ($testRow <= 10000) {
+                try {
+                    $result = $sheet->range("A{$testRow}:A{$testRow}")->get();
+                    if (empty($result) || !isset($result[0][0])) {
+                        $high = $testRow;
+                        break;
+                    }
+                    $lastValidRow = $testRow;
+                    $testRow *= 2;
+                } catch (Exception $e) {
+                    // Hit the boundary, this is our upper limit
+                    $high = $testRow;
+                    break;
+                }
+            }
+            
+            // Now binary search between $lastValidRow and $high
+            while ($low <= $high) {
+                $mid = intval(($low + $high) / 2);
+                
+                try {
+                    $result = $sheet->range("A{$mid}:A{$mid}")->get();
+                    if (!empty($result) && isset($result[0][0]) && !empty(trim($result[0][0]))) {
+                        // Found data at this row
+                        $lastValidRow = $mid;
+                        $low = $mid + 1;
+                    } else {
+                        // No data at this row
+                        $high = $mid - 1;
+                    }
+                } catch (Exception $e) {
+                    // Row doesn't exist or out of bounds
+                    $high = $mid - 1;
+                }
+            }
+            
+            Log::info("Determined actual sheet size via binary search", [
+                'worksheet' => $worksheetName,
+                'last_row_with_data' => $lastValidRow
+            ]);
+            
+            return $lastValidRow;
+            
+        } catch (Exception $e) {
+            Log::error("Error determining sheet size", [
+                'worksheet' => $worksheetName,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
     }
 
     /**
