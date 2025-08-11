@@ -7,6 +7,7 @@ use Revolution\Google\Sheets\Facades\Sheets;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Models\User;
 use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
@@ -229,6 +230,15 @@ class GoogleSheetsService
             // This avoids the timeout issue with large sheets
             try {
                 $sheet->append([$data]);
+                
+                // Try to cache the row position by finding where it was added
+                // This is approximate but helps with future updates
+                $allRows = $sheet->range('A:A')->get();
+                if (is_array($allRows)) {
+                    $rowPosition = count($allRows);
+                    Cache::put("gsheets.row_position.Send requests.{$request->id}", $rowPosition, now()->addHours(24));
+                }
+                
                 Log::info('Send request record appended to Google Sheets using append()', [
                     'request_id' => $request->id
                 ]);
@@ -512,7 +522,28 @@ class GoogleSheetsService
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
             
-            // More efficient approach: search in batches to avoid timeout
+            // Try to get cached row position first
+            $cacheKey = "gsheets.row_position.{$worksheetName}.{$requestId}";
+            $cachedRowNum = Cache::get($cacheKey);
+            
+            if ($cachedRowNum) {
+                // Try to update directly using cached position
+                try {
+                    $cachedRow = $sheet->range("A{$cachedRowNum}:Q{$cachedRowNum}")->get();
+                    if (isset($cachedRow[0][0]) && $cachedRow[0][0] == $requestId) {
+                        // Cache hit - update directly
+                        $this->performResponseReceivedUpdate($sheet, $cachedRow[0], $cachedRowNum, $isFirstResponse, $requestId, $worksheetName);
+                        return true;
+                    } else {
+                        // Cache miss - clear cache
+                        Cache::forget($cacheKey);
+                    }
+                } catch (Exception $cacheError) {
+                    Cache::forget($cacheKey);
+                }
+            }
+
+            // Fallback: search in batches to avoid timeout
             $found = false;
             $batchSize = 100;
             $startRow = 1;
@@ -527,32 +558,12 @@ class GoogleSheetsService
                     if (is_array($values) && !empty($values)) {
                         foreach ($values as $rowIndex => $row) {
                             if (isset($row[0]) && $row[0] == $requestId) {
-                                $currentTime = Carbon::now()->toISOString();
                                 $actualRowNum = $startRow + $rowIndex; // Actual row number in sheet
                                 
-                                // Column L: Response received (Ответ получен)
-                                $sheet->range("L" . $actualRowNum)->update([["получен"]]);
-
-                                if ($isFirstResponse) {
-                                    // Column N: Waiting time for first response (calculated)
-                                    $createdAt = $row[9] ?? ''; // Column J (index 9) - Создано
-                                    if ($createdAt) {
-                                        $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                                        $sheet->range("N" . $actualRowNum)->update([[$waitingTime]]);
-                                    }
-                                }
-
-                                // Column M: Number of responses received (increment)
-                                $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
-                                $sheet->range("M" . $actualRowNum)->update([[$currentCount + 1]]);
-
-                                Log::info("Request response tracking updated in Google Sheets", [
-                                    'worksheet' => $worksheetName,
-                                    'request_id' => $requestId,
-                                    'is_first_response' => $isFirstResponse,
-                                    'response_count' => $currentCount + 1,
-                                    'row_number' => $actualRowNum
-                                ]);
+                                // Cache the row position for future updates
+                                Cache::put($cacheKey, $actualRowNum, now()->addHours(24));
+                                
+                                $this->performResponseReceivedUpdate($sheet, $row, $actualRowNum, $isFirstResponse, $requestId, $worksheetName);
                                 return true;
                             }
                         }
@@ -744,6 +755,38 @@ class GoogleSheetsService
         if ($n1 > 1 && $n1 < 5) return $few;
         if ($n1 == 1) return $one;
         return $many;
+    }
+
+    /**
+     * Perform the actual response received update operations
+     */
+    private function performResponseReceivedUpdate($sheet, $row, $actualRowNum, $isFirstResponse, $requestId, $worksheetName): void
+    {
+        $currentTime = Carbon::now()->toISOString();
+        
+        // Column L: Response received (Ответ получен)
+        $sheet->range("L" . $actualRowNum)->update([["получен"]]);
+
+        if ($isFirstResponse) {
+            // Column N: Waiting time for first response (calculated)
+            $createdAt = $row[9] ?? ''; // Column J (index 9) - Создано
+            if ($createdAt) {
+                $waitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                $sheet->range("N" . $actualRowNum)->update([[$waitingTime]]);
+            }
+        }
+
+        // Column M: Number of responses received (increment)
+        $currentCount = isset($row[12]) && is_numeric($row[12]) ? (int)$row[12] : 0;
+        $sheet->range("M" . $actualRowNum)->update([[$currentCount + 1]]);
+
+        Log::info("Request response tracking updated in Google Sheets", [
+            'worksheet' => $worksheetName,
+            'request_id' => $requestId,
+            'is_first_response' => $isFirstResponse,
+            'response_count' => $currentCount + 1,
+            'row_number' => $actualRowNum
+        ]);
     }
 
     /**

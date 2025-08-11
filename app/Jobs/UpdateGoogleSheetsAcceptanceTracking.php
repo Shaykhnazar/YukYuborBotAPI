@@ -15,6 +15,21 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The number of times the job may be attempted.
+     */
+    public int $tries = 3;
+
+    /**
+     * The maximum number of seconds the job can run.
+     */
+    public int $timeout = 120;
+
+    /**
+     * The name of the queue the job should be sent to.
+     */
+    public $queue = 'gsheets';
+
     public function __construct(
         private readonly int $responseId
     ) {}

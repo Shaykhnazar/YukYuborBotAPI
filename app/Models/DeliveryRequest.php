@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
-use App\Services\GoogleSheetsService;
+use App\Jobs\RecordDeliveryRequestToGoogleSheets;
+use App\Jobs\CloseRequestInGoogleSheets;
 
 class DeliveryRequest extends Model
 {
@@ -176,14 +177,13 @@ class DeliveryRequest extends Model
 
         static::created(function ($request) {
             try {
-                // Automatically add delivery request to Google Sheets when created
-                // Run in background to avoid blocking request creation
-                dispatch(function () use ($request) {
-                    app(GoogleSheetsService::class)->recordAddDeliveryRequest($request);
-                })->afterResponse();
+                // Dispatch queued job to add delivery request to Google Sheets
+                RecordDeliveryRequestToGoogleSheets::dispatch($request->id)
+                    ->delay(now()->addSeconds(2))
+                    ->onQueue('gsheets');
             } catch (\Exception $e) {
                 // Log error but don't fail request creation
-                \Log::error('Failed to add delivery request to Google Sheets during creation', [
+                \Log::error('Failed to dispatch delivery request Google Sheets job during creation', [
                     'request_id' => $request->id,
                     'error' => $e->getMessage()
                 ]);
@@ -194,9 +194,9 @@ class DeliveryRequest extends Model
             try {
                 // Update Google Sheets when request status changes to closed
                 if ($request->isDirty('status') && in_array($request->status, ['closed', 'completed'])) {
-                    dispatch(function () use ($request) {
-                        app(GoogleSheetsService::class)->recordCloseDeliveryRequest($request->id);
-                    })->afterResponse();
+                    CloseRequestInGoogleSheets::dispatch('delivery', $request->id)
+                        ->delay(now()->addSeconds(3))
+                        ->onQueue('gsheets');
                 }
             } catch (\Exception $e) {
                 // Log error but don't fail request update
