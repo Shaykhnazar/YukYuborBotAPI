@@ -143,22 +143,22 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Deliver requests');
 
-            // Get current row count to determine where the new row will be appended
-            $allData = $sheet->all();
-            $nextRowNumber = count($allData) + 1; // +1 because sheets are 1-indexed
-
-            // Append the data
+            // Append the data first
             $sheet->append([$data]);
 
-            // Immediately cache the row position
-            $cacheKey = "gsheets:row:Deliver requests:{$request->id}";
-            Cache::forever($cacheKey, $nextRowNumber);
-
             Log::info('Delivery request record appended to Google Sheets', [
-                'request_id' => $request->id,
-                'row_number' => $nextRowNumber,
-                'cached_key' => $cacheKey
+                'request_id' => $request->id
             ]);
+            
+            // Now search for the actual row position to cache it reliably
+            $actualRowPosition = $this->findAndCacheRowPosition('Deliver requests', $request->id);
+            
+            if ($actualRowPosition) {
+                Log::info('Delivery request row position cached', [
+                    'request_id' => $request->id,
+                    'row_number' => $actualRowPosition
+                ]);
+            }
 
             return true;
         } catch (Exception $appendError) {
@@ -206,22 +206,22 @@ class GoogleSheetsService
 
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet('Send requests');
 
-            // Get current row count to determine where the new row will be appended
-            $allData = $sheet->all();
-            $nextRowNumber = count($allData) + 1; // +1 because sheets are 1-indexed
-
-            // Append the data
+            // Append the data first
             $sheet->append([$data]);
 
-            // Immediately cache the row position
-            $cacheKey = "gsheets:row:Send requests:{$request->id}";
-            Cache::forever($cacheKey, $nextRowNumber);
-
             Log::info('Send request record appended to Google Sheets', [
-                'request_id' => $request->id,
-                'row_number' => $nextRowNumber,
-                'cached_key' => $cacheKey
+                'request_id' => $request->id
             ]);
+            
+            // Now search for the actual row position to cache it reliably
+            $actualRowPosition = $this->findAndCacheRowPosition('Send requests', $request->id);
+            
+            if ($actualRowPosition) {
+                Log::info('Send request row position cached', [
+                    'request_id' => $request->id,
+                    'row_number' => $actualRowPosition
+                ]);
+            }
 
             Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
