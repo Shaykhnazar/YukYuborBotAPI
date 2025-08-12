@@ -127,6 +127,8 @@ Route::middleware($middleware)->group(function () {
         // Get Google Sheets statistics
         Route::get('/statistics', 'getStatistics');
     });
+
+    Route::post('/support/send-message', [SupportController::class, 'sendMessage']);
 });
 
 Route::get('/place', [PlaceController::class, 'index'])->middleware(['throttle:60,1']);
