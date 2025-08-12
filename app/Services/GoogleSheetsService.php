@@ -146,7 +146,7 @@ class GoogleSheetsService
             // Set creation lock to coordinate with other processes
             $creationLockKey = "gsheets:creating:Deliver requests:{$request->id}";
             Cache::put($creationLockKey, true, now()->addMinutes(2));
-            
+
             // Append the data first
             $sheet->append([$data]);
 
@@ -159,7 +159,7 @@ class GoogleSheetsService
 
             // Try a simple reverse search from the end for the just-appended record
             $this->findAndCacheRecentlyAppendedRow('Deliver requests', $request->id);
-            
+
             // Clear the creation lock
             Cache::forget($creationLockKey);
 
@@ -212,7 +212,7 @@ class GoogleSheetsService
             // Set creation lock to coordinate with other processes
             $creationLockKey = "gsheets:creating:Send requests:{$request->id}";
             Cache::put($creationLockKey, true, now()->addMinutes(2));
-            
+
             // Append the data first
             $sheet->append([$data]);
 
@@ -225,7 +225,7 @@ class GoogleSheetsService
 
             // Try a simple reverse search from the end for the just-appended record
             $this->findAndCacheRecentlyAppendedRow('Send requests', $request->id);
-            
+
             // Clear the creation lock
             Cache::forget($creationLockKey);
 
@@ -505,7 +505,7 @@ class GoogleSheetsService
                 'worksheet' => $worksheetName,
                 'is_first_response' => $isFirstResponse
             ]);
-            
+
             // Return true to avoid marking the job as failed - this is not a critical error
             return true;
         } catch (Exception $e) {
@@ -593,7 +593,7 @@ class GoogleSheetsService
                 'request_id' => $requestId,
                 'worksheet' => $worksheetName
             ]);
-            
+
             // Return true to avoid marking the job as failed - this is not a critical error
             return true;
         } catch (Exception $e) {
@@ -744,10 +744,10 @@ class GoogleSheetsService
                 'worksheet' => $worksheetName,
                 'request_id' => $requestId
             ]);
-            
+
             // Wait longer for the creation process to complete
             sleep(2); // 2 seconds instead of 0.5
-            
+
             // Try cache again after waiting
             $cachedRow = Cache::get($cacheKey);
             if ($cachedRow) {
@@ -759,7 +759,7 @@ class GoogleSheetsService
                 return $cachedRow;
             }
         }
-        
+
         // Fallback: search for the row with retry logic
         Log::warning("Cache miss - falling back to search with retries", [
             'worksheet' => $worksheetName,
@@ -769,27 +769,27 @@ class GoogleSheetsService
 
         return $this->findRowPositionWithRetry($worksheetName, $requestId);
     }
-    
+
     /**
      * Find row position with retry logic for race conditions
      */
     private function findRowPositionWithRetry(string $worksheetName, int $requestId, int $maxRetries = 3): ?int
     {
         $attempts = 0;
-        
+
         while ($attempts < $maxRetries) {
             $attempts++;
-            
+
             Log::debug("Attempting to find row position", [
                 'worksheet' => $worksheetName,
                 'request_id' => $requestId,
                 'attempt' => $attempts,
                 'max_retries' => $maxRetries
             ]);
-            
+
             // Try the recently appended search first (most likely)
             $rowPosition = $this->findAndCacheRecentlyAppendedRow($worksheetName, $requestId);
-            
+
             if ($rowPosition) {
                 Log::info("Found row position after {$attempts} attempt(s)", [
                     'worksheet' => $worksheetName,
@@ -799,7 +799,7 @@ class GoogleSheetsService
                 ]);
                 return $rowPosition;
             }
-            
+
             // If not found and we have more retries, wait a bit longer
             if ($attempts < $maxRetries) {
                 $waitTime = $attempts * 500000; // Increasing wait time: 0.5s, 1s, 1.5s
@@ -812,12 +812,12 @@ class GoogleSheetsService
                 usleep($waitTime);
             }
         }
-        
+
         Log::warning("Could not find row position after {$maxRetries} retries", [
             'worksheet' => $worksheetName,
             'request_id' => $requestId
         ]);
-        
+
         return null;
     }
 
@@ -832,7 +832,7 @@ class GoogleSheetsService
             // Step 1: Try to get a large range and search through it
             // Get more data in a single API call to reduce API overhead
             $maxSearchRange = 500; // Search up to 500 rows
-            
+
             try {
                 Log::info("Searching entire range for request", [
                     'worksheet' => $worksheetName,
