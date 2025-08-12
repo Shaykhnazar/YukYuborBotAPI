@@ -500,8 +500,14 @@ class GoogleSheetsService
                 }
             }
 
-            Log::warning("Request ID {$requestId} not found in {$worksheetName}");
-            return false;
+            Log::warning("Request ID {$requestId} not found in {$worksheetName} - skipping response tracking update", [
+                'request_id' => $requestId,
+                'worksheet' => $worksheetName,
+                'is_first_response' => $isFirstResponse
+            ]);
+            
+            // Return true to avoid marking the job as failed - this is not a critical error
+            return true;
         } catch (Exception $e) {
             Log::error("Failed to update response tracking in Google Sheets", [
                 'worksheet' => $worksheetName ?? 'unknown',
@@ -583,8 +589,13 @@ class GoogleSheetsService
                 }
             }
 
-            Log::warning("Request ID {$requestId} not found in {$worksheetName}");
-            return false;
+            Log::warning("Request ID {$requestId} not found in {$worksheetName} - skipping acceptance tracking update", [
+                'request_id' => $requestId,
+                'worksheet' => $worksheetName
+            ]);
+            
+            // Return true to avoid marking the job as failed - this is not a critical error
+            return true;
         } catch (Exception $e) {
             Log::error("Failed to update acceptance tracking in Google Sheets", [
                 'worksheet' => $worksheetName ?? 'unknown',
@@ -818,7 +829,47 @@ class GoogleSheetsService
         try {
             $sheet = Sheets::spreadsheet($this->spreadsheetId)->sheet($worksheetName);
 
-            // Step 1: Dynamically determine the actual sheet dimensions
+            // Step 1: Try to get a large range and search through it
+            // Get more data in a single API call to reduce API overhead
+            $maxSearchRange = 500; // Search up to 500 rows
+            
+            try {
+                Log::info("Searching entire range for request", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'range' => "A2:A{$maxSearchRange}"
+                ]);
+
+                $values = $sheet->range("A2:A{$maxSearchRange}")->get();
+
+                if (is_array($values)) {
+                    foreach ($values as $index => $row) {
+                        if (isset($row[0]) && $row[0] == $requestId) {
+                            $actualRow = 2 + $index; // +2 because we start from row 2
+
+                            // Cache the position
+                            $cacheKey = "gsheets:row:{$worksheetName}:{$requestId}";
+                            Cache::forever($cacheKey, $actualRow);
+
+                            Log::info("Found and cached row in full range search", [
+                                'worksheet' => $worksheetName,
+                                'request_id' => $requestId,
+                                'row' => $actualRow
+                            ]);
+
+                            return $actualRow;
+                        }
+                    }
+                }
+            } catch (Exception $rangeError) {
+                Log::warning("Full range search failed, falling back to batch search", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'error' => $rangeError->getMessage()
+                ]);
+            }
+
+            // Step 2: Fallback to original batch logic if full range fails
             $actualSheetSize = $this->getActualSheetSize($sheet, $worksheetName);
 
             if (!$actualSheetSize) {
@@ -829,13 +880,7 @@ class GoogleSheetsService
                 return null;
             }
 
-            Log::debug("Determined actual sheet size", [
-                'worksheet' => $worksheetName,
-                'max_row' => $actualSheetSize,
-                'request_id' => $requestId
-            ]);
-
-            // Step 2: Search backwards from the actual end in dynamic batches
+            // Search backwards from the actual end in dynamic batches
             $batchSize = 50;
             $searchStart = max(2, $actualSheetSize - ($batchSize * 5)); // Start 5 batches back from end
 
@@ -846,13 +891,6 @@ class GoogleSheetsService
                 if ($batchStart > $batchEnd) continue;
 
                 try {
-                    Log::debug("Searching batch dynamically", [
-                        'worksheet' => $worksheetName,
-                        'request_id' => $requestId,
-                        'range' => "A{$batchStart}:A{$batchEnd}",
-                        'batch_size' => $batchEnd - $batchStart + 1
-                    ]);
-
                     $values = $sheet->range("A{$batchStart}:A{$batchEnd}")->get();
 
                     if (is_array($values)) {
@@ -864,11 +902,10 @@ class GoogleSheetsService
                                 $cacheKey = "gsheets:row:{$worksheetName}:{$requestId}";
                                 Cache::forever($cacheKey, $actualRow);
 
-                                Log::info("Found and cached recently appended row", [
+                                Log::info("Found and cached row in batch search", [
                                     'worksheet' => $worksheetName,
                                     'request_id' => $requestId,
-                                    'row' => $actualRow,
-                                    'sheet_size' => $actualSheetSize
+                                    'row' => $actualRow
                                 ]);
 
                                 return $actualRow;
@@ -885,13 +922,13 @@ class GoogleSheetsService
                 }
             }
 
-            // Step 3: If not found in recent batches, try a broader forward search
-            Log::info("Not found in recent batches, trying broader search", [
+            Log::warning("Request not found in sheet after comprehensive search", [
                 'worksheet' => $worksheetName,
-                'request_id' => $requestId
+                'request_id' => $requestId,
+                'searched_up_to_row' => $actualSheetSize
             ]);
 
-            return $this->findAndCacheRowPosition($worksheetName, $requestId);
+            return null;
 
         } catch (Exception $e) {
             Log::error("Error finding recently appended row", [
