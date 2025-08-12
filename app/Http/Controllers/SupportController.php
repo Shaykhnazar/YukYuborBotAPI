@@ -2,19 +2,30 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller as BaseController;
+use App\Service\TelegramUserService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 
-class SupportController extends Controller
+class SupportController extends BaseController
 {
+    public function __construct(
+        protected TelegramUserService $tgService,
+    ) {}
+
     public function sendMessage(Request $request): JsonResponse
     {
-        $request->validate([
-            'userId' => 'required'
-        ]);
+        $user = $this->tgService->getUserByTelegramId($request);
 
-        $userId = $request->input('userId');
+        if (!$user || !$user->telegramUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        $telegramId = $user->telegramUser->telegram;
         $token = config('auth.guards.tgwebapp.token');
 
         if (!$token) {
@@ -26,7 +37,7 @@ class SupportController extends Controller
 
         try {
             $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
-                'chat_id' => $userId,
+                'chat_id' => $telegramId,
                 'text' => 'служба поддержки'
             ]);
 
