@@ -59,6 +59,11 @@ class IndexRequestResource extends JsonResource
                 'id' => $this->responder_user->id,
                 'name' => $this->responder_user->name,
                 'image' => $this->responder_user->telegramUser->image ?? null,
+                'send_requests_count' => $this->responder_user->closed_send_requests_count ?? 0,
+                'delivery_requests_count' => $this->responder_user->closed_delivery_requests_count ?? 0,
+                'requests_count' => $this->type === 'delivery' 
+                    ? ($this->responder_user->closed_delivery_requests_count ?? 0) 
+                    : ($this->responder_user->closed_send_requests_count ?? 0),
             ] : null,
             'is_responder' => $isResponder,
         ];

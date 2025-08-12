@@ -314,7 +314,19 @@ class UserRequestController extends BaseController
                     $requestCopy->chat_id = $response->chat_id;
                     $requestCopy->response_status = $response->status;
                     $requestCopy->response_type = $response->response_type;
-                    $requestCopy->responder_user = $response->responder; // This is the other party
+
+                    // Set responder user with their request counts
+                    if ($response->responder) {
+                        $responder = $response->responder;
+
+                        // Add request counts for the responder
+                        $responder->closed_send_requests_count = $responder->sendRequests()->where('status', 'closed')->count();
+                        $responder->closed_delivery_requests_count = $responder->deliveryRequests()->where('status', 'closed')->count();
+
+                        $requestCopy->responder_user = $responder;
+                    } else {
+                        $requestCopy->responder_user = null;
+                    }
                     // Keep original user relation - it should show the request owner (current user)
 
                     // FIX: Check if original request is closed or completed first
