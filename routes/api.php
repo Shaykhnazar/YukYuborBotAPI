@@ -8,6 +8,7 @@ use App\Http\Controllers\RequestController;
 use App\Http\Controllers\ResponseController;
 use App\Http\Controllers\RouteController;
 use App\Http\Controllers\SendRequestController;
+use App\Http\Controllers\SupportController;
 use App\Http\Controllers\TestUsersController;
 use App\Http\Controllers\User\Request\UserRequestController;
 use App\Http\Controllers\User\Review\UserReviewController;
