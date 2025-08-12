@@ -24,9 +24,9 @@ class ResponseObserver
             'status' => $response->status
         ]);
 
-        // Dispatch queued job to update Google Sheets tracking with a delay to ensure request row exists
+        // Dispatch queued job to update Google Sheets tracking with a short delay
         UpdateGoogleSheetsResponseTracking::dispatch($response->id, true)
-            ->delay(now()->addSeconds(10))
+            ->delay(now()->addSeconds(3))
             ->onQueue('gsheets');
         
         Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsResponseTracking job', [
@@ -46,9 +46,9 @@ class ResponseObserver
                 'response_type' => $response->response_type
             ]);
             
-            // Dispatch queued job to update Google Sheets acceptance tracking with a delay
+            // Dispatch queued job to update Google Sheets acceptance tracking with a short delay
             UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id)
-                ->delay(now()->addSeconds(10))
+                ->delay(now()->addSeconds(3))
                 ->onQueue('gsheets');
             
             Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [

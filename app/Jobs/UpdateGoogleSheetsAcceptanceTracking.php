@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Response;
-use App\Services\GoogleSheetsService;
+use App\Services\GoogleSheetsServiceSimplified;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -33,9 +33,12 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         private readonly int $responseId
     ) {}
 
-    public function handle(GoogleSheetsService $googleSheetsService): void
+    public function handle(): void
     {
         try {
+            // Use the simplified service
+            $googleSheetsService = app(GoogleSheetsServiceSimplified::class);
+
             $response = Response::find($this->responseId);
 
             if (!$response) {
@@ -45,24 +48,19 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
                 return;
             }
 
-            $targetRequest = $this->getTargetRequest($response);
-
-            if (!$targetRequest) {
-                Log::warning('Could not determine target request for acceptance tracking', [
-                    'response_id' => $response->id
-                ]);
-                return;
-            }
-
-            $requestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
-
-            $googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id);
-
-            Log::info('Acceptance tracking updated via job', [
+            Log::info('Processing acceptance tracking for response', [
                 'response_id' => $response->id,
-                'target_request_id' => $targetRequest->id,
-                'request_type' => $requestType
+                'response_type' => $response->response_type,
+                'request_type' => $response->request_type
             ]);
+
+            // For matching responses, update BOTH related requests
+            if ($response->response_type === Response::TYPE_MATCHING) {
+                $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
+            } else {
+                // For manual responses, update only the target request
+                $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+            }
 
         } catch (\Exception $e) {
             Log::error('Failed to update acceptance tracking via job', [
@@ -73,6 +71,67 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
             // Re-throw to mark job as failed and potentially retry
             throw $e;
         }
+    }
+
+    /**
+     * Update both send and delivery requests for matching responses
+     */
+    private function updateBothRequestsForMatchingResponse(Response $response, $googleSheetsService): void
+    {
+        // Get both requests involved in the match
+        $sendRequest = null;
+        $deliveryRequest = null;
+
+        if ($response->request_type === 'send') {
+            // Send request is the offer, delivery request is the target
+            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+        } else {
+            // Delivery request is the offer, send request is the target
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+            $sendRequest = \App\Models\SendRequest::find($response->request_id);
+        }
+
+        // Update both worksheets
+        if ($sendRequest) {
+            $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id);
+            Log::info('Send request acceptance updated in Google Sheets', [
+                'response_id' => $response->id,
+                'send_request_id' => $sendRequest->id
+            ]);
+        }
+
+        if ($deliveryRequest) {
+            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id);
+            Log::info('Delivery request acceptance updated in Google Sheets', [
+                'response_id' => $response->id,
+                'delivery_request_id' => $deliveryRequest->id
+            ]);
+        }
+    }
+
+    /**
+     * Update single request for manual responses
+     */
+    private function updateSingleRequestForManualResponse(Response $response, $googleSheetsService): void
+    {
+        $targetRequest = $this->getTargetRequest($response);
+
+        if (!$targetRequest) {
+            Log::warning('Could not determine target request for acceptance tracking', [
+                'response_id' => $response->id
+            ]);
+            return;
+        }
+
+        $requestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
+        $googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id);
+
+        Log::info('Manual response acceptance tracking updated via job', [
+            'response_id' => $response->id,
+            'target_request_id' => $targetRequest->id,
+            'request_type' => $requestType
+        ]);
     }
 
     /**
