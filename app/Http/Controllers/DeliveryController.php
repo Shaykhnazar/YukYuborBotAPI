@@ -110,10 +110,10 @@ class DeliveryController extends BaseController
 
             DB::commit();
 
-            Log::info('Delivery request deleted successfully', [
-                'request_id' => $id,
-                'user_id' => $user->id
-            ]);
+//            Log::info('Delivery request deleted successfully', [
+//                'request_id' => $id,
+//                'user_id' => $user->id
+//            ]);
 
             return response()->json(['message' => 'Request deleted successfully']);
 
@@ -177,10 +177,10 @@ class DeliveryController extends BaseController
 
             DB::commit();
 
-            Log::info('Delivery request closed successfully', [
-                'request_id' => $id,
-                'user_id' => $user->id
-            ]);
+//            Log::info('Delivery request closed successfully', [
+//                'request_id' => $id,
+//                'user_id' => $user->id
+//            ]);
 
             return response()->json(['message' => 'Delivery request closed successfully']);
 

@@ -25,10 +25,6 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
      */
     public int $timeout = 120;
 
-
-
-
-
     public function __construct(
         private readonly int $responseId
     ) {}
@@ -41,18 +37,19 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 
             $response = Response::find($this->responseId);
 
-            if (!$response) {
+            if (! $response) {
                 Log::warning('Response not found for Google Sheets acceptance tracking', [
-                    'response_id' => $this->responseId
+                    'response_id' => $this->responseId,
                 ]);
+
                 return;
             }
 
-            Log::info('Processing acceptance tracking for response', [
-                'response_id' => $response->id,
-                'response_type' => $response->response_type,
-                'request_type' => $response->request_type
-            ]);
+//            Log::info('Processing acceptance tracking for response', [
+//                'response_id' => $response->id,
+//                'response_type' => $response->response_type,
+//                'request_type' => $response->request_type,
+//            ]);
 
             // For matching responses, update BOTH related requests
             if ($response->response_type === Response::TYPE_MATCHING) {
@@ -65,7 +62,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('Failed to update acceptance tracking via job', [
                 'response_id' => $this->responseId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             // Re-throw to mark job as failed and potentially retry
@@ -83,30 +80,30 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         $deliveryRequest = null;
 
         if ($response->request_type === 'send') {
-            // Send request is the offer, delivery request is the target
-            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-        } else {
-            // Delivery request is the offer, send request is the target
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+            // Send request received the match, delivery request made the offer
             $sendRequest = \App\Models\SendRequest::find($response->request_id);
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+        } else {
+            // Delivery request received the match, send request made the offer
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
         }
 
         // Update both worksheets
         if ($sendRequest) {
             $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id);
-            Log::info('Send request acceptance updated in Google Sheets', [
-                'response_id' => $response->id,
-                'send_request_id' => $sendRequest->id
-            ]);
+//            Log::info('Send request acceptance updated in Google Sheets', [
+//                'response_id' => $response->id,
+//                'send_request_id' => $sendRequest->id,
+//            ]);
         }
 
         if ($deliveryRequest) {
             $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id);
-            Log::info('Delivery request acceptance updated in Google Sheets', [
-                'response_id' => $response->id,
-                'delivery_request_id' => $deliveryRequest->id
-            ]);
+//            Log::info('Delivery request acceptance updated in Google Sheets', [
+//                'response_id' => $response->id,
+//                'delivery_request_id' => $deliveryRequest->id,
+//            ]);
         }
     }
 
@@ -119,19 +116,20 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 
         if (!$targetRequest) {
             Log::warning('Could not determine target request for acceptance tracking', [
-                'response_id' => $response->id
+                'response_id' => $response->id,
             ]);
+
             return;
         }
 
         $requestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
         $googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id);
 
-        Log::info('Manual response acceptance tracking updated via job', [
-            'response_id' => $response->id,
-            'target_request_id' => $targetRequest->id,
-            'request_type' => $requestType
-        ]);
+//        Log::info('Manual response acceptance tracking updated via job', [
+//            'response_id' => $response->id,
+//            'target_request_id' => $targetRequest->id,
+//            'request_type' => $requestType,
+//        ]);
     }
 
     /**
@@ -146,9 +144,11 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
                 : \App\Models\DeliveryRequest::find($response->offer_id);
         }
 
-        // For matching responses, the logic is more complex
-        return $response->request_type === 'send' ?
-            \App\Models\DeliveryRequest::find($response->request_id)
+        // For matching responses, the target request is the one that received the match (request_id)
+        // The request_type indicates which type of request is being responded to,
+        // but request_id always contains the ID of the request that receives the response
+        return $response->request_type === 'send'
+            ? \App\Models\DeliveryRequest::find($response->request_id)
             : \App\Models\SendRequest::find($response->request_id);
     }
 }

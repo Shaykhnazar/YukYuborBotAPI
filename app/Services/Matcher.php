@@ -50,7 +50,7 @@ class Matcher
             $this->createResponseRecord(
                 $deliveryRequest->user_id, // deliverer will see this
                 $send->user_id,            // sender made the offer
-                'send',                    // type of request
+                'delivery',                // type of request being updated
                 $deliveryRequest->id,      // deliverer's request ID
                 $send->id                 // sender's request ID
             );
@@ -160,15 +160,15 @@ class Matcher
         // Update request status to 'has_responses' when first response is created
         $this->updateRequestStatusToHasResponses($requestId, $requestType);
 
-        Log::info('Response record created/updated', [
-            'user_id' => $userId,
-            'responder_id' => $responderId,
-            'request_type' => $requestType,
-            'request_id' => $requestId,
-            'offer_id' => $offerId,
-            'status' => $status,
-            'response_id' => $response->id
-        ]);
+//        Log::info('Response record created/updated', [
+//            'user_id' => $userId,
+//            'responder_id' => $responderId,
+//            'request_type' => $requestType,
+//            'request_id' => $requestId,
+//            'offer_id' => $offerId,
+//            'status' => $status,
+//            'response_id' => $response->id
+//        ]);
     }
 
     /**
@@ -199,14 +199,14 @@ class Matcher
             ->where('offer_id', $sendRequestId)
             ->update(['status' => $status]);
 
-        Log::info('Deliverer response status updated', [
-            'deliverer_user_id' => $delivererUserId,
-            'send_request_id' => $sendRequestId,
-            'delivery_request_id' => $deliveryRequestId,
-            'action' => $action,
-            'status' => $status,
-            'updated_count' => $updated
-        ]);
+//        Log::info('Deliverer response status updated', [
+//            'deliverer_user_id' => $delivererUserId,
+//            'send_request_id' => $sendRequestId,
+//            'delivery_request_id' => $deliveryRequestId,
+//            'action' => $action,
+//            'status' => $status,
+//            'updated_count' => $updated
+//        ]);
     }
 
     /**

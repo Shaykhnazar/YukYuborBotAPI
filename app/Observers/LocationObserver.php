@@ -17,11 +17,11 @@ class LocationObserver
      */
     public function created(Location $location): void
     {
-        Log::info('LocationObserver: Location created', [
-            'location_id' => $location->id,
-            'name' => $location->name,
-            'type' => $location->type
-        ]);
+//        Log::info('LocationObserver: Location created', [
+//            'location_id' => $location->id,
+//            'name' => $location->name,
+//            'type' => $location->type
+//        ]);
 
         $this->invalidateCache($location);
     }
@@ -90,7 +90,7 @@ class LocationObserver
     {
         try {
             $this->locationCacheService->invalidateLocation($location->id);
-            
+
             Log::info('LocationObserver: Cache invalidated successfully', [
                 'location_id' => $location->id
             ]);

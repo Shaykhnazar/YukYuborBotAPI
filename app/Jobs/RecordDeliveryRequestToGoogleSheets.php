@@ -50,10 +50,10 @@ class RecordDeliveryRequestToGoogleSheets implements ShouldQueue
 
             $result = $googleSheetsService->recordAddDeliveryRequest($request);
 
-            Log::info('Delivery request recorded to Google Sheets via job', [
-                'request_id' => $request->id,
-                'success' => $result
-            ]);
+//            Log::info('Delivery request recorded to Google Sheets via job', [
+//                'request_id' => $request->id,
+//                'success' => $result
+//            ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to record delivery request to Google Sheets via job', [

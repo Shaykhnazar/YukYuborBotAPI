@@ -30,10 +30,10 @@ class GoogleSheetsServiceTest extends TestCase
 
         $this->mockSheets = Mockery::mock();
         Sheets::swap($this->mockSheets);
-        
+
         // Mock config to return a test spreadsheet ID
         Config::set('google.sheets.spreadsheet_id', 'test-spreadsheet-id');
-        
+
         $this->service = new GoogleSheetsService();
     }
 
@@ -47,7 +47,7 @@ class GoogleSheetsServiceTest extends TestCase
                 // Ignore rollback errors
             }
         }
-        
+
         Mockery::close();
         parent::tearDown();
     }
@@ -57,7 +57,7 @@ class GoogleSheetsServiceTest extends TestCase
         $reflection = new \ReflectionClass($this->service);
         $property = $reflection->getProperty('spreadsheetId');
         $property->setAccessible(true);
-        
+
         $this->assertEquals('test-spreadsheet-id', $property->getValue($this->service));
     }
 
@@ -93,7 +93,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddUser($user);
-        
+
         $this->assertTrue($result);
     }
 
@@ -118,7 +118,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddUser($user);
-        
+
         $this->assertTrue($result);
         $this->assertTrue($user->relationLoaded('telegramUser'));
     }
@@ -127,15 +127,15 @@ class GoogleSheetsServiceTest extends TestCase
     {
         Config::set('google.sheets.spreadsheet_id', null);
         $service = new GoogleSheetsService();
-        
+
         $user = User::factory()->create();
-        
+
         Log::shouldReceive('warning')
             ->with('Google Sheets spreadsheet ID not configured, skipping recordAddUser')
             ->once();
 
         $result = $service->recordAddUser($user);
-        
+
         $this->assertTrue($result);
     }
 
@@ -154,7 +154,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddUser($user);
-        
+
         $this->assertFalse($result);
     }
 
@@ -163,7 +163,7 @@ class GoogleSheetsServiceTest extends TestCase
         $user = User::factory()->create(['name' => 'Test User']);
         $fromLocation = Location::factory()->create(['name' => 'From City']);
         $toLocation = Location::factory()->create(['name' => 'To City']);
-        
+
         $deliveryRequest = DeliveryRequest::factory()->create([
             'user_id' => $user->id,
             'from_location_id' => $fromLocation->id,
@@ -201,7 +201,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddDeliveryRequest($deliveryRequest);
-        
+
         $this->assertTrue($result);
     }
 
@@ -210,7 +210,7 @@ class GoogleSheetsServiceTest extends TestCase
         $user = User::factory()->create(['name' => 'Test User']);
         $fromLocation = Location::factory()->create(['name' => 'From City']);
         $toLocation = Location::factory()->create(['name' => 'To City']);
-        
+
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $user->id,
             'from_location_id' => $fromLocation->id,
@@ -236,7 +236,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddSendRequest($sendRequest);
-        
+
         $this->assertTrue($result);
     }
 
@@ -284,7 +284,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->updateRequestResponseReceived('send', 123, true);
-        
+
         $this->assertTrue($result);
     }
 
@@ -324,7 +324,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->updateRequestResponseReceived('send', 123, false);
-        
+
         $this->assertTrue($result);
     }
 
@@ -336,11 +336,11 @@ class GoogleSheetsServiceTest extends TestCase
 
         $this->mockSheets->shouldReceive('spreadsheet')
             ->with('test-spreadsheet-id')
-            ->times(3)
+            ->times(5)
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('sheet')
             ->with('Deliver requests')
-            ->times(3)
+            ->times(5)
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('all')
             ->once()
@@ -380,7 +380,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->updateRequestResponseAccepted('delivery', 123);
-        
+
         $this->assertTrue($result);
     }
 
@@ -419,7 +419,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordCloseDeliveryRequest(123);
-        
+
         $this->assertTrue($result);
     }
 
@@ -458,7 +458,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordCloseSendRequest(123);
-        
+
         $this->assertTrue($result);
     }
 
@@ -483,7 +483,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->andReturn($testData);
 
         $result = $this->service->getWorksheetData('Test Worksheet');
-        
+
         $this->assertEquals($testData, $result);
     }
 
@@ -511,7 +511,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->batchExport('Test Worksheet', $testData);
-        
+
         $this->assertTrue($result);
     }
 
@@ -522,7 +522,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->with('test-spreadsheet-id')
             ->times(3)
             ->andReturnSelf();
-        
+
         $this->mockSheets->shouldReceive('sheet')
             ->with('Users')
             ->once()
@@ -535,7 +535,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->with('Send requests')
             ->once()
             ->andReturnSelf();
-        
+
         $this->mockSheets->shouldReceive('clear')
             ->times(3)
             ->andReturnSelf();
@@ -543,7 +543,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->times(3);
 
         $result = $this->service->initializeWorksheets();
-        
+
         $this->assertArrayHasKey('users', $result);
         $this->assertArrayHasKey('delivery_requests', $result);
         $this->assertArrayHasKey('send_requests', $result);
@@ -560,11 +560,11 @@ class GoogleSheetsServiceTest extends TestCase
         Log::shouldReceive('warning')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
-            
+
         Log::shouldReceive('error')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
-            
+
         Log::shouldReceive('info')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
@@ -599,49 +599,53 @@ class GoogleSheetsServiceTest extends TestCase
         Log::shouldReceive('warning')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
-            
+
         Log::shouldReceive('error')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
 
         $result = $this->service->updateRequestResponseReceived('send', 123);
-        
+
         // The test should complete without throwing exceptions
         $this->assertIsBool($result);
     }
 
     public function test_update_methods_handle_empty_worksheet()
     {
+        // Mock the initial spreadsheet and sheet calls
         $this->mockSheets->shouldReceive('spreadsheet')
             ->with('test-spreadsheet-id')
             ->once()
             ->andReturnSelf();
+
         $this->mockSheets->shouldReceive('sheet')
             ->with('Send requests')
             ->once()
             ->andReturnSelf();
+
         $this->mockSheets->shouldReceive('all')
             ->once()
             ->andReturn([]);
 
+        // The method should log a warning and return true for empty worksheet
         Log::shouldReceive('warning')
             ->with('Worksheet is empty', ['worksheet' => 'Send requests'])
             ->once();
-            
+
         Log::shouldReceive('error')
             ->withAnyArgs()
             ->zeroOrMoreTimes();
 
         $result = $this->service->updateRequestResponseReceived('send', 123);
-        
-        // With empty worksheet, service may return false due to error handling
-        $this->assertIsBool($result);
+
+        // Should return true for empty worksheet
+        $this->assertTrue($result);
     }
 
     public function test_exception_handling_in_various_methods()
     {
         $user = User::factory()->create();
-        
+
         $this->mockSheets->shouldReceive('spreadsheet')
             ->with('test-spreadsheet-id')
             ->once()
@@ -651,7 +655,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $result = $this->service->recordAddUser($user);
-        
+
         $this->assertFalse($result);
     }
 }

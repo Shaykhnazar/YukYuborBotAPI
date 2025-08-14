@@ -468,11 +468,11 @@ class ResponseController extends Controller
      */
     private function handleDelivererAcceptance(User $deliverer, int $sendRequestId, int $deliveryRequestId): JsonResponse
     {
-        Log::info('Deliverer acceptance started', [
-            'deliverer_id' => $deliverer->id,
-            'send_request_id' => $sendRequestId,
-            'delivery_request_id' => $deliveryRequestId
-        ]);
+//        Log::info('Deliverer acceptance started', [
+//            'deliverer_id' => $deliverer->id,
+//            'send_request_id' => $sendRequestId,
+//            'delivery_request_id' => $deliveryRequestId
+//        ]);
 
         $sendRequest = SendRequest::find($sendRequestId);
         $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
@@ -493,14 +493,14 @@ class ResponseController extends Controller
             ->where('status', 'pending')
             ->first();
 
-        Log::info('Looking for response record', [
-            'user_id' => $deliverer->id,
-            'request_type' => 'send',
-            'request_id' => $deliveryRequest->id,
-            'offer_id' => $sendRequest->id,
-            'status' => 'pending',
-            'found' => !!$response
-        ]);
+//        Log::info('Looking for response record', [
+//            'user_id' => $deliverer->id,
+//            'request_type' => 'send',
+//            'request_id' => $deliveryRequest->id,
+//            'offer_id' => $sendRequest->id,
+//            'status' => 'pending',
+//            'found' => !!$response
+//        ]);
 
         if (!$response) {
             // Let's see what responses exist for this user
@@ -519,11 +519,11 @@ class ResponseController extends Controller
         try {
             // Update deliverer's response to 'responded'
             $response->update(['status' => 'responded']);
-            Log::info('Response status updated to responded');
+//            Log::info('Response status updated to responded');
 
             // Create response for sender and notify them
             $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'accept');
-            Log::info('Deliverer response created successfully');
+//            Log::info('Deliverer response created successfully');
 
             return response()->json(['message' => 'Response sent to sender for confirmation']);
 
@@ -541,11 +541,11 @@ class ResponseController extends Controller
      */
     private function handleSenderAcceptance(User $sender, int $sendRequestId, int $deliveryRequestId): JsonResponse
     {
-        Log::info('🎯 Starting sender acceptance process', [
-            'sender_id' => $sender->id,
-            'send_request_id' => $sendRequestId,
-            'delivery_request_id' => $deliveryRequestId
-        ]);
+//        Log::info('🎯 Starting sender acceptance process', [
+//            'sender_id' => $sender->id,
+//            'send_request_id' => $sendRequestId,
+//            'delivery_request_id' => $deliveryRequestId
+//        ]);
 
         $sendRequest = SendRequest::find($sendRequestId);
         $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
@@ -575,7 +575,7 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Response not found or already processed'], 404);
         }
 
-        Log::info('✅ Found sender response to update', ['response_id' => $senderResponse->id]);
+//        Log::info('✅ Found sender response to update', ['response_id' => $senderResponse->id]);
 
         // ✅ ENHANCED: Better chat finding/creation logic
         $existingChat = Chat::where(function($query) use ($sender, $deliveryRequest) {
@@ -591,12 +591,12 @@ class ResponseController extends Controller
         $isNewChat = false;
 
         if ($existingChat) {
-            Log::info('📞 Found existing chat', [
-                'chat_id' => $existingChat->id,
-                'current_status' => $existingChat->status,
-                'current_send_request_id' => $existingChat->send_request_id,
-                'current_delivery_request_id' => $existingChat->delivery_request_id
-            ]);
+//            Log::info('📞 Found existing chat', [
+//                'chat_id' => $existingChat->id,
+//                'current_status' => $existingChat->status,
+//                'current_send_request_id' => $existingChat->send_request_id,
+//                'current_delivery_request_id' => $existingChat->delivery_request_id
+//            ]);
 
             $chat = $existingChat;
 
@@ -609,18 +609,18 @@ class ResponseController extends Controller
                 $updateData['delivery_request_id'] = $deliveryRequest->id;
             }
 
-            Log::info('🔄 Updating existing chat', [
-                'chat_id' => $existingChat->id,
-                'update_data' => $updateData
-            ]);
+//            Log::info('🔄 Updating existing chat', [
+//                'chat_id' => $existingChat->id,
+//                'update_data' => $updateData
+//            ]);
 
             $chat->update($updateData);
 
         } else {
-            Log::info('🆕 Creating new chat between users', [
-                'sender_id' => $sender->id,
-                'receiver_id' => $deliveryRequest->user_id
-            ]);
+//            Log::info('🆕 Creating new chat between users', [
+//                'sender_id' => $sender->id,
+//                'receiver_id' => $deliveryRequest->user_id
+//            ]);
 
             $chat = Chat::create([
                 'sender_id' => $sender->id,
@@ -631,14 +631,14 @@ class ResponseController extends Controller
             ]);
             $isNewChat = true;
 
-            Log::info('✅ Created new chat', [
-                'chat_id' => $chat->id,
-                'sender_id' => $chat->sender_id,
-                'receiver_id' => $chat->receiver_id,
-                'send_request_id' => $chat->send_request_id,
-                'delivery_request_id' => $chat->delivery_request_id,
-                'status' => $chat->status
-            ]);
+//            Log::info('✅ Created new chat', [
+//                'chat_id' => $chat->id,
+//                'sender_id' => $chat->sender_id,
+//                'receiver_id' => $chat->receiver_id,
+//                'send_request_id' => $chat->send_request_id,
+//                'delivery_request_id' => $chat->delivery_request_id,
+//                'status' => $chat->status
+//            ]);
         }
 
         // Update sender's response status to accepted
@@ -647,11 +647,11 @@ class ResponseController extends Controller
             'chat_id' => $chat->id
         ]);
 
-        Log::info('✅ Updated sender response', [
-            'response_id' => $senderResponse->id,
-            'new_status' => 'accepted',
-            'chat_id' => $chat->id
-        ]);
+//        Log::info('✅ Updated sender response', [
+//            'response_id' => $senderResponse->id,
+//            'new_status' => 'accepted',
+//            'chat_id' => $chat->id
+//        ]);
 
         // ✅ CRITICAL: Also update the deliverer's response status to accepted
         $delivererResponse = Response::where('user_id', $deliveryRequest->user_id)
@@ -666,11 +666,11 @@ class ResponseController extends Controller
                 'status' => 'accepted',
                 'chat_id' => $chat->id
             ]);
-            Log::info('✅ Updated deliverer response', [
-                'response_id' => $delivererResponse->id,
-                'new_status' => 'accepted',
-                'chat_id' => $chat->id
-            ]);
+//            Log::info('✅ Updated deliverer response', [
+//                'response_id' => $delivererResponse->id,
+//                'new_status' => 'accepted',
+//                'chat_id' => $chat->id
+//            ]);
         } else {
             Log::warning('⚠️ Deliverer response not found for status update', [
                 'deliverer_user_id' => $deliveryRequest->user_id,
@@ -683,10 +683,10 @@ class ResponseController extends Controller
         $sendRequest->update(['status' => 'matched', 'matched_delivery_id' => $deliveryRequest->id]);
         $deliveryRequest->update(['status' => 'matched', 'matched_send_id' => $sendRequest->id]);
 
-        Log::info('✅ Updated request statuses to matched', [
-            'send_request_id' => $sendRequest->id,
-            'delivery_request_id' => $deliveryRequest->id
-        ]);
+//        Log::info('✅ Updated request statuses to matched', [
+//            'send_request_id' => $sendRequest->id,
+//            'delivery_request_id' => $deliveryRequest->id
+//        ]);
 
         // Reject all other pending responses for both requests
         $rejectedCount = Response::where(function($query) use ($sendRequest, $deliveryRequest) {
@@ -699,7 +699,7 @@ class ResponseController extends Controller
         ->where('id', '!=', $senderResponse->id)
         ->update(['status' => 'rejected']);
 
-        Log::info('✅ Rejected other pending responses', ['count' => $rejectedCount]);
+//        Log::info('✅ Rejected other pending responses', ['count' => $rejectedCount]);
 
         // Send notification to deliverer
         $this->sendTelegramNotification(
@@ -708,11 +708,11 @@ class ResponseController extends Controller
             "Отлично! Отправитель подтвердил сотрудничество. Теперь вы можете общаться в чате для уточнения деталей доставки."
         );
 
-        Log::info('🎉 Sender acceptance process completed successfully', [
-            'chat_id' => $chat->id,
-            'is_new_chat' => $isNewChat,
-            'chat_status' => $chat->status
-        ]);
+//        Log::info('🎉 Sender acceptance process completed successfully', [
+//            'chat_id' => $chat->id,
+//            'is_new_chat' => $isNewChat,
+//            'chat_status' => $chat->status
+//        ]);
 
         return response()->json([
             'chat_id' => $chat->id,

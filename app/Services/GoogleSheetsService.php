@@ -6,9 +6,6 @@ use Carbon\Carbon;
 use Revolution\Google\Sheets\Facades\Sheets;
 use Exception;
 use Illuminate\Support\Facades\Log;
-use App\Models\User;
-use App\Models\DeliveryRequest;
-use App\Models\SendRequest;
 
 class GoogleSheetsService
 {
@@ -49,7 +46,7 @@ class GoogleSheetsService
                 ->sheet('Users')
                 ->append([$data]);
 
-            Log::info('User record added to Google Sheets', ['user_id' => $user->id]);
+//            Log::info('User record added to Google Sheets', ['user_id' => $user->id]);
             return true;
         } catch (Exception $e) {
             Log::error('Failed to add user record to Google Sheets', [
@@ -103,7 +100,7 @@ class GoogleSheetsService
                 ->sheet('Deliver requests')
                 ->append([$data]);
 
-            Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
+//            Log::info('Delivery request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
         } catch (Exception $e) {
             Log::error('Failed to add delivery request record to Google Sheets', [
@@ -157,7 +154,7 @@ class GoogleSheetsService
                 ->sheet('Send requests')
                 ->append([$data]);
 
-            Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
+//            Log::info('Send request record added to Google Sheets', ['request_id' => $request->id]);
             return true;
         } catch (Exception $e) {
             Log::error('Failed to add send request record to Google Sheets', [
@@ -181,12 +178,12 @@ class GoogleSheetsService
         try {
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
-            Log::info("GoogleSheetsService: Starting updateRequestResponseReceived", [
-                'request_type' => $requestType,
-                'request_id' => $requestId,
-                'worksheet' => $worksheetName,
-                'is_first_response' => $isFirstResponse
-            ]);
+//            Log::info("GoogleSheetsService: Starting updateRequestResponseReceived", [
+//                'request_type' => $requestType,
+//                'request_id' => $requestId,
+//                'worksheet' => $worksheetName,
+//                'is_first_response' => $isFirstResponse
+//            ]);
 
             // Get all data from the sheet
             $allData = Sheets::spreadsheet($this->spreadsheetId)
@@ -241,13 +238,13 @@ class GoogleSheetsService
                 }
             }
 
-            Log::info("Request response tracking updated in Google Sheets", [
-                'worksheet' => $worksheetName,
-                'request_id' => $requestId,
-                'is_first_response' => $isFirstResponse,
-                'response_count' => $currentCount + 1,
-                'row_number' => $rowNumber
-            ]);
+//            Log::info("Request response tracking updated in Google Sheets", [
+//                'worksheet' => $worksheetName,
+//                'request_id' => $requestId,
+//                'is_first_response' => $isFirstResponse,
+//                'response_count' => $currentCount + 1,
+//                'row_number' => $rowNumber
+//            ]);
 
             return true;
         } catch (Exception $e) {
@@ -273,11 +270,11 @@ class GoogleSheetsService
         try {
             $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
-            Log::info("GoogleSheetsService: Starting updateRequestResponseAccepted", [
-                'request_type' => $requestType,
-                'request_id' => $requestId,
-                'worksheet' => $worksheetName
-            ]);
+//            Log::info("GoogleSheetsService: Starting updateRequestResponseAccepted", [
+//                'request_type' => $requestType,
+//                'request_id' => $requestId,
+//                'worksheet' => $worksheetName
+//            ]);
 
             // Get all data from the sheet
             $allData = Sheets::spreadsheet($this->spreadsheetId)
@@ -333,11 +330,11 @@ class GoogleSheetsService
                 ->range("I{$rowNumber}")
                 ->update([["matched"]]);
 
-            Log::info("Request acceptance tracking updated in Google Sheets", [
-                'worksheet' => $worksheetName,
-                'request_id' => $requestId,
-                'row_number' => $rowNumber
-            ]);
+//            Log::info("Request acceptance tracking updated in Google Sheets", [
+//                'worksheet' => $worksheetName,
+//                'request_id' => $requestId,
+//                'row_number' => $rowNumber
+//            ]);
 
             return true;
         } catch (Exception $e) {
@@ -412,12 +409,12 @@ class GoogleSheetsService
                 ->range("K{$rowNumber}")
                 ->update([[Carbon::now()->toISOString()]]);
 
-            Log::info("Request status updated in Google Sheets", [
-                'worksheet' => $worksheetName,
-                'request_id' => $requestId,
-                'status' => $status,
-                'row_number' => $rowNumber
-            ]);
+//            Log::info("Request status updated in Google Sheets", [
+//                'worksheet' => $worksheetName,
+//                'request_id' => $requestId,
+//                'status' => $status,
+//                'row_number' => $rowNumber
+//            ]);
 
             return true;
         } catch (Exception $e) {
@@ -512,6 +509,7 @@ class GoogleSheetsService
     {
         if (is_null($this->spreadsheetId)) {
             Log::warning('Google Sheets spreadsheet ID not configured, returning empty array');
+
             return [];
         }
 
@@ -544,10 +542,10 @@ class GoogleSheetsService
                 ->clear()
                 ->append($data);
 
-            Log::info("Data batch exported to Google Sheets", [
-                'worksheet' => $worksheetName,
-                'rows_count' => count($data)
-            ]);
+//            Log::info("Data batch exported to Google Sheets", [
+//                'worksheet' => $worksheetName,
+//                'rows_count' => count($data)
+//            ]);
             return true;
         } catch (Exception $e) {
             Log::error("Failed to batch export data to Google Sheets", [
@@ -589,7 +587,7 @@ class GoogleSheetsService
             ];
             $results['send_requests'] = $this->batchExport('Send requests', [$sendHeaders]);
 
-            Log::info('Google Sheets worksheets initialized successfully');
+//            Log::info('Google Sheets worksheets initialized successfully');
         } catch (Exception $e) {
             Log::error('Failed to initialize Google Sheets worksheets: ' . $e->getMessage());
         }

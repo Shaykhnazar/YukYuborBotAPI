@@ -31,8 +31,8 @@ class RouteCacheService
     public function getActiveRoutes(): Collection
     {
         return Cache::remember(self::CACHE_KEY_ACTIVE_ROUTES, self::CACHE_TTL_ROUTES, function () {
-            Log::info('Cache miss: Loading active routes from database');
-            
+//            Log::info('Cache miss: Loading active routes from database');
+
             return Route::active()
                 ->with(['fromLocation.parent', 'toLocation.parent'])
                 ->byPriority()
@@ -46,10 +46,10 @@ class RouteCacheService
     public function getPopularRoutes(): Collection
     {
         return Cache::remember(self::CACHE_KEY_POPULAR_ROUTES, self::CACHE_TTL_COUNTS, function () {
-            Log::info('Cache miss: Building popular routes from database');
-            
+//            Log::info('Cache miss: Building popular routes from database');
+
             $routes = $this->getActiveRoutes();
-            
+
             return $routes->map(function ($route) {
                 // Get from location details
                 $fromLocation = $route->fromLocation;
@@ -105,12 +105,12 @@ class RouteCacheService
     public function getRouteRequestsCount(int $routeId): int
     {
         $cacheKey = self::CACHE_KEY_ROUTE_REQUESTS_COUNT_PREFIX . $routeId;
-        
+
         return Cache::remember($cacheKey, self::CACHE_TTL_COUNTS, function () use ($routeId) {
-            Log::info('Cache miss: Calculating route requests count', ['route_id' => $routeId]);
-            
+//            Log::info('Cache miss: Calculating route requests count', ['route_id' => $routeId]);
+
             $route = Route::with(['fromLocation.children', 'toLocation.children'])->find($routeId);
-            
+
             if (!$route) {
                 return 0;
             }
@@ -125,13 +125,13 @@ class RouteCacheService
     public function getRoutesWithRequestCounts(): Collection
     {
         return Cache::remember(self::CACHE_KEY_ACTIVE_REQUESTS_COUNTS, self::CACHE_TTL_COUNTS, function () {
-            Log::info('Cache miss: Loading routes with request counts from database');
-            
+//            Log::info('Cache miss: Loading routes with request counts from database');
+
             $routes = $this->getActiveRoutes();
-            
+
             // Calculate all counts in a single efficient query
             $countsByRoute = $this->calculateAllRouteRequestsCounts($routes);
-            
+
             return $routes->map(function ($route) use ($countsByRoute) {
                 $route->active_requests_count = $countsByRoute[$route->id] ?? 0;
                 return $route;
@@ -145,13 +145,13 @@ class RouteCacheService
     public function getCountryRoutes(int $fromCountryId, int $toCountryId): Collection
     {
         $cacheKey = self::CACHE_KEY_COUNTRY_ROUTES_PREFIX . "{$fromCountryId}_{$toCountryId}";
-        
+
         return Cache::remember($cacheKey, self::CACHE_TTL_ROUTES, function () use ($fromCountryId, $toCountryId) {
-            Log::info('Cache miss: Loading country routes from database', [
-                'from_country_id' => $fromCountryId,
-                'to_country_id' => $toCountryId
-            ]);
-            
+//            Log::info('Cache miss: Loading country routes from database', [
+//                'from_country_id' => $fromCountryId,
+//                'to_country_id' => $toCountryId
+//            ]);
+
             return Route::active()
                 ->forCountries($fromCountryId, $toCountryId)
                 ->with(['fromLocation', 'toLocation'])
@@ -280,13 +280,13 @@ class RouteCacheService
             // Warm country pair routes (sample of popular pairs)
             $routes = $this->getActiveRoutes();
             $countryPairs = $routes->map(function ($route) {
-                $fromCountry = $route->fromLocation->type === 'country' 
-                    ? $route->fromLocation 
+                $fromCountry = $route->fromLocation->type === 'country'
+                    ? $route->fromLocation
                     : $route->fromLocation->parent;
-                $toCountry = $route->toLocation->type === 'country' 
-                    ? $route->toLocation 
+                $toCountry = $route->toLocation->type === 'country'
+                    ? $route->toLocation
                     : $route->toLocation->parent;
-                
+
                 return [$fromCountry->id, $toCountry->id];
             })->unique()->take(10);
 
@@ -376,13 +376,13 @@ class RouteCacheService
                 // Clear country routes that might include this route
                 $route = Route::with(['fromLocation.parent', 'toLocation.parent'])->find($routeId);
                 if ($route) {
-                    $fromCountry = $route->fromLocation->type === 'country' 
-                        ? $route->fromLocation 
+                    $fromCountry = $route->fromLocation->type === 'country'
+                        ? $route->fromLocation
                         : $route->fromLocation->parent;
-                    $toCountry = $route->toLocation->type === 'country' 
-                        ? $route->toLocation 
+                    $toCountry = $route->toLocation->type === 'country'
+                        ? $route->toLocation
                         : $route->toLocation->parent;
-                    
+
                     if ($fromCountry && $toCountry) {
                         Cache::forget(self::CACHE_KEY_COUNTRY_ROUTES_PREFIX . "{$fromCountry->id}_{$toCountry->id}");
                         Cache::forget(self::CACHE_KEY_COUNTRY_ROUTES_PREFIX . "{$toCountry->id}_{$fromCountry->id}");

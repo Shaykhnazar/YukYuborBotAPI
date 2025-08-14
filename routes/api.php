@@ -149,15 +149,15 @@ Route::get('/health', function () {
 
 Route::middleware($middleware)->post('/broadcasting/auth', function (Request $request, TelegramUserService $telegramUserService) {
     try {
-        Log::info('Broadcasting auth request received', [
-            'url' => $request->url(),
-            'method' => $request->method(),
-            'has_telegram_data' => $request->hasHeader('X-TELEGRAM-USER-DATA'),
-            'socket_id' => $request->input('socket_id'),
-            'channel_name' => $request->input('channel_name'),
-            'all_headers' => $request->headers->all(),
-            'all_input' => $request->all()
-        ]);
+//        Log::info('Broadcasting auth request received', [
+//            'url' => $request->url(),
+//            'method' => $request->method(),
+//            'has_telegram_data' => $request->hasHeader('X-TELEGRAM-USER-DATA'),
+//            'socket_id' => $request->input('socket_id'),
+//            'channel_name' => $request->input('channel_name'),
+//            'all_headers' => $request->headers->all(),
+//            'all_input' => $request->all()
+//        ]);
 
         // Get user through your existing middleware/service
         $user = $telegramUserService->getUserByTelegramId($request);
@@ -172,12 +172,12 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             $user->load('telegramUser');
         }
 
-        Log::info('Broadcasting auth user found', [
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'has_telegram_user' => !!$user->telegramUser,
-            'telegram_image' => $user->telegramUser->image ?? 'none'
-        ]);
+//        Log::info('Broadcasting auth user found', [
+//            'user_id' => $user->id,
+//            'user_name' => $user->name,
+//            'has_telegram_user' => !!$user->telegramUser,
+//            'telegram_image' => $user->telegramUser->image ?? 'none'
+//        ]);
 
         $socketId = $request->input('socket_id');
         $channelName = $request->input('channel_name');
@@ -194,10 +194,10 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
         if (preg_match('/^private-chat\.(\d+)$/', $channelName, $matches)) {
             $chatId = (int) $matches[1];
 
-            Log::info('Authorizing private chat channel', [
-                'chat_id' => $chatId,
-                'user_id' => $user->id
-            ]);
+//            Log::info('Authorizing private chat channel', [
+//                'chat_id' => $chatId,
+//                'user_id' => $user->id
+//            ]);
 
             // Check if user can access this chat
             $chat = \App\Models\Chat::find($chatId);
@@ -222,10 +222,10 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             $stringToSign = $socketId . ':' . $channelName;
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
-            Log::info('Chat channel authorization successful', [
-                'user_id' => $user->id,
-                'chat_id' => $chatId
-            ]);
+//            Log::info('Chat channel authorization successful', [
+//                'user_id' => $user->id,
+//                'chat_id' => $chatId
+//            ]);
 
             return response()->json([
                 'auth' => config('reverb.apps.apps.0.key') . ':' . $authSignature
@@ -236,11 +236,11 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
         if (preg_match('/^presence-chat\.(\d+)$/', $channelName, $matches)) {
             $chatId = (int) $matches[1];
 
-            Log::info('🔐 Authorizing presence channel', [
-                'chat_id' => $chatId,
-                'user_id' => $user->id,
-                'user_name' => $user->name
-            ]);
+//            Log::info('🔐 Authorizing presence channel', [
+//                'chat_id' => $chatId,
+//                'user_id' => $user->id,
+//                'user_name' => $user->name
+//            ]);
 
             // Check chat access
             $chat = \App\Models\Chat::find($chatId);
@@ -289,12 +289,12 @@ Route::middleware($middleware)->post('/broadcasting/auth', function (Request $re
             $stringToSign = $socketId . ':' . $channelName . ':' . $channelData;
             $authSignature = hash_hmac('sha256', $stringToSign, config('reverb.apps.apps.0.secret'));
 
-            Log::info('✅ Presence channel authorization successful', [
-                'user_id' => $user->id,
-                'chat_id' => $chatId,
-                'user_data' => $userData,
-                'channel_data_length' => strlen($channelData)
-            ]);
+//            Log::info('✅ Presence channel authorization successful', [
+//                'user_id' => $user->id,
+//                'chat_id' => $chatId,
+//                'user_data' => $userData,
+//                'channel_data_length' => strlen($channelData)
+//            ]);
 
             return response()->json([
                 'auth' => config('reverb.apps.apps.0.key') . ':' . $authSignature,

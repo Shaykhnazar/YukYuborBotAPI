@@ -61,12 +61,12 @@ trait TelegramUserHandler
                     'user_id' => $userModel->id
                 ]);
 
-                Log::info('Created new user', [
-                    'telegram_id' => $telegramId,
-                    'user_id' => $userModel->id,
-                    'name' => $userModel->name,
-                    'dev_mode' => $isDev
-                ]);
+//                Log::info('Created new user', [
+//                    'telegram_id' => $telegramId,
+//                    'user_id' => $userModel->id,
+//                    'name' => $userModel->name,
+//                    'dev_mode' => $isDev
+//                ]);
             } else {
                 // Update existing user info if needed
                 $userModel = $existingTelegramUser->user;
@@ -88,32 +88,32 @@ trait TelegramUserHandler
 
                 if ($needsUpdate) {
                     $existingTelegramUser->update($updates);
-                    Log::info('Updated Telegram user info', [
-                        'telegram_id' => $telegramId,
-                        'updates' => $updates
-                    ]);
+//                    Log::info('Updated Telegram user info', [
+//                        'telegram_id' => $telegramId,
+//                        'updates' => $updates
+//                    ]);
                 }
 
                 // Update name if needed
                 $newName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
                 if ($userModel->name !== $newName && !empty($newName)) {
                     $userModel->update(['name' => $newName]);
-                    Log::info('Updated user name', [
-                        'user_id' => $userModel->id,
-                        'old_name' => $userModel->name,
-                        'new_name' => $newName
-                    ]);
+//                    Log::info('Updated user name', [
+//                        'user_id' => $userModel->id,
+//                        'old_name' => $userModel->name,
+//                        'new_name' => $newName
+//                    ]);
                 }
             }
 
             // Add telegram_id to request for easy access in controllers
             $request->attributes->set('telegram_id', $telegramId);
 
-            Log::info('Telegram user processed successfully', [
-                'telegram_id' => $telegramId,
-                'user_id' => $userModel->id,
-                'dev_mode' => $isDev
-            ]);
+//            Log::info('Telegram user processed successfully', [
+//                'telegram_id' => $telegramId,
+//                'user_id' => $userModel->id,
+//                'dev_mode' => $isDev
+//            ]);
 
             return $next($request);
 
