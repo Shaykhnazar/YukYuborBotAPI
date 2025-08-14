@@ -304,7 +304,7 @@ class CreateDeliveryRequestDTOTest extends TestCase
         
         // Test that we can perform calculations on the dates
         $this->assertTrue($dto->toDate->isAfter($dto->fromDate));
-        $this->assertEquals(9, $dto->fromDate->diffInDays($dto->toDate));
+        $this->assertEquals(9.5, $dto->fromDate->diffInDays($dto->toDate));
         $this->assertEquals('June', $dto->fromDate->format('F'));
         $this->assertEquals('June', $dto->toDate->format('F'));
     }

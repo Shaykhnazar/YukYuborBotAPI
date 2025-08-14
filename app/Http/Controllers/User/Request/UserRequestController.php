@@ -6,10 +6,8 @@ use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Parcel\ParcelRequest;
 use App\Http\Resources\Parcel\IndexRequestResource;
 use App\Models\Review;
-use App\Service\TelegramUserService;
 use App\Models\User;
-use App\Models\Chat;
-use Illuminate\Http\Request;
+use App\Services\TelegramUserService;
 use Illuminate\Support\Facades\Log;
 
 class UserRequestController extends BaseController

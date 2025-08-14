@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Response;
-use App\Services\GoogleSheetsServiceSimplified;
+use App\Services\GoogleSheetsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -41,7 +41,7 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
     {
         try {
             // Use the simplified service
-            $googleSheetsService = app(GoogleSheetsServiceSimplified::class);
+            $googleSheetsService = app(GoogleSheetsService::class);
 
             $response = Response::find($this->responseId);
 

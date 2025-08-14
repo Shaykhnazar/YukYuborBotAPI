@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Service;
+namespace App\Services;
 
-use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
+use App\Models\SendRequest;
 use Illuminate\Support\Facades\Log;
 
 class Matcher

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\User\Review;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Models\Review;
-use App\Service\TelegramUserService;
 use App\Http\Requests\Review\CreateReviewRequest;
 use App\Http\Resources\Review\ReviewResource;
+use App\Models\Review;
+use App\Services\TelegramUserService;
 use Illuminate\Http\JsonResponse;
 
 class UserReviewController extends BaseController

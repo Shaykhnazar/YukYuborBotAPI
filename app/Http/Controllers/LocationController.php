@@ -2,53 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Location;
-use App\Models\Route;
 use App\Models\SuggestedRoute;
-use App\Service\TelegramUserService;
+use App\Services\LocationCacheService;
+use App\Services\RouteCacheService;
+use App\Services\TelegramUserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class LocationController extends Controller
 {
     public function __construct(
         protected TelegramUserService $tgService,
+        protected LocationCacheService $locationCacheService,
+        protected RouteCacheService $routeCacheService,
     ) {}
 
     public function getCountries()
     {
-        $countries = Location::countries()
-            ->active()
-            ->with(['children' => function($query) {
-                $query->select('id', 'name', 'parent_id')
-                    ->active()
-                    ->orderBy('name')
-                    ->limit(3); // Get only first 3 cities as popular
-            }])
-            ->orderBy('name')
-            ->get(['id', 'name', 'country_code', 'is_active']);
-
+        $countries = $this->locationCacheService->getCountriesWithPopularCities(3);
         return response()->json($countries);
     }
 
     public function getCitiesByCountry(Request $request, $countryId)
     {
         $query = $request->get('q', ''); // Get search query parameter
-
-        $citiesQuery = Location::with('parent:id,name')
-            ->cities()
-            ->where('parent_id', $countryId)
-            ->active()
-            ->orderBy('name');
-
-        // Apply search filter if query is provided
-        if (!empty($query)) {
-            $citiesQuery->where('name', 'LIKE', '%' . $query . '%');
-        }
-
-        $cities = $citiesQuery->get(['id', 'name', 'parent_id']);
-
+        $cities = $this->locationCacheService->getCitiesByCountry($countryId, $query ?: null);
         return response()->json($cities);
     }
 
@@ -61,100 +39,15 @@ class LocationController extends Controller
             return response()->json([]);
         }
 
-        $locations = Location::active()
-            ->where('name', 'LIKE', '%' . $query . '%')
-            ->when($type !== 'all', function ($q) use ($type) {
-                return $q->where('type', $type);
-            })
-            ->with('parent')
-            ->orderBy('name')
-            ->limit(10)
-            ->get()
-            ->map(function ($location) {
-                return [
-                    'id' => $location->id,
-                    'name' => $location->name,
-                    'type' => $location->type,
-                    'display_name' => $location->type === 'city'
-                        ? $location->parent->name . ', ' . $location->name
-                        : $location->name,
-                    'parent_id' => $location->parent_id,
-                    'country_name' => $location->type === 'city'
-                        ? $location->parent->name
-                        : $location->name,
-                ];
-            });
-
+        $locations = $this->locationCacheService->searchLocations($query, $type, 10);
         return response()->json($locations);
     }
 
     public function popularRoutes()
     {
         try {
-            // Get approved routes with location details and request counts
-            $routes = Route::active()
-                ->with(['fromLocation.parent', 'toLocation.parent'])
-                ->byPriority()
-                ->get()
-                ->map(function ($route) {
-                    // Get from location details
-                    $fromLocation = $route->fromLocation;
-                    $fromCountry = $fromLocation->type === 'country'
-                        ? $fromLocation
-                        : $fromLocation->parent;
-
-                    // Get to location details
-                    $toLocation = $route->toLocation;
-                    $toCountry = $toLocation->type === 'country'
-                        ? $toLocation
-                        : $toLocation->parent;
-
-                    // Get popular cities for both countries
-                    $fromCities = Location::cities()
-                        ->where('parent_id', $fromCountry->id)
-                        ->active()
-                        ->orderBy('name')
-                        ->limit(3)
-                        ->get(['id', 'name']);
-
-                    $toCities = Location::cities()
-                        ->where('parent_id', $toCountry->id)
-                        ->active()
-                        ->orderBy('name')
-                        ->limit(3)
-                        ->get(['id', 'name']);
-
-                    // Count active requests for this route
-                    $activeRequestsCount = $this->getActiveRequestsForRoute($fromCountry->name, $toCountry->name);
-
-                    return [
-                        'id' => $route->id,
-                        'from' => [
-                            'id' => $fromCountry->id,
-                            'name' => $fromCountry->name,
-                            'type' => 'country'
-                        ],
-                        'to' => [
-                            'id' => $toCountry->id,
-                            'name' => $toCountry->name,
-                            'type' => 'country'
-                        ],
-                        'active_requests' => $activeRequestsCount,
-                        'popular_cities' => [
-                            ...$fromCities->map(fn($city) => [
-                                'id' => $city->id,
-                                'name' => $city->name
-                            ]),
-                            ...$toCities->map(fn($city) => [
-                                'id' => $city->id,
-                                'name' => $city->name
-                            ])
-                        ],
-                        'priority' => $route->priority,
-                        'description' => $route->description
-                    ];
-                });
-
+            // Get popular routes from cache
+            $routes = $this->routeCacheService->getPopularRoutes();
             return response()->json($routes);
 
         } catch (\Exception $e) {
@@ -163,27 +56,6 @@ class LocationController extends Controller
         }
     }
 
-    private function getActiveRequestsForRoute($fromCountryName, $toCountryName): int
-    {
-        // Count requests matching this route using location relationships
-        $deliveryCount = DB::table('delivery_requests')
-            ->join('locations as from_loc', 'delivery_requests.from_location_id', '=', 'from_loc.id')
-            ->join('locations as to_loc', 'delivery_requests.to_location_id', '=', 'to_loc.id')
-            ->where('delivery_requests.status', 'IN', ['open', 'has_responses'])
-            ->where('from_loc.name', 'LIKE', '%' . $fromCountryName . '%')
-            ->where('to_loc.name', 'LIKE', '%' . $toCountryName . '%')
-            ->count();
-
-        $sendCount = DB::table('send_requests')
-            ->join('locations as from_loc', 'send_requests.from_location_id', '=', 'from_loc.id')
-            ->join('locations as to_loc', 'send_requests.to_location_id', '=', 'to_loc.id')
-            ->where('send_requests.status', 'IN', ['open', 'has_responses'])
-            ->where('from_loc.name', 'LIKE', '%' . $fromCountryName . '%')
-            ->where('to_loc.name', 'LIKE', '%' . $toCountryName . '%')
-            ->count();
-
-        return $deliveryCount + $sendCount;
-    }
 
     public function suggestRoute(Request $request)
     {

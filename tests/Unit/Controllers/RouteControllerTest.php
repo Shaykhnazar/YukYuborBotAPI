@@ -6,21 +6,31 @@ use App\Http\Controllers\RouteController;
 use App\Models\Route;
 use App\Models\Location;
 use App\Http\Resources\RouteResource;
+use App\Services\RouteCacheService;
 use Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Mockery;
 
 class RouteControllerTest extends TestCase
 {
     use RefreshDatabase;
 
     protected RouteController $controller;
+    protected RouteCacheService $routeCacheService;
 
     protected function setUp(): void
     {
         parent::setUp();
         
-        $this->controller = new RouteController();
+        $this->routeCacheService = Mockery::mock(RouteCacheService::class);
+        $this->controller = new RouteController($this->routeCacheService);
+    }
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
     }
 
     public function test_index_returns_all_routes_by_default()
@@ -37,7 +47,26 @@ class RouteControllerTest extends TestCase
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
-    public function test_index_filters_active_routes_when_requested()
+    public function test_index_filters_active_routes_when_requested_uses_cache()
+    {
+        // Mock cache service to return routes
+        $cachedRoutes = collect([
+            (object) ['id' => 1, 'is_active' => true, 'priority' => 1],
+            (object) ['id' => 2, 'is_active' => true, 'priority' => 2],
+        ]);
+        
+        $this->routeCacheService->shouldReceive('getRoutesWithRequestCounts')
+            ->once()
+            ->andReturn($cachedRoutes);
+        
+        $request = new Request(['active' => '1']);
+        
+        $response = $this->controller->index($request);
+        
+        $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
+    }
+
+    public function test_index_filters_active_routes_when_requested_fallback_to_db()
     {
         // Create active route
         Route::factory()->create([
@@ -54,17 +83,34 @@ class RouteControllerTest extends TestCase
             'is_active' => false
         ]);
         
-        $request = new Request(['active' => '1']);
+        // Test with complex filtering that bypasses cache
+        $request = new Request(['active' => '1', 'order_by' => 'created_at']);
         
         $response = $this->controller->index($request);
         
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
-        
-        // In a real test, we'd verify the collection only contains active routes
-        // This would require accessing the underlying collection
     }
 
-    public function test_index_orders_by_priority_when_specified()
+    public function test_index_orders_by_priority_when_specified_uses_cache()
+    {
+        // Mock cache service to return routes ordered by priority
+        $cachedRoutes = collect([
+            (object) ['id' => 1, 'is_active' => true, 'priority' => 1],
+            (object) ['id' => 2, 'is_active' => true, 'priority' => 3],
+        ]);
+        
+        $this->routeCacheService->shouldReceive('getRoutesWithRequestCounts')
+            ->once()
+            ->andReturn($cachedRoutes);
+        
+        $request = new Request(['active' => '1', 'order_by' => 'priority']);
+        
+        $response = $this->controller->index($request);
+        
+        $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
+    }
+
+    public function test_index_orders_by_priority_when_specified_fallback_to_db()
     {
         Route::factory()->create([
             'priority' => 3,
@@ -81,8 +127,6 @@ class RouteControllerTest extends TestCase
         $response = $this->controller->index($request);
         
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
-        
-        // The response should be ordered by priority through the byPriority scope
     }
 
     public function test_index_includes_location_relationships()
@@ -142,15 +186,16 @@ class RouteControllerTest extends TestCase
 
     public function test_index_handles_boolean_active_parameter()
     {
-        Route::factory()->create([
-            'is_active' => true
+        // Mock cache service since active=true with no order_by should use cache
+        $cachedRoutes = collect([
+            (object) ['id' => 1, 'is_active' => true, 'priority' => 1],
         ]);
         
-        Route::factory()->create([
-            'is_active' => false
-        ]);
+        $this->routeCacheService->shouldReceive('getRoutesWithRequestCounts')
+            ->once()
+            ->andReturn($cachedRoutes);
         
-        // Test with boolean true
+        // Test with boolean true - this SHOULD use cache since order_by is not filled
         $request = new Request(['active' => true]);
         
         $response = $this->controller->index($request);
@@ -187,7 +232,25 @@ class RouteControllerTest extends TestCase
         // Should not throw error and should ignore invalid order_by parameter
     }
 
-    public function test_index_combines_active_and_priority_filters()
+    public function test_index_combines_active_and_priority_filters_uses_cache()
+    {
+        // Mock cache service for active routes with priority ordering
+        $cachedRoutes = collect([
+            (object) ['id' => 1, 'is_active' => true, 'priority' => 1],
+        ]);
+        
+        $this->routeCacheService->shouldReceive('getRoutesWithRequestCounts')
+            ->once()
+            ->andReturn($cachedRoutes);
+        
+        $request = new Request(['active' => '1', 'order_by' => 'priority']);
+        
+        $response = $this->controller->index($request);
+        
+        $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
+    }
+
+    public function test_index_combines_active_and_priority_filters_fallback_to_db()
     {
         Route::factory()->create([
             'is_active' => true,
@@ -199,13 +262,12 @@ class RouteControllerTest extends TestCase
             'priority' => 2
         ]);
         
-        $request = new Request(['active' => '1', 'order_by' => 'priority']);
+        // Use non-cached parameters
+        $request = new Request(['active' => '1', 'order_by' => 'created_at']);
         
         $response = $this->controller->index($request);
         
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
-        
-        // Should filter for active routes and order by priority
     }
 
     public function test_index_uses_route_resource_collection()

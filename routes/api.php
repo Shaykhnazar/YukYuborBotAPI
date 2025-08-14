@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\GoogleSheetsController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\LocationController;
@@ -13,10 +14,8 @@ use App\Http\Controllers\TestUsersController;
 use App\Http\Controllers\User\Request\UserRequestController;
 use App\Http\Controllers\User\Review\UserReviewController;
 use App\Http\Controllers\User\UserController;
-use App\Http\Controllers\Api\GoogleSheetsController;
-use App\Service\TelegramUserService;
+use App\Services\TelegramUserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
@@ -108,8 +107,6 @@ Route::middleware($middleware)->group(function () {
     });
 
     Route::get('/routes', [RouteController::class, 'index']);
-    // DEBUG
-    Route::get('/debug-requests', [UserRequestController::class, 'debug']);
 
     // Google Sheets Integration routes
     Route::prefix('google-sheets')->controller(GoogleSheetsController::class)->group(function () {

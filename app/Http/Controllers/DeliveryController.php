@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Delivery\CreateDeliveryRequest;
+use App\Models\Chat;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
-use App\Models\Chat;
 use App\Models\SendRequest;
-use App\Service\Matcher;
-use App\Service\TelegramUserService;
+use App\Services\Matcher;
+use App\Services\TelegramUserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;

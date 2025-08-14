@@ -5,7 +5,7 @@ namespace App\Http\Controllers\User;
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Resources\Review\ReviewResource;
 use App\Models\User;
-use App\Service\TelegramUserService;
+use App\Services\TelegramUserService;
 use Carbon\Carbon;
 use Carbon\Translator;
 use Illuminate\Http\Request;

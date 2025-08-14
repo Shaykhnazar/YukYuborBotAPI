@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Observers\RouteObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
+#[ObservedBy(RouteObserver::class)]
 class Route extends Model
 {
     use HasFactory;
@@ -24,6 +27,8 @@ class Route extends Model
         'is_active' => 'boolean',
         'priority' => 'integer'
     ];
+
+    protected $appends = ['active_requests_count'];
 
     // Relationships
     public function fromLocation(): BelongsTo
@@ -63,7 +68,18 @@ class Route extends Model
     // Get active requests count for this route
     public function getActiveRequestsCountAttribute(): int
     {
-        return $this->countActiveRequests();
+        // Return the dynamically set value or calculate it
+        return $this->attributes['active_requests_count'] ?? $this->countActiveRequests();
+    }
+
+    public function setActiveRequestsCountAttribute(int $value): void
+    {
+        // Optional validation
+        if ($value < 0) {
+            throw new \InvalidArgumentException('Active requests count cannot be negative');
+        }
+
+        $this->attributes['active_requests_count'] = $value;
     }
 
     // Method to count active requests (including reverse direction)

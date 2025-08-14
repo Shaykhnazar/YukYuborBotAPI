@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
-use App\Service\TelegramUserService;
-use Illuminate\Http\Request;
+use App\Services\TelegramUserService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
 class SupportController extends BaseController

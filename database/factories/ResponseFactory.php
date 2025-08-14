@@ -140,35 +140,25 @@ class ResponseFactory extends Factory
         ]);
     }
 
-    /**
-     * Response for specific send request
-     */
-    public function forSendRequest(SendRequest $sendRequest, DeliveryRequest $deliveryRequest = null): static
+    public function forSendRequest(SendRequest $sendRequest, DeliveryRequest $deliveryRequest): static
     {
-        $deliveryRequest = $deliveryRequest ?? DeliveryRequest::factory()->create();
-
-        return $this->state(fn (array $attributes) => [
-            'user_id' => $deliveryRequest->user_id, // deliverer will see this
-            'responder_id' => $sendRequest->user_id, // sender made the offer
-            'request_type' => 'send',
-            'request_id' => $deliveryRequest->id,
-            'offer_id' => $sendRequest->id,
+        return $this->state(fn () => [
+            'user_id'        => $deliveryRequest->user_id,
+            'responder_id'   => $sendRequest->user_id,
+            'request_type'   => 'send',
+            'request_id'     => $deliveryRequest->id,
+            'offer_id'       => $sendRequest->id,
         ]);
     }
 
-    /**
-     * Response for specific delivery request
-     */
-    public function forDeliveryRequest(DeliveryRequest $deliveryRequest, SendRequest $sendRequest = null): static
+    public function forDeliveryRequest(DeliveryRequest $deliveryRequest, SendRequest $sendRequest): static
     {
-        $sendRequest = $sendRequest ?? SendRequest::factory()->create();
-
-        return $this->state(fn (array $attributes) => [
-            'user_id' => $sendRequest->user_id, // sender will see this
-            'responder_id' => $deliveryRequest->user_id, // deliverer is responding
-            'request_type' => 'delivery',
-            'request_id' => $sendRequest->id,
-            'offer_id' => $deliveryRequest->id,
+        return $this->state(fn () => [
+            'user_id'        => $sendRequest->user_id,
+            'responder_id'   => $deliveryRequest->user_id,
+            'request_type'   => 'delivery',
+            'request_id'     => $sendRequest->id,
+            'offer_id'       => $deliveryRequest->id,
         ]);
     }
 

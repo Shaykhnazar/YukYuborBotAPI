@@ -3,17 +3,17 @@
 namespace Tests\Unit\Controllers\User\Request;
 
 use App\Http\Controllers\User\Request\UserRequestController;
-use App\Service\TelegramUserService;
-use App\Models\User;
-use App\Models\TelegramUser;
-use App\Models\SendRequest;
+use App\Http\Requests\Parcel\ParcelRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
 use App\Models\Review;
-use App\Http\Requests\Parcel\ParcelRequest;
-use Tests\TestCase;
+use App\Models\SendRequest;
+use App\Models\TelegramUser;
+use App\Models\User;
+use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\TestCase;
 
 class UserRequestControllerTest extends TestCase
 {
@@ -27,24 +27,24 @@ class UserRequestControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->tgService = Mockery::mock(TelegramUserService::class);
         $this->controller = new UserRequestController($this->tgService);
-        
+
         $this->user = User::factory()->create([
             'name' => 'Test User',
             'links_balance' => 5
         ]);
-        
+
         $this->otherUser = User::factory()->create([
             'name' => 'Other User'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->user->id,
             'telegram' => '123456789'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->otherUser->id,
             'telegram' => '987654321'
@@ -63,7 +63,7 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         Response::factory()->create([
             'request_type' => 'send',
             'request_id' => $sendRequest->id,
@@ -71,7 +71,7 @@ class UserRequestControllerTest extends TestCase
             'responder_id' => $this->otherUser->id,
             'status' => 'pending'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -79,14 +79,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => null,
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -96,12 +96,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -109,14 +109,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => null,
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -126,12 +126,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -139,14 +139,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => null,
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -156,12 +156,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'closed'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -169,14 +169,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => 'active', // Only active requests
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -186,12 +186,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'completed'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -199,14 +199,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => 'closed', // Only closed requests
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -217,13 +217,13 @@ class UserRequestControllerTest extends TestCase
             'description' => 'Express delivery needed',
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'description' => 'Regular shipping',
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -231,14 +231,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => null,
                 'search' => 'express' // Search for express
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -248,20 +248,20 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
                 'filter' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->show($mockRequest, $sendRequest->id);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -271,20 +271,20 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
                 'filter' => 'send' // Only show send requests
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->show($mockRequest, $sendRequest->id);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -294,12 +294,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->otherUser->id,
             'status' => 'open'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'user_id' => $this->otherUser->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -307,14 +307,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => null,
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->userRequests($mockRequest, $this->otherUser);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -324,12 +324,12 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->otherUser->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->otherUser->id,
             'status' => 'closed'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('getFilters')
             ->andReturn([
@@ -337,14 +337,14 @@ class UserRequestControllerTest extends TestCase
                 'status' => 'active', // Only active requests
                 'search' => null
             ]);
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->userRequests($mockRequest, $this->otherUser);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\Resources\Json\AnonymousResourceCollection::class, $response);
     }
 
@@ -358,13 +358,13 @@ class UserRequestControllerTest extends TestCase
             (object)['status' => 'closed'], // Should be filtered out
             (object)['status' => 'completed'] // Should be filtered out
         ]);
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('applyStatusFilter');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $requests, 'active');
-        
+
         $this->assertCount(4, $result);
     }
 
@@ -376,13 +376,13 @@ class UserRequestControllerTest extends TestCase
             (object)['status' => 'completed'],
             (object)['status' => 'closed']
         ]);
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('applyStatusFilter');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $requests, 'closed');
-        
+
         $this->assertCount(2, $result);
     }
 
@@ -404,13 +404,13 @@ class UserRequestControllerTest extends TestCase
                 'responder_user' => null
             ]
         ]);
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('applySearchFilter');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $requests, 'berlin');
-        
+
         $this->assertCount(1, $result);
     }
 
@@ -432,13 +432,13 @@ class UserRequestControllerTest extends TestCase
                 'responder_user' => null
             ]
         ]);
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('applySearchFilter');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $requests, 'express');
-        
+
         $this->assertCount(1, $result);
     }
 
@@ -446,7 +446,7 @@ class UserRequestControllerTest extends TestCase
     {
         $user1 = (object)['name' => 'John Doe'];
         $user2 = (object)['name' => 'Jane Smith'];
-        
+
         $requests = collect([
             (object)[
                 'from_location' => 'Berlin',
@@ -463,13 +463,13 @@ class UserRequestControllerTest extends TestCase
                 'responder_user' => null
             ]
         ]);
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('applySearchFilter');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $requests, 'john');
-        
+
         $this->assertCount(1, $result);
     }
 
@@ -479,18 +479,18 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open' // Active status
         ]);
-        
+
         $request = (object)[
             'status' => 'open',
             'responder_user' => null
         ];
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('hasUserReviewedOtherParty');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $this->user, $request);
-        
+
         $this->assertFalse($result);
     }
 
@@ -500,7 +500,7 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'completed'
         ]);
-        
+
         // Create a review
         Review::factory()->create([
             'user_id' => $this->otherUser->id,
@@ -508,30 +508,30 @@ class UserRequestControllerTest extends TestCase
             'request_id' => $sendRequest->id,
             'request_type' => 'send'
         ]);
-        
+
         $request = (object)[
             'id' => $sendRequest->id,
             'status' => 'completed',
             'type' => 'send',
             'responder_user' => $this->otherUser
         ];
-        
+
         $reflection = new \ReflectionClass($this->controller);
         $method = $reflection->getMethod('hasUserReviewedOtherParty');
         $method->setAccessible(true);
-        
+
         $result = $method->invoke($this->controller, $this->user, $request);
-        
+
         $this->assertTrue($result);
     }
 
     public function test_constructor_injects_telegram_service()
     {
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $tgServiceProperty = $reflection->getProperty('tgService');
         $tgServiceProperty->setAccessible(true);
-        
+
         $this->assertInstanceOf(TelegramUserService::class, $tgServiceProperty->getValue($this->controller));
     }
 }
