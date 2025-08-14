@@ -26,8 +26,8 @@ class LocationCacheService
     public function getAllLocations(): Collection
     {
         return Cache::remember(self::CACHE_KEY_ALL_LOCATIONS, self::CACHE_TTL, function () {
-            Log::info('Cache miss: Loading all locations from database');
-            
+//            Log::info('Cache miss: Loading all locations from database');
+
             return Location::with(['parent', 'children'])
                 ->active()
                 ->orderBy('type')
@@ -42,8 +42,8 @@ class LocationCacheService
     public function getCountries(): Collection
     {
         return Cache::remember(self::CACHE_KEY_COUNTRIES, self::CACHE_TTL, function () {
-            Log::info('Cache miss: Loading countries from database');
-            
+//            Log::info('Cache miss: Loading countries from database');
+
             return Location::countries()
                 ->active()
                 ->orderBy('name')
@@ -57,8 +57,8 @@ class LocationCacheService
     public function getCities(): Collection
     {
         return Cache::remember(self::CACHE_KEY_CITIES, self::CACHE_TTL, function () {
-            Log::info('Cache miss: Loading cities from database');
-            
+//            Log::info('Cache miss: Loading cities from database');
+
             return Location::cities()
                 ->active()
                 ->with('parent:id,name,type')
@@ -73,10 +73,10 @@ class LocationCacheService
     public function getCountriesWithPopularCities(int $cityLimit = 3): Collection
     {
         $cacheKey = self::CACHE_KEY_COUNTRIES . ':with_cities:' . $cityLimit;
-        
+
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($cityLimit) {
-            Log::info('Cache miss: Loading countries with popular cities from database', ['city_limit' => $cityLimit]);
-            
+//            Log::info('Cache miss: Loading countries with popular cities from database', ['city_limit' => $cityLimit]);
+
             return Location::countries()
                 ->active()
                 ->with(['children' => function($query) use ($cityLimit) {
@@ -96,14 +96,14 @@ class LocationCacheService
     public function getCitiesByCountry(int $countryId, ?string $searchQuery = null): Collection
     {
         $cacheKey = self::CACHE_KEY_CITIES_BY_COUNTRY_PREFIX . $countryId;
-        
+
         // If there's a search query, don't cache (dynamic search)
         if ($searchQuery) {
-            Log::info('Searching cities by country with query (no cache)', [
-                'country_id' => $countryId,
-                'query' => $searchQuery
-            ]);
-            
+//            Log::info('Searching cities by country with query (no cache)', [
+//                'country_id' => $countryId,
+//                'query' => $searchQuery
+//            ]);
+
             return Location::cities()
                 ->where('parent_id', $countryId)
                 ->where('name', 'LIKE', '%' . $searchQuery . '%')
@@ -114,8 +114,8 @@ class LocationCacheService
         }
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($countryId) {
-            Log::info('Cache miss: Loading cities by country from database', ['country_id' => $countryId]);
-            
+//            Log::info('Cache miss: Loading cities by country from database', ['country_id' => $countryId]);
+
             return Location::cities()
                 ->where('parent_id', $countryId)
                 ->active()
@@ -131,10 +131,10 @@ class LocationCacheService
     public function getLocationById(int $locationId): ?Location
     {
         $cacheKey = self::CACHE_KEY_LOCATION_PREFIX . $locationId;
-        
+
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($locationId) {
-            Log::info('Cache miss: Loading location by ID from database', ['location_id' => $locationId]);
-            
+//            Log::info('Cache miss: Loading location by ID from database', ['location_id' => $locationId]);
+
             return Location::with('parent')
                 ->find($locationId);
         });
@@ -152,7 +152,7 @@ class LocationCacheService
         foreach ($locationIds as $id) {
             $cacheKey = self::CACHE_KEY_LOCATION_PREFIX . $id;
             $location = Cache::get($cacheKey);
-            
+
             if ($location) {
                 $locations->push($location);
             } else {
@@ -162,8 +162,8 @@ class LocationCacheService
 
         // Load uncached locations from database and cache them
         if (!empty($uncachedIds)) {
-            Log::info('Cache miss: Loading multiple locations from database', ['location_ids' => $uncachedIds]);
-            
+//            Log::info('Cache miss: Loading multiple locations from database', ['location_ids' => $uncachedIds]);
+
             $uncachedLocations = Location::with('parent')
                 ->whereIn('id', $uncachedIds)
                 ->get();
@@ -184,11 +184,11 @@ class LocationCacheService
     public function searchLocations(string $query, ?string $type = null, int $limit = 10): Collection
     {
         // Don't cache search results as they are dynamic
-        Log::info('Searching locations (no cache)', [
-            'query' => $query,
-            'type' => $type,
-            'limit' => $limit
-        ]);
+//        Log::info('Searching locations (no cache)', [
+//            'query' => $query,
+//            'type' => $type,
+//            'limit' => $limit
+//        ]);
 
         return Location::active()
             ->where('name', 'LIKE', '%' . $query . '%')
@@ -221,18 +221,18 @@ class LocationCacheService
     public function getLocationHierarchy(): array
     {
         $cacheKey = 'locations:hierarchy';
-        
+
         return Cache::remember($cacheKey, self::CACHE_TTL, function () {
-            Log::info('Cache miss: Building location hierarchy from database');
-            
+//            Log::info('Cache miss: Building location hierarchy from database');
+
             $countries = $this->getCountries();
             $cities = $this->getCities();
 
             $hierarchy = [];
-            
+
             foreach ($countries as $country) {
                 $countryCities = $cities->where('parent_id', $country->id)->values();
-                
+
                 $hierarchy[$country->id] = [
                     'id' => $country->id,
                     'name' => $country->name,
@@ -257,7 +257,7 @@ class LocationCacheService
      */
     public function warmCache(): void
     {
-        Log::info('Starting location cache warming');
+//        Log::info('Starting location cache warming');
 
         try {
             // Warm basic caches
@@ -273,10 +273,10 @@ class LocationCacheService
                 $this->getCitiesByCountry($country->id);
             }
 
-            Log::info('Location cache warming completed successfully', [
-                'countries_count' => $countries->count(),
-                'total_caches' => $countries->count() + 5 // Basic caches + country caches
-            ]);
+//            Log::info('Location cache warming completed successfully', [
+//                'countries_count' => $countries->count(),
+//                'total_caches' => $countries->count() + 5 // Basic caches + country caches
+//            ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to warm location cache', [
@@ -292,7 +292,7 @@ class LocationCacheService
      */
     public function clearCache(): void
     {
-        Log::info('Clearing all location caches');
+//        Log::info('Clearing all location caches');
 
         try {
             // Clear basic caches
@@ -318,7 +318,7 @@ class LocationCacheService
                 Cache::forget(self::CACHE_KEY_COUNTRIES . ':with_cities:' . $i);
             }
 
-            Log::info('Location cache cleared successfully');
+//            Log::info('Location cache cleared successfully');
 
         } catch (\Exception $e) {
             Log::error('Failed to clear location cache', [
@@ -333,11 +333,11 @@ class LocationCacheService
      */
     public function invalidateLocation(int $locationId): void
     {
-        Log::info('Invalidating cache for location', ['location_id' => $locationId]);
+//        Log::info('Invalidating cache for location', ['location_id' => $locationId]);
 
         try {
             $location = Location::find($locationId);
-            
+
             if (!$location) {
                 return;
             }
@@ -353,7 +353,7 @@ class LocationCacheService
                 // Clear country-related caches
                 Cache::forget(self::CACHE_KEY_COUNTRIES);
                 Cache::forget(self::CACHE_KEY_CITIES_BY_COUNTRY_PREFIX . $locationId);
-                
+
                 // Clear countries with cities caches
                 for ($i = 1; $i <= 10; $i++) {
                     Cache::forget(self::CACHE_KEY_COUNTRIES . ':with_cities:' . $i);
@@ -366,7 +366,7 @@ class LocationCacheService
                 }
             }
 
-            Log::info('Location cache invalidated successfully', ['location_id' => $locationId]);
+//            Log::info('Location cache invalidated successfully', ['location_id' => $locationId]);
 
         } catch (\Exception $e) {
             Log::error('Failed to invalidate location cache', [

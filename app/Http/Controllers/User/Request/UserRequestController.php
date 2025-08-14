@@ -22,7 +22,7 @@ class UserRequestController extends BaseController
         $filters = $request->getFilters();
         $user = $this->tgService->getUserByTelegramId($request);
 
-        Log::info('Request filters', $filters);
+//        Log::info('Request filters', $filters);
 
         // Load both matching and manual responses where user is either the request owner or responder
         $user->load([
@@ -67,12 +67,12 @@ class UserRequestController extends BaseController
 
         // Apply request type filter
         if ($filters['filter'] !== 'delivery') {
-            Log::info('Processing send requests');
+//            Log::info('Processing send requests');
             $send = $this->processRequestsWithResponses($user->sendRequests, $user, 'send');
         }
 
         if ($filters['filter'] !== 'send') {
-            Log::info('Processing delivery requests');
+//            Log::info('Processing delivery requests');
             $delivery = $this->processRequestsWithResponses($user->deliveryRequests, $user, 'delivery');
         }
 
@@ -88,7 +88,7 @@ class UserRequestController extends BaseController
             $requests = $this->applySearchFilter($requests, $filters['search']);
         }
 
-        Log::info('Final filtered requests count', ['count' => $requests->count()]);
+//        Log::info('Final filtered requests count', ['count' => $requests->count()]);
 
         return IndexRequestResource::collection($requests);
     }
@@ -283,7 +283,7 @@ class UserRequestController extends BaseController
     {
         $processedRequests = collect();
 
-        Log::info('Processing requests', ['count' => $requests->count(), 'type' => $type, 'requests' => $requests]);
+//        Log::info('Processing requests', ['count' => $requests->count(), 'type' => $type, 'requests' => $requests]);
         foreach ($requests as $request) {
             // FIX: For closed requests, include 'closed' status in the filter
             $statusFilter = ['accepted', 'waiting', 'pending', 'responded'];

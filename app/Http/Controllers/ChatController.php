@@ -105,11 +105,11 @@ class ChatController extends BaseController
             ])
             ->firstOrFail();
 
-        Log::info('📱 Loading chat', [
-            'chat_id' => $chatId,
-            'user_id' => $user->id,
-            'chat_status' => $chat->status
-        ]);
+//        Log::info('📱 Loading chat', [
+//            'chat_id' => $chatId,
+//            'user_id' => $user->id,
+//            'chat_status' => $chat->status
+//        ]);
 
         $isCompleted = $this->isChatCompleted($chat);
 
@@ -167,12 +167,12 @@ class ChatController extends BaseController
             'unread_marked' => count($unreadMessageIds),
         ];
 
-        Log::info('📱 Chat loaded successfully', [
-            'chat_id' => $chatId,
-            'status' => $chat->status,
-            'is_completed' => $isCompleted,
-            'message_count' => count($chat->messages)
-        ]);
+//        Log::info('📱 Chat loaded successfully', [
+//            'chat_id' => $chatId,
+//            'status' => $chat->status,
+//            'is_completed' => $isCompleted,
+//            'message_count' => count($chat->messages)
+//        ]);
 
         return response()->json($chatData);
     }
@@ -343,11 +343,11 @@ class ChatController extends BaseController
             // Broadcast read receipt to other user
             broadcast(new MessageRead($user, $chat->id, $messageIds));
 
-            Log::info('Messages marked as read', [
-                'user_id' => $user->id,
-                'chat_id' => $chat->id,
-                'message_count' => count($messageIds)
-            ]);
+//            Log::info('Messages marked as read', [
+//                'user_id' => $user->id,
+//                'chat_id' => $chat->id,
+//                'message_count' => count($messageIds)
+//            ]);
         }
 
         return response()->json([
@@ -390,11 +390,11 @@ class ChatController extends BaseController
         // Broadcast typing status
         broadcast(new UserTyping($user, $chatId, $request->boolean('is_typing')));
 
-        Log::info('Typing status updated', [
-            'user_id' => $user->id,
-            'chat_id' => $chatId,
-            'is_typing' => $request->boolean('is_typing')
-        ]);
+//        Log::info('Typing status updated', [
+//            'user_id' => $user->id,
+//            'chat_id' => $chatId,
+//            'is_typing' => $request->boolean('is_typing')
+//        ]);
 
         return response()->json([
             'status' => 'success',
@@ -481,11 +481,11 @@ class ChatController extends BaseController
             "Заявка завершена пользователем {$user->name}. Спасибо за использование PostLink!"
         );
 
-        Log::info('Chat completed', [
-            'chat_id' => $chatId,
-            'completed_by' => $user->id,
-            'reason' => $request->input('reason')
-        ]);
+//        Log::info('Chat completed', [
+//            'chat_id' => $chatId,
+//            'completed_by' => $user->id,
+//            'reason' => $request->input('reason')
+//        ]);
 
         return response()->json([
             'message' => 'Chat completed successfully',
@@ -500,18 +500,18 @@ class ChatController extends BaseController
      */
     private function isChatCompleted(Chat $chat): bool
     {
-        Log::info('🔍 Checking chat completion status', [
-            'chat_id' => $chat->id,
-            'chat_status' => $chat->status,
-            'has_send_request' => !!$chat->sendRequest,
-            'has_delivery_request' => !!$chat->deliveryRequest,
-            'send_request_status' => $chat->sendRequest?->status,
-            'delivery_request_status' => $chat->deliveryRequest?->status
-        ]);
+//        Log::info('🔍 Checking chat completion status', [
+//            'chat_id' => $chat->id,
+//            'chat_status' => $chat->status,
+//            'has_send_request' => !!$chat->sendRequest,
+//            'has_delivery_request' => !!$chat->deliveryRequest,
+//            'send_request_status' => $chat->sendRequest?->status,
+//            'delivery_request_status' => $chat->deliveryRequest?->status
+//        ]);
 
         // ✅ FIXED: Chat is only completed if explicitly marked as closed/completed
         if (in_array($chat->status, ['closed', 'completed'])) {
-            Log::info('✅ Chat marked as closed/completed', ['chat_id' => $chat->id]);
+//            Log::info('✅ Chat marked as closed/completed', ['chat_id' => $chat->id]);
             return true;
         }
 
@@ -544,13 +544,13 @@ class ChatController extends BaseController
 
         $isCompleted = /*$bothRequestsCompleted*/ false;
 
-        Log::info('🔍 Chat completion analysis', [
-            'chat_id' => $chat->id,
-            'send_completed' => $sendCompleted,
-            'delivery_completed' => $deliveryCompleted,
-            'both_requests_completed' => $bothRequestsCompleted,
-            'final_is_completed' => $isCompleted
-        ]);
+//        Log::info('🔍 Chat completion analysis', [
+//            'chat_id' => $chat->id,
+//            'send_completed' => $sendCompleted,
+//            'delivery_completed' => $deliveryCompleted,
+//            'both_requests_completed' => $bothRequestsCompleted,
+//            'final_is_completed' => $isCompleted
+//        ]);
 
         return $isCompleted;
     }

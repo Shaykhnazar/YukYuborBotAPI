@@ -111,10 +111,10 @@ class SendRequestController extends BaseController
 
             DB::commit();
 
-            Log::info('Send request deleted successfully', [
-                'request_id' => $id,
-                'user_id' => $user->id
-            ]);
+//            Log::info('Send request deleted successfully', [
+//                'request_id' => $id,
+//                'user_id' => $user->id
+//            ]);
 
             return response()->json(['message' => 'Request deleted successfully']);
 
@@ -180,10 +180,10 @@ class SendRequestController extends BaseController
 
             DB::commit();
 
-            Log::info('Send request closed successfully', [
-                'request_id' => $id,
-                'user_id' => $user->id
-            ]);
+//            Log::info('Send request closed successfully', [
+//                'request_id' => $id,
+//                'user_id' => $user->id
+//            ]);
 
             return response()->json(['message' => 'Send request closed successfully']);
 

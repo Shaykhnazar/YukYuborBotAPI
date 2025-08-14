@@ -35,10 +35,10 @@ class TestUsersController extends Controller
         try {
             $testUsers = $this->getTestUsers();
 
-            Log::info('Test users requested', [
-                'count' => count($testUsers),
-                'environment' => app()->environment()
-            ]);
+//            Log::info('Test users requested', [
+//                'count' => count($testUsers),
+//                'environment' => app()->environment()
+//            ]);
 
             return response()->json($testUsers);
 

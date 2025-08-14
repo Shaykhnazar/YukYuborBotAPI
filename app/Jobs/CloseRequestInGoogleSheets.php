@@ -38,11 +38,11 @@ class CloseRequestInGoogleSheets implements ShouldQueue
                 ? $googleSheetsService->recordCloseSendRequest($this->requestId)
                 : $googleSheetsService->recordCloseDeliveryRequest($this->requestId);
 
-            Log::info('Request closed in Google Sheets via job', [
-                'request_type' => $this->requestType,
-                'request_id' => $this->requestId,
-                'success' => $result
-            ]);
+//            Log::info('Request closed in Google Sheets via job', [
+//                'request_type' => $this->requestType,
+//                'request_id' => $this->requestId,
+//                'success' => $result
+//            ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to close request in Google Sheets via job', [

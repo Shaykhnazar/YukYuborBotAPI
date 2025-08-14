@@ -19,12 +19,12 @@ class RequestObserver
     public function created($request): void
     {
         $requestType = $this->getRequestType($request);
-        
-        Log::info('RequestObserver: Request created', [
-            'request_type' => $requestType,
-            'request_id' => $request->id,
-            'status' => $request->status
-        ]);
+
+//        Log::info('RequestObserver: Request created', [
+//            'request_type' => $requestType,
+//            'request_id' => $request->id,
+//            'status' => $request->status
+//        ]);
 
         $this->invalidateRequestCountsCache($request, 'created');
     }
@@ -36,7 +36,7 @@ class RequestObserver
     {
         $requestType = $this->getRequestType($request);
         $changes = $request->getChanges();
-        
+
         Log::info('RequestObserver: Request updated', [
             'request_type' => $requestType,
             'request_id' => $request->id,
@@ -55,7 +55,7 @@ class RequestObserver
     public function deleted($request): void
     {
         $requestType = $this->getRequestType($request);
-        
+
         Log::info('RequestObserver: Request deleted', [
             'request_type' => $requestType,
             'request_id' => $request->id
@@ -70,7 +70,7 @@ class RequestObserver
     public function restored($request): void
     {
         $requestType = $this->getRequestType($request);
-        
+
         Log::info('RequestObserver: Request restored', [
             'request_type' => $requestType,
             'request_id' => $request->id
@@ -85,7 +85,7 @@ class RequestObserver
     public function forceDeleted($request): void
     {
         $requestType = $this->getRequestType($request);
-        
+
         Log::info('RequestObserver: Request force deleted', [
             'request_type' => $requestType,
             'request_id' => $request->id
@@ -101,7 +101,7 @@ class RequestObserver
     {
         try {
             $this->routeCacheService->invalidateRequestCountsCache();
-            
+
             Log::info('RequestObserver: Route request counts cache invalidated successfully', [
                 'request_type' => $this->getRequestType($request),
                 'request_id' => $request->id,

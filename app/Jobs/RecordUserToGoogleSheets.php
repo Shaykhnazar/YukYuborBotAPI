@@ -47,10 +47,10 @@ class RecordUserToGoogleSheets implements ShouldQueue
 
             $result = $googleSheetsService->recordAddUser($user);
 
-            Log::info('User recorded to Google Sheets via job', [
-                'user_id' => $user->id,
-                'success' => $result
-            ]);
+//            Log::info('User recorded to Google Sheets via job', [
+//                'user_id' => $user->id,
+//                'success' => $result
+//            ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to record user to Google Sheets via job', [
