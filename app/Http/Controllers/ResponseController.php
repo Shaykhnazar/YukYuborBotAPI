@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Chat;
 use App\Models\DeliveryRequest;
+use App\Models\Response;
 use App\Models\SendRequest;
 use App\Models\User;
-use App\Models\Chat;
-use App\Models\Response;
-use App\Service\TelegramUserService;
-use App\Service\Matcher;
-use Illuminate\Http\Request;
+use App\Services\Matcher;
+use App\Services\TelegramUserService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 

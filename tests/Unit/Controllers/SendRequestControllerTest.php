@@ -4,17 +4,16 @@ namespace Tests\Unit\Controllers;
 
 use App\Http\Controllers\SendRequestController;
 use App\Http\Requests\Send\CreateSendRequest;
-use App\Service\TelegramUserService;
-use App\Service\Matcher;
-use App\Models\User;
-use App\Models\TelegramUser;
-use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Location;
-use Tests\TestCase;
+use App\Models\SendRequest;
+use App\Models\TelegramUser;
+use App\Models\User;
+use App\Services\Matcher;
+use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Request;
 use Mockery;
+use Tests\TestCase;
 
 class SendRequestControllerTest extends TestCase
 {

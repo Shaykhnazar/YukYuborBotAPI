@@ -2,18 +2,18 @@
 
 namespace Tests\Unit\Services;
 
-use App\Service\Matcher;
-use App\Service\TelegramNotificationService;
-use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
-use App\Models\Response;
-use App\Models\User;
 use App\Models\Location;
+use App\Models\Response;
+use App\Models\SendRequest;
 use App\Models\TelegramUser;
-use Tests\TestCase;
+use App\Models\User;
+use App\Services\Matcher;
+use App\Services\TelegramNotificationService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
-use Carbon\Carbon;
+use Tests\TestCase;
 
 class MatcherTest extends TestCase
 {
@@ -29,10 +29,10 @@ class MatcherTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->telegramService = Mockery::mock(TelegramNotificationService::class);
         $this->matcher = new Matcher($this->telegramService);
-        
+
         $this->senderUser = User::factory()->create();
         $this->delivererUser = User::factory()->create();
         $this->fromLocation = Location::factory()->create();
@@ -57,13 +57,13 @@ class MatcherTest extends TestCase
             'size_type' => 'small',
             'status' => 'open'
         ]);
-        
+
         // Create telegram user for delivery user
         TelegramUser::factory()->create([
             'user_id' => $this->delivererUser->id,
             'telegram' => '123456789'
         ]);
-        
+
         // Create send request
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
@@ -74,13 +74,13 @@ class MatcherTest extends TestCase
             'size_type' => 'small',
             'status' => 'open'
         ]);
-        
+
         // Mock telegram service
         $this->telegramService->shouldReceive('buildDeliveryResponseKeyboard')->andReturn(['keyboard' => 'test']);
         $this->telegramService->shouldReceive('sendMessageWithKeyboard')->once();
-        
+
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Assert response was created
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -90,7 +90,7 @@ class MatcherTest extends TestCase
             'offer_id' => $sendRequest->id,
             'response_type' => 'matching'
         ]);
-        
+
         // Assert delivery request status updated
         $this->assertDatabaseHas('delivery_requests', [
             'id' => $deliveryRequest->id,
@@ -109,7 +109,7 @@ class MatcherTest extends TestCase
             'to_date' => Carbon::now()->addDays(5),
             'status' => 'open'
         ]);
-        
+
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
             'from_location_id' => $this->fromLocation->id,
@@ -118,9 +118,9 @@ class MatcherTest extends TestCase
             'to_date' => Carbon::now()->addDays(3),
             'status' => 'open'
         ]);
-        
+
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Assert no response was created
         $this->assertDatabaseMissing('responses', [
             'user_id' => $this->senderUser->id
@@ -138,7 +138,7 @@ class MatcherTest extends TestCase
             'to_date' => Carbon::now()->addDays(5),
             'status' => 'closed'
         ]);
-        
+
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
             'from_location_id' => $this->fromLocation->id,
@@ -147,9 +147,9 @@ class MatcherTest extends TestCase
             'to_date' => Carbon::now()->addDays(3),
             'status' => 'open'
         ]);
-        
+
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Assert no response was created
         $this->assertDatabaseMissing('responses', [
             'responder_id' => $this->senderUser->id
@@ -168,13 +168,13 @@ class MatcherTest extends TestCase
             'size_type' => 'medium',
             'status' => 'open'
         ]);
-        
+
         // Create telegram user for delivery user
         TelegramUser::factory()->create([
             'user_id' => $this->delivererUser->id,
             'telegram' => '123456789'
         ]);
-        
+
         // Create delivery request
         $deliveryRequest = DeliveryRequest::factory()->create([
             'user_id' => $this->delivererUser->id,
@@ -185,13 +185,13 @@ class MatcherTest extends TestCase
             'size_type' => 'medium',
             'status' => 'open'
         ]);
-        
+
         // Mock telegram service
         $this->telegramService->shouldReceive('buildDeliveryResponseKeyboard')->andReturn(['keyboard' => 'test']);
         $this->telegramService->shouldReceive('sendMessageWithKeyboard')->once();
-        
+
         $this->matcher->matchDeliveryRequest($deliveryRequest);
-        
+
         // Assert response was created
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -205,28 +205,30 @@ class MatcherTest extends TestCase
 
     public function test_match_send_request_handles_no_telegram_user_gracefully()
     {
-        // Create delivery request without telegram user
+        // Create delivery request without telegram user - set size_type to accept any size
         $deliveryRequest = DeliveryRequest::factory()->create([
             'user_id' => $this->delivererUser->id,
             'from_location_id' => $this->fromLocation->id,
             'to_location_id' => $this->toLocation->id,
             'from_date' => Carbon::now(),
             'to_date' => Carbon::now()->addDays(5),
+            'size_type' => 'Не указана',
             'status' => 'open'
         ]);
-        
+
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
             'from_location_id' => $this->fromLocation->id,
             'to_location_id' => $this->toLocation->id,
             'from_date' => Carbon::now()->addDay(),
             'to_date' => Carbon::now()->addDays(3),
+            'size_type' => 'Маленькая',
             'status' => 'open'
         ]);
-        
+
         // Should not throw exception
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Response should still be created
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -238,13 +240,13 @@ class MatcherTest extends TestCase
     {
         $sendRequest = SendRequest::factory()->create(['user_id' => $this->senderUser->id]);
         $deliveryRequest = DeliveryRequest::factory()->create(['user_id' => $this->delivererUser->id]);
-        
+
         // Create telegram user for sender
         TelegramUser::factory()->create([
             'user_id' => $this->senderUser->id,
             'telegram' => '987654321'
         ]);
-        
+
         // Create existing deliverer response
         Response::factory()->create([
             'user_id' => $this->delivererUser->id,
@@ -253,12 +255,12 @@ class MatcherTest extends TestCase
             'offer_id' => $sendRequest->id,
             'status' => 'pending'
         ]);
-        
+
         // Mock telegram service
         $this->telegramService->shouldReceive('sendMessage')->once();
-        
+
         $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'accept');
-        
+
         // Assert response for sender was created
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->senderUser->id,
@@ -268,7 +270,7 @@ class MatcherTest extends TestCase
             'offer_id' => $deliveryRequest->id,
             'status' => 'waiting'
         ]);
-        
+
         // Assert deliverer response was updated
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -282,7 +284,7 @@ class MatcherTest extends TestCase
     {
         $sendRequest = SendRequest::factory()->create(['user_id' => $this->senderUser->id]);
         $deliveryRequest = DeliveryRequest::factory()->create(['user_id' => $this->delivererUser->id]);
-        
+
         // Create existing deliverer response
         Response::factory()->create([
             'user_id' => $this->delivererUser->id,
@@ -291,9 +293,9 @@ class MatcherTest extends TestCase
             'offer_id' => $sendRequest->id,
             'status' => 'pending'
         ]);
-        
+
         $this->matcher->createDelivererResponse($sendRequest->id, $deliveryRequest->id, 'reject');
-        
+
         // Assert deliverer response was updated to rejected
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -301,7 +303,7 @@ class MatcherTest extends TestCase
             'offer_id' => $sendRequest->id,
             'status' => 'rejected'
         ]);
-        
+
         // Assert no response for sender was created
         $this->assertDatabaseMissing('responses', [
             'user_id' => $this->senderUser->id,
@@ -313,7 +315,7 @@ class MatcherTest extends TestCase
     {
         // Should not throw exception when requests don't exist
         $this->matcher->createDelivererResponse(999, 998, 'accept');
-        
+
         // No database changes should occur
         $this->assertDatabaseMissing('responses', [
             'request_id' => 999
@@ -332,12 +334,12 @@ class MatcherTest extends TestCase
             'size_type' => 'Не указана',
             'status' => 'open'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->delivererUser->id,
             'telegram' => '123456789'
         ]);
-        
+
         // Create send request with specific size
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
@@ -348,12 +350,12 @@ class MatcherTest extends TestCase
             'size_type' => 'large',
             'status' => 'open'
         ]);
-        
+
         $this->telegramService->shouldReceive('buildDeliveryResponseKeyboard')->andReturn(['keyboard' => 'test']);
         $this->telegramService->shouldReceive('sendMessageWithKeyboard')->once();
-        
+
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Should match because delivery allows any size
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
@@ -363,21 +365,22 @@ class MatcherTest extends TestCase
 
     public function test_date_overlap_matching_logic()
     {
-        // Create delivery request
+        // Create delivery request that accepts any size
         $deliveryRequest = DeliveryRequest::factory()->create([
             'user_id' => $this->delivererUser->id,
             'from_location_id' => $this->fromLocation->id,
             'to_location_id' => $this->toLocation->id,
             'from_date' => Carbon::parse('2024-01-01'),
             'to_date' => Carbon::parse('2024-01-10'),
+            'size_type' => 'Не указана',
             'status' => 'open'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->delivererUser->id,
             'telegram' => '123456789'
         ]);
-        
+
         // Create send request that overlaps
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->senderUser->id,
@@ -385,14 +388,15 @@ class MatcherTest extends TestCase
             'to_location_id' => $this->toLocation->id,
             'from_date' => Carbon::parse('2024-01-05'),
             'to_date' => Carbon::parse('2024-01-15'),
+            'size_type' => 'Средняя',
             'status' => 'open'
         ]);
-        
+
         $this->telegramService->shouldReceive('buildDeliveryResponseKeyboard')->andReturn(['keyboard' => 'test']);
         $this->telegramService->shouldReceive('sendMessageWithKeyboard')->once();
-        
+
         $this->matcher->matchSendRequest($sendRequest);
-        
+
         // Should match because dates overlap
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,

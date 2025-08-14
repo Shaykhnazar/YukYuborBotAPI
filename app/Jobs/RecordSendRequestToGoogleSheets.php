@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\SendRequest;
-use App\Services\GoogleSheetsServiceSimplified;
+use App\Services\GoogleSheetsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -37,7 +37,7 @@ class RecordSendRequestToGoogleSheets implements ShouldQueue
     {
         try {
             // Use the simplified service
-            $googleSheetsService = app(GoogleSheetsServiceSimplified::class);
+            $googleSheetsService = app(GoogleSheetsService::class);
 
             $request = SendRequest::with(['user', 'fromLocation', 'toLocation'])->find($this->requestId);
 

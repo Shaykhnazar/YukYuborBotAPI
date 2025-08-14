@@ -25,17 +25,19 @@ class SendRequestTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->user = User::factory()->create();
         $this->fromLocation = Location::factory()->create(['name' => 'From City']);
         $this->toLocation = Location::factory()->create(['name' => 'To City']);
-        
-        $this->sendRequest = SendRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'from_location_id' => $this->fromLocation->id,
-            'to_location_id' => $this->toLocation->id,
-            'price' => 100
-        ]);
+
+        $this->sendRequest = SendRequest::factory()
+            ->state(['status' => 'open'])
+            ->create([
+                'user_id' => $this->user->id,
+                'from_location_id' => $this->fromLocation->id,
+                'to_location_id' => $this->toLocation->id,
+                'price' => 100
+            ]);
     }
 
     public function test_casts_dates_to_datetime()
@@ -44,7 +46,7 @@ class SendRequestTest extends TestCase
             'from_date' => '2024-01-01 10:00:00',
             'to_date' => '2024-01-02 10:00:00'
         ]);
-        
+
         $this->assertInstanceOf(Carbon::class, $sendRequest->from_date);
         $this->assertInstanceOf(Carbon::class, $sendRequest->to_date);
     }
@@ -52,7 +54,7 @@ class SendRequestTest extends TestCase
     public function test_casts_price_to_integer()
     {
         $sendRequest = SendRequest::factory()->create(['price' => '150']);
-        
+
         $this->assertIsInt($sendRequest->price);
         $this->assertEquals(150, $sendRequest->price);
     }
@@ -81,7 +83,7 @@ class SendRequestTest extends TestCase
             'request_id' => $this->sendRequest->id,
             'request_type' => 'send'
         ]);
-        
+
         $this->assertInstanceOf(Collection::class, $this->sendRequest->responses);
         $this->assertCount(3, $this->sendRequest->responses);
         $this->assertInstanceOf(Response::class, $this->sendRequest->responses->first());
@@ -94,7 +96,7 @@ class SendRequestTest extends TestCase
             'request_type' => 'send',
             'response_type' => 'manual'
         ]);
-        
+
         $this->assertInstanceOf(Collection::class, $this->sendRequest->manualResponses);
         $this->assertCount(2, $this->sendRequest->manualResponses);
     }
@@ -105,7 +107,7 @@ class SendRequestTest extends TestCase
             'offer_id' => $this->sendRequest->id,
             'request_type' => 'delivery'
         ]);
-        
+
         $this->assertInstanceOf(Collection::class, $this->sendRequest->offerResponses);
         $this->assertCount(2, $this->sendRequest->offerResponses);
     }
@@ -114,9 +116,9 @@ class SendRequestTest extends TestCase
     {
         SendRequest::factory()->create(['status' => 'open']);
         SendRequest::factory()->create(['status' => 'closed']);
-        
+
         $openRequests = SendRequest::open()->get();
-        
+
         $this->assertCount(2, $openRequests); // Including the one from setUp
         $openRequests->each(function ($request) {
             $this->assertEquals('open', $request->status);
@@ -128,9 +130,9 @@ class SendRequestTest extends TestCase
         SendRequest::factory()->create(['status' => 'closed']);
         SendRequest::factory()->create(['status' => 'completed']);
         SendRequest::factory()->create(['status' => 'open']);
-        
+
         $closedRequests = SendRequest::closed()->get();
-        
+
         $this->assertCount(2, $closedRequests);
         $closedRequests->each(function ($request) {
             $this->assertContains($request->status, ['closed', 'completed']);
@@ -141,14 +143,14 @@ class SendRequestTest extends TestCase
     {
         $location1 = Location::factory()->create();
         $location2 = Location::factory()->create();
-        
+
         SendRequest::factory()->create([
             'from_location_id' => $location1->id,
             'to_location_id' => $location2->id
         ]);
-        
+
         $requests = SendRequest::forRoute($location1->id, $location2->id)->get();
-        
+
         $this->assertCount(1, $requests);
         $this->assertEquals($location1->id, $requests->first()->from_location_id);
         $this->assertEquals($location2->id, $requests->first()->to_location_id);
@@ -160,21 +162,21 @@ class SendRequestTest extends TestCase
         $country2 = Location::factory()->create(['type' => 'country']);
         $city1 = Location::factory()->create(['parent_id' => $country1->id, 'type' => 'city']);
         $city2 = Location::factory()->create(['parent_id' => $country2->id, 'type' => 'city']);
-        
+
         SendRequest::factory()->create([
             'from_location_id' => $city1->id,
             'to_location_id' => $city2->id
         ]);
-        
+
         $requests = SendRequest::forCountryRoute($country1->id, $country2->id)->get();
-        
+
         $this->assertCount(1, $requests);
     }
 
     public function test_get_route_display_attribute_with_locations()
     {
         $routeDisplay = $this->sendRequest->getRouteDisplayAttribute();
-        
+
         $this->assertEquals('From City → To City', $routeDisplay);
     }
 
@@ -187,9 +189,9 @@ class SendRequestTest extends TestCase
         $sendRequest->to_location_id = 998;
         $sendRequest->fromLocation = null;
         $sendRequest->toLocation = null;
-        
+
         $routeDisplay = $sendRequest->getRouteDisplayAttribute();
-        
+
         $this->assertEquals('Location 999 → Location 998', $routeDisplay);
     }
 
@@ -197,9 +199,9 @@ class SendRequestTest extends TestCase
     {
         $country = Location::factory()->create(['type' => 'country']);
         $sendRequest = SendRequest::factory()->create(['from_location_id' => $country->id]);
-        
+
         $fromCountry = $sendRequest->getFromCountryAttribute();
-        
+
         $this->assertEquals($country->id, $fromCountry->id);
     }
 
@@ -208,9 +210,9 @@ class SendRequestTest extends TestCase
         $country = Location::factory()->create(['type' => 'country']);
         $city = Location::factory()->create(['parent_id' => $country->id, 'type' => 'city']);
         $sendRequest = SendRequest::factory()->create(['from_location_id' => $city->id]);
-        
+
         $fromCountry = $sendRequest->getFromCountryAttribute();
-        
+
         $this->assertEquals($country->id, $fromCountry->id);
     }
 
@@ -218,9 +220,9 @@ class SendRequestTest extends TestCase
     {
         $country = Location::factory()->create(['type' => 'country']);
         $sendRequest = SendRequest::factory()->create(['to_location_id' => $country->id]);
-        
+
         $toCountry = $sendRequest->getToCountryAttribute();
-        
+
         $this->assertEquals($country->id, $toCountry->id);
     }
 
@@ -229,9 +231,9 @@ class SendRequestTest extends TestCase
         $country = Location::factory()->create(['type' => 'country']);
         $city = Location::factory()->create(['parent_id' => $country->id, 'type' => 'city']);
         $sendRequest = SendRequest::factory()->create(['to_location_id' => $city->id]);
-        
+
         $toCountry = $sendRequest->getToCountryAttribute();
-        
+
         $this->assertEquals($country->id, $toCountry->id);
     }
 
@@ -242,16 +244,16 @@ class SendRequestTest extends TestCase
             'request_id' => $this->sendRequest->id,
             'request_type' => 'send'
         ]);
-        
+
         // Create manual response
         Response::factory()->create([
             'offer_id' => $this->sendRequest->id,
             'request_type' => 'send',
             'response_type' => 'manual'
         ]);
-        
+
         $responses = $this->sendRequest->allResponsesQuery()->get();
-        
+
         $this->assertCount(2, $responses);
     }
 
@@ -264,7 +266,7 @@ class SendRequestTest extends TestCase
             'status' => 'accepted',
             'chat_id' => $chat->id
         ]);
-        
+
         $this->assertInstanceOf(Chat::class, $this->sendRequest->chat);
         $this->assertEquals($chat->id, $this->sendRequest->chat->id);
     }
@@ -281,9 +283,9 @@ class SendRequestTest extends TestCase
             'from_date' => now()->format('Y-m-d'),
             'to_date' => now()->addDays(7)->format('Y-m-d')
         ];
-        
+
         $sendRequest = SendRequest::create($data);
-        
+
         $this->assertInstanceOf(SendRequest::class, $sendRequest);
         $this->assertEquals('Test description', $sendRequest->description);
         $this->assertEquals(200, $sendRequest->price);

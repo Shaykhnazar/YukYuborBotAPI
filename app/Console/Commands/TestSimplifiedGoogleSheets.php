@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\GoogleSheetsServiceSimplified;
+use App\Services\GoogleSheetsService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -12,7 +12,7 @@ class TestSimplifiedGoogleSheets extends Command
     protected $description = 'Test the simplified Google Sheets service';
 
     public function __construct(
-        private GoogleSheetsServiceSimplified $googleSheetsService
+        private GoogleSheetsService $googleSheetsService
     ) {
         parent::__construct();
     }
@@ -26,7 +26,7 @@ class TestSimplifiedGoogleSheets extends Command
             $this->info('Testing worksheet data retrieval...');
             $deliveryData = $this->googleSheetsService->getWorksheetData('Deliver requests');
             $this->info('Deliver requests data count: ' . count($deliveryData));
-            
+
             $sendData = $this->googleSheetsService->getWorksheetData('Send requests');
             $this->info('Send requests data count: ' . count($sendData));
 

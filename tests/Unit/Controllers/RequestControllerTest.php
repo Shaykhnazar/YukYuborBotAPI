@@ -3,16 +3,16 @@
 namespace Tests\Unit\Controllers;
 
 use App\Http\Controllers\RequestController;
-use App\Service\TelegramUserService;
-use App\Models\User;
-use App\Models\TelegramUser;
-use App\Models\DeliveryRequest;
-use App\Models\SendRequest;
-use App\Models\Location;
 use App\Http\Requests\Parcel\ParcelRequest;
-use Tests\TestCase;
+use App\Models\DeliveryRequest;
+use App\Models\Location;
+use App\Models\SendRequest;
+use App\Models\TelegramUser;
+use App\Models\User;
+use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\TestCase;
 
 class RequestControllerTest extends TestCase
 {
@@ -25,15 +25,15 @@ class RequestControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->userService = Mockery::mock(TelegramUserService::class);
         $this->controller = new RequestController($this->userService);
-        
+
         $this->user = User::factory()->create([
             'name' => 'Test User',
             'links_balance' => 5
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->user->id,
             'telegram' => '123456789'
@@ -49,16 +49,16 @@ class RequestControllerTest extends TestCase
     public function test_index_returns_unauthorized_when_user_not_found()
     {
         $mockRequest = Mockery::mock(ParcelRequest::class);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn(null);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(401, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
         $this->assertEquals('User not found', $data['error']);
     }
@@ -67,20 +67,20 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Create test requests
         DeliveryRequest::factory()->count(5)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->count(3)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -95,18 +95,18 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertArrayHasKey('data', $data);
         $this->assertArrayHasKey('pagination', $data);
         $this->assertArrayHasKey('current_page', $data['pagination']);
@@ -117,19 +117,19 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         DeliveryRequest::factory()->count(3)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->count(2)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -144,18 +144,18 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => 'delivery'
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should only contain delivery requests
         $this->assertCount(3, $data['data']);
     }
@@ -164,19 +164,19 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         DeliveryRequest::factory()->count(3)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         SendRequest::factory()->count(2)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -191,18 +191,18 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => 'send'
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should only contain send requests
         $this->assertCount(2, $data['data']);
     }
@@ -212,33 +212,33 @@ class RequestControllerTest extends TestCase
         $germanyCountry = Location::factory()->create(['type' => 'country', 'name' => 'Germany']);
         $franceCountry = Location::factory()->create(['type' => 'country', 'name' => 'France']);
         $spainCountry = Location::factory()->create(['type' => 'country', 'name' => 'Spain']);
-        
+
         $berlinCity = Location::factory()->create([
             'type' => 'city',
             'name' => 'Berlin',
             'parent_id' => $germanyCountry->id
         ]);
-        
+
         $parisCity = Location::factory()->create([
-            'type' => 'city', 
+            'type' => 'city',
             'name' => 'Paris',
             'parent_id' => $franceCountry->id
         ]);
-        
+
         // Create request matching the route filter (Germany -> France)
         DeliveryRequest::factory()->create([
             'from_location_id' => $berlinCity->id,
             'to_location_id' => $parisCity->id,
             'status' => 'open'
         ]);
-        
+
         // Create request not matching the route filter
         DeliveryRequest::factory()->create([
             'from_location_id' => $berlinCity->id,
             'to_location_id' => $spainCountry->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -253,18 +253,18 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should only contain the matching request
         $this->assertCount(1, $data['data']);
     }
@@ -274,7 +274,7 @@ class RequestControllerTest extends TestCase
         $fromLocation = Location::factory()->create(['name' => 'Berlin']);
         $toLocation = Location::factory()->create(['name' => 'Paris']);
         $otherLocation = Location::factory()->create(['name' => 'Madrid']);
-        
+
         // Create request with searchable description
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
@@ -282,7 +282,7 @@ class RequestControllerTest extends TestCase
             'description' => 'Express delivery service',
             'status' => 'open'
         ]);
-        
+
         // Create request without matching description
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
@@ -290,7 +290,7 @@ class RequestControllerTest extends TestCase
             'description' => 'Regular shipping',
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -305,18 +305,18 @@ class RequestControllerTest extends TestCase
                 'search' => 'express',
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should only contain the matching request
         $this->assertCount(1, $data['data']);
     }
@@ -325,14 +325,14 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Create enough requests to test pagination
         DeliveryRequest::factory()->count(25)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -347,18 +347,18 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertEquals(2, $data['pagination']['current_page']);
         $this->assertEquals(10, $data['pagination']['per_page']);
         $this->assertGreaterThan(2, $data['pagination']['last_page']);
@@ -368,13 +368,13 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         DeliveryRequest::factory()->count(10)->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -389,16 +389,16 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should be limited to 50 per page maximum
         $this->assertLessThanOrEqual(50, $data['pagination']['per_page']);
     }
@@ -407,7 +407,7 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Create requests at different times
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
@@ -415,14 +415,14 @@ class RequestControllerTest extends TestCase
             'status' => 'open',
             'created_at' => now()->subDays(2)
         ]);
-        
+
         $newerRequest = DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open',
             'created_at' => now()->subDay()
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -437,16 +437,16 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should be ordered by created_at desc (newer first)
         $this->assertGreaterThan(0, count($data['data']));
         // In a real implementation, we'd verify the actual ordering
@@ -455,10 +455,10 @@ class RequestControllerTest extends TestCase
     public function test_constructor_injects_telegram_user_service()
     {
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $userServiceProperty = $reflection->getProperty('userService');
         $userServiceProperty->setAccessible(true);
-        
+
         $this->assertInstanceOf(TelegramUserService::class, $userServiceProperty->getValue($this->controller));
     }
 
@@ -466,26 +466,26 @@ class RequestControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Create requests with different statuses
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'open'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'has_responses'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'status' => 'closed' // Should not appear
         ]);
-        
+
         $mockRequest = Mockery::mock(ParcelRequest::class);
         $mockRequest->shouldReceive('input')
             ->with('page', 1)
@@ -500,16 +500,16 @@ class RequestControllerTest extends TestCase
                 'search' => null,
                 'filter' => null
             ]);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should only include 2 requests (open and has_responses)
         $this->assertCount(2, $data['data']);
     }

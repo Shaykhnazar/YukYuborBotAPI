@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
 use App\Http\Requests\Place\PlaceRequest;
-use App\Service\PlaceApi;
+use App\Services\PlaceApi;
 
 class PlaceController extends BaseController
 {

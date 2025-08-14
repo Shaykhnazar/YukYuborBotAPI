@@ -3,10 +3,10 @@
 namespace Tests\Unit\Controllers;
 
 use App\Http\Controllers\PlaceController;
-use App\Service\PlaceApi;
 use App\Http\Requests\Place\PlaceRequest;
-use Tests\TestCase;
+use App\Services\PlaceApi;
 use Mockery;
+use Tests\TestCase;
 
 class PlaceControllerTest extends TestCase
 {
@@ -16,7 +16,7 @@ class PlaceControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->placeApi = Mockery::mock(PlaceApi::class);
         $this->controller = new PlaceController($this->placeApi);
     }
@@ -33,7 +33,7 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('Berlin');
-        
+
         $expectedPlaces = [
             [
                 'name' => 'Berlin',
@@ -46,18 +46,18 @@ class PlaceControllerTest extends TestCase
                 'lng' => 13.5033
             ]
         ];
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('Berlin')
             ->once()
             ->andReturn($expectedPlaces);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertEquals($expectedPlaces, $data);
     }
 
@@ -67,18 +67,18 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('NonexistentCity');
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('NonexistentCity')
             ->once()
             ->andReturn([]);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertEmpty($data);
     }
 
@@ -88,15 +88,15 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('TestCity');
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('TestCity')
             ->once()
             ->andThrow(new \Exception('API service unavailable'));
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('API service unavailable');
-        
+
         $this->controller->index($mockRequest);
     }
 
@@ -106,7 +106,7 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('TestCity');
-        
+
         $expectedPlaces = [
             [
                 'name' => 'TestCity Center',
@@ -114,14 +114,14 @@ class PlaceControllerTest extends TestCase
                 'lng' => 10.0
             ]
         ];
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('TestCity')
             ->once()
             ->andReturn($expectedPlaces);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $this->assertInstanceOf(\Illuminate\Http\JsonResponse::class, $response);
         $this->assertEquals('application/json', $response->headers->get('Content-Type'));
     }
@@ -129,10 +129,10 @@ class PlaceControllerTest extends TestCase
     public function test_constructor_injects_place_api_dependency()
     {
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $placeApiProperty = $reflection->getProperty('placeApi');
         $placeApiProperty->setAccessible(true);
-        
+
         $this->assertInstanceOf(PlaceApi::class, $placeApiProperty->getValue($this->controller));
     }
 
@@ -142,7 +142,7 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('London');
-        
+
         $expectedPlaces = [
             [
                 'name' => 'London, UK',
@@ -160,16 +160,16 @@ class PlaceControllerTest extends TestCase
                 'lng' => -72.0995
             ]
         ];
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('London')
             ->once()
             ->andReturn($expectedPlaces);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertCount(3, $data);
         $this->assertEquals('London, UK', $data[0]['name']);
         $this->assertEquals('London, Ontario', $data[1]['name']);
@@ -182,7 +182,7 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('São Paulo');
-        
+
         $expectedPlaces = [
             [
                 'name' => 'São Paulo, Brazil',
@@ -190,16 +190,16 @@ class PlaceControllerTest extends TestCase
                 'lng' => -46.6333
             ]
         ];
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('São Paulo')
             ->once()
             ->andReturn($expectedPlaces);
-        
+
         $response = $this->controller->index($mockRequest);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertEquals('São Paulo, Brazil', $data[0]['name']);
     }
 
@@ -209,14 +209,14 @@ class PlaceControllerTest extends TestCase
         $mockRequest->shouldReceive('getPlace')
             ->once()
             ->andReturn('TestPlace');
-        
+
         $this->placeApi->shouldReceive('search_by_city')
             ->with('TestPlace')
             ->once()
             ->andReturn([]);
-        
+
         $this->controller->index($mockRequest);
-        
+
         // Verify the getPlace method was called exactly once
         $mockRequest->shouldHaveReceived('getPlace')->once();
     }

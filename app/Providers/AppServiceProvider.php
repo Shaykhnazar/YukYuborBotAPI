@@ -2,8 +2,8 @@
 
 namespace App\Providers;
 
-use App\Service\Matcher;
-use App\Service\TelegramNotificationService;
+use App\Services\Matcher;
+use App\Services\TelegramNotificationService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider

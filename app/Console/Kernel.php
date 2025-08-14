@@ -12,7 +12,18 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Warm all caches daily at 3 AM
+        $schedule->command('cache:warm-all')
+                 ->dailyAt('03:00')
+                 ->withoutOverlapping()
+                 ->runInBackground();
+
+        // Warm route request counts more frequently (every 2 hours during peak hours)
+        $schedule->command('cache:warm-routes')
+                 ->hourly()
+                 ->between('08:00', '22:00')
+                 ->withoutOverlapping()
+                 ->runInBackground();
     }
 
     /**

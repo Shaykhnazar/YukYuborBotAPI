@@ -3,18 +3,17 @@
 namespace Tests\Unit\Controllers;
 
 use App\Http\Controllers\DeliveryController;
-use App\Service\TelegramUserService;
-use App\Service\Matcher;
-use App\Models\User;
-use App\Models\TelegramUser;
-use App\Models\SendRequest;
+use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Location;
-use Tests\TestCase;
+use App\Models\SendRequest;
+use App\Models\TelegramUser;
+use App\Models\User;
+use App\Services\Matcher;
+use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Request;
-use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use Mockery;
+use Tests\TestCase;
 
 class DeliveryControllerTest extends TestCase
 {
@@ -28,16 +27,16 @@ class DeliveryControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->userService = Mockery::mock(TelegramUserService::class);
         $this->matcher = Mockery::mock(Matcher::class);
         $this->controller = new DeliveryController($this->userService, $this->matcher);
-        
+
         $this->user = User::factory()->create([
             'name' => 'Test User',
             'links_balance' => 5
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->user->id,
             'telegram' => '123456789'
@@ -49,11 +48,11 @@ class DeliveryControllerTest extends TestCase
         Mockery::close();
         parent::tearDown();
     }
-    
+
     private function createMockRequest(array $requestData, bool $expectsDTO = true): CreateDeliveryRequest
     {
         $mockRequest = Mockery::mock(CreateDeliveryRequest::class);
-        
+
         if ($expectsDTO) {
             $mockRequest->shouldReceive('getDTO')
                 ->once()
@@ -69,7 +68,7 @@ class DeliveryControllerTest extends TestCase
         } else {
             $mockRequest->shouldReceive('getDTO')->never();
         }
-        
+
         return $mockRequest;
     }
 
@@ -80,16 +79,16 @@ class DeliveryControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         // Create 1 active send request
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -100,20 +99,20 @@ class DeliveryControllerTest extends TestCase
             'price' => 200,
             'currency' => 'USD'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData, false);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         $this->assertEquals(422, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertArrayHasKey('error', $data);
         $this->assertArrayHasKey('errorTitle', $data);
         $this->assertStringContainsString('Превышен лимит заявок', $data['errorTitle']);
@@ -126,10 +125,10 @@ class DeliveryControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -138,19 +137,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Delivery service'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Should not get a 422 status (limit exceeded)
         $this->assertNotEquals(422, $response->getStatusCode());
     }
@@ -162,15 +161,15 @@ class DeliveryControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -179,16 +178,16 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Delivery service'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData, false);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         $this->assertEquals(422, $response->getStatusCode());
     }
 
@@ -199,21 +198,21 @@ class DeliveryControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'closed'
         ]);
-        
+
         SendRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'closed'
         ]);
-        
+
         // Create 1 open request (under limit)
         DeliveryRequest::factory()->create([
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -222,19 +221,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Delivery service'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Should be allowed since closed requests don't count
         $this->assertNotEquals(422, $response->getStatusCode());
     }
@@ -243,7 +242,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -254,20 +253,20 @@ class DeliveryControllerTest extends TestCase
             'price' => 150,
             'currency' => 'EUR'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once()
             ->with(Mockery::type(DeliveryRequest::class));
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Verify successful response
         $this->assertEquals(200, $response->getStatusCode());
     }
@@ -276,7 +275,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -287,19 +286,19 @@ class DeliveryControllerTest extends TestCase
             'price' => 250,
             'currency' => 'GBP'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Verify delivery request was saved to database
         $this->assertDatabaseHas('delivery_requests', [
             'user_id' => $this->user->id,
@@ -316,7 +315,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -325,19 +324,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Free delivery service'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         $this->assertDatabaseHas('delivery_requests', [
             'user_id' => $this->user->id,
             'description' => 'Free delivery service',
@@ -350,7 +349,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -359,19 +358,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Test status delivery'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         $this->assertDatabaseHas('delivery_requests', [
             'user_id' => $this->user->id,
             'status' => 'open'
@@ -382,7 +381,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -391,19 +390,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
             'description' => 'Test delivery with dates'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Should succeed with both dates provided
         $this->assertNotEquals(422, $response->getStatusCode());
     }
@@ -412,11 +411,11 @@ class DeliveryControllerTest extends TestCase
     {
         // Test that constructor dependencies are properly injected
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $userServiceProperty = $reflection->getProperty('userService');
         $userServiceProperty->setAccessible(true);
         $this->assertInstanceOf(TelegramUserService::class, $userServiceProperty->getValue($this->controller));
-        
+
         $matcherProperty = $reflection->getProperty('matcher');
         $matcherProperty->setAccessible(true);
         $this->assertInstanceOf(Matcher::class, $matcherProperty->getValue($this->controller));
@@ -430,10 +429,10 @@ class DeliveryControllerTest extends TestCase
             'user_id' => $this->user->id,
             'status' => 'open'
         ]);
-        
+
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         $requestData = [
             'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
@@ -441,16 +440,16 @@ class DeliveryControllerTest extends TestCase
             'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData, false);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Should be blocked at 3 requests
         $this->assertEquals(422, $response->getStatusCode());
     }
@@ -459,7 +458,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Test with only required fields
         $requestData = [
             'telegram_id' => '123456789',
@@ -468,22 +467,22 @@ class DeliveryControllerTest extends TestCase
             'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // Should succeed with minimal data
         $this->assertNotEquals(422, $response->getStatusCode());
-        
+
         $this->assertDatabaseHas('delivery_requests', [
             'user_id' => $this->user->id,
             'from_location_id' => $fromLocation->id,
@@ -495,7 +494,7 @@ class DeliveryControllerTest extends TestCase
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
-        
+
         // Test with from_date after to_date (should still be handled by the controller)
         $requestData = [
             'telegram_id' => '123456789',
@@ -505,19 +504,19 @@ class DeliveryControllerTest extends TestCase
             'to_date' => now()->addDays(1)->format('Y-m-d H:i:s'), // Earlier than from_date
             'description' => 'Date range test'
         ];
-        
+
         $createDeliveryRequest = $this->createMockRequest($requestData);
-        
+
         $this->userService->shouldReceive('getUserByTelegramId')
             ->with($createDeliveryRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->matcher->shouldReceive('matchDeliveryRequest')
             ->once();
-        
+
         $response = $this->controller->create($createDeliveryRequest);
-        
+
         // The controller itself may accept this - validation would typically be handled by form request
         $this->assertNotEquals(500, $response->getStatusCode()); // Should not crash
     }

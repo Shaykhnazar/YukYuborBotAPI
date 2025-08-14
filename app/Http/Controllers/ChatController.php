@@ -11,7 +11,7 @@ use App\Http\Requests\SendMessageRequest;
 use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\User;
-use App\Service\TelegramUserService;
+use App\Services\TelegramUserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;

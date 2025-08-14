@@ -3,18 +3,17 @@
 namespace Tests\Unit\Controllers\User\Review;
 
 use App\Http\Controllers\User\Review\UserReviewController;
-use App\Service\TelegramUserService;
-use App\Models\User;
-use App\Models\TelegramUser;
-use App\Models\Review;
-use App\Models\SendRequest;
+use App\Http\Requests\Review\CreateReviewRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
-use App\Http\Requests\Review\CreateReviewRequest;
-use App\Http\Resources\Review\ReviewResource;
-use Tests\TestCase;
+use App\Models\Review;
+use App\Models\SendRequest;
+use App\Models\TelegramUser;
+use App\Models\User;
+use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
+use Tests\TestCase;
 
 class UserReviewControllerTest extends TestCase
 {
@@ -28,24 +27,24 @@ class UserReviewControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->tgService = Mockery::mock(TelegramUserService::class);
         $this->controller = new UserReviewController($this->tgService);
-        
+
         $this->user = User::factory()->create([
             'name' => 'Test User',
             'links_balance' => 5
         ]);
-        
+
         $this->otherUser = User::factory()->create([
             'name' => 'Other User'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->user->id,
             'telegram' => '123456789'
         ]);
-        
+
         TelegramUser::factory()->create([
             'user_id' => $this->otherUser->id,
             'telegram' => '987654321'
@@ -63,7 +62,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->user->id
         ]);
-        
+
         // Create accepted response to establish relationship
         Response::factory()->create([
             'request_type' => 'send',
@@ -72,7 +71,7 @@ class UserReviewControllerTest extends TestCase
             'responder_id' => $this->otherUser->id,
             'status' => 'accepted'
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -83,21 +82,21 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Check the direct response structure (not wrapped in 'data' in unit tests)
         $this->assertArrayHasKey('id', $data);
-        
+
         // Verify review was saved to database
         $this->assertDatabaseHas('reviews', [
             'user_id' => $this->otherUser->id,
@@ -114,7 +113,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->user->id
         ]);
-        
+
         // Create existing review
         Review::factory()->create([
             'user_id' => $this->otherUser->id,
@@ -122,7 +121,7 @@ class UserReviewControllerTest extends TestCase
             'request_id' => $sendRequest->id,
             'request_type' => 'send'
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -133,16 +132,16 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($mockRequest);
-        
+
         $this->assertEquals(409, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
         $this->assertEquals('You have already reviewed this transaction', $data['error']);
     }
@@ -152,7 +151,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->otherUser->id // Different user
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -163,15 +162,15 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('You cannot review this transaction');
-        
+
         $this->controller->create($mockRequest);
     }
 
@@ -180,7 +179,7 @@ class UserReviewControllerTest extends TestCase
         $deliveryRequest = DeliveryRequest::factory()->create([
             'user_id' => $this->otherUser->id // Different user
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -191,15 +190,15 @@ class UserReviewControllerTest extends TestCase
                 requestId: $deliveryRequest->id,
                 requestType: 'delivery'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('You cannot review this transaction');
-        
+
         $this->controller->create($mockRequest);
     }
 
@@ -208,7 +207,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->otherUser->id
         ]);
-        
+
         // Create accepted response from current user
         Response::factory()->create([
             'request_type' => 'send',
@@ -217,7 +216,7 @@ class UserReviewControllerTest extends TestCase
             'responder_id' => $this->otherUser->id,
             'status' => 'accepted'
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -228,16 +227,16 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         // Verify review was created
         $this->assertDatabaseHas('reviews', [
             'user_id' => $this->otherUser->id,
@@ -259,15 +258,15 @@ class UserReviewControllerTest extends TestCase
                 requestId: 999999, // Non-existent ID
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Send request not found');
-        
+
         $this->controller->create($mockRequest);
     }
 
@@ -283,15 +282,15 @@ class UserReviewControllerTest extends TestCase
                 requestId: 999999, // Non-existent ID
                 requestType: 'delivery'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Delivery request not found');
-        
+
         $this->controller->create($mockRequest);
     }
 
@@ -303,16 +302,16 @@ class UserReviewControllerTest extends TestCase
             'text' => 'Excellent service',
             'rating' => 5
         ]);
-        
+
         $response = $this->controller->show($review->id);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Check the direct response structure (not wrapped in 'data' in unit tests)
         $this->assertArrayHasKey('id', $data);
-        
+
         // Check that relationships are loaded
         $this->assertIsArray($data);
     }
@@ -320,7 +319,7 @@ class UserReviewControllerTest extends TestCase
     public function test_show_throws_exception_for_nonexistent_review()
     {
         $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
-        
+
         $this->controller->show(999999);
     }
 
@@ -332,20 +331,20 @@ class UserReviewControllerTest extends TestCase
             'owner_id' => $this->otherUser->id,
             'rating' => 5
         ]);
-        
+
         // Create review for different user (should not appear)
         Review::factory()->create([
             'user_id' => $this->otherUser->id,
             'owner_id' => $this->user->id,
             'rating' => 4
         ]);
-        
+
         $response = $this->controller->userReviews($this->user->id);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Check the direct response structure (not wrapped in 'data' in unit tests)
         $this->assertIsArray($data);
         $this->assertCount(3, $data);
@@ -363,17 +362,17 @@ class UserReviewControllerTest extends TestCase
             'owner_id' => $this->otherUser->id,
             'created_at' => now()->subDays(2)
         ]);
-        
+
         $newerReview = Review::factory()->create([
             'user_id' => $this->user->id,
             'owner_id' => $this->otherUser->id,
             'created_at' => now()->subDay()
         ]);
-        
+
         $response = $this->controller->userReviews($this->user->id);
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Should be ordered by created_at desc (newer first)
         $this->assertCount(2, $data);
         // In a real implementation, we'd verify the actual order
@@ -382,11 +381,11 @@ class UserReviewControllerTest extends TestCase
     public function test_user_reviews_handles_user_with_no_reviews()
     {
         $response = $this->controller->userReviews($this->user->id);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         // Check the direct response structure (not wrapped in 'data' in unit tests)
         $this->assertIsArray($data);
         $this->assertEmpty($data);
@@ -398,15 +397,15 @@ class UserReviewControllerTest extends TestCase
             'user_id' => $this->user->id,
             'owner_id' => $this->otherUser->id
         ]);
-        
+
         $response = $this->controller->userReviews($this->user->id);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         $data = json_decode($response->getContent(), true);
-        
+
         $this->assertCount(1, $data);
-        
+
         // The relationship loading is tested by successful response
         // In a real test, we'd verify no N+1 queries occur
     }
@@ -414,10 +413,10 @@ class UserReviewControllerTest extends TestCase
     public function test_constructor_injects_telegram_service()
     {
         $reflection = new \ReflectionClass($this->controller);
-        
+
         $tgServiceProperty = $reflection->getProperty('tgService');
         $tgServiceProperty->setAccessible(true);
-        
+
         $this->assertInstanceOf(TelegramUserService::class, $tgServiceProperty->getValue($this->controller));
     }
 
@@ -426,7 +425,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->user->id
         ]);
-        
+
         // Create accepted response to establish relationship
         Response::factory()->create([
             'request_type' => 'send',
@@ -435,7 +434,7 @@ class UserReviewControllerTest extends TestCase
             'responder_id' => $this->otherUser->id,
             'status' => 'accepted'
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -446,16 +445,16 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $response = $this->controller->create($mockRequest);
-        
+
         $this->assertEquals(200, $response->getStatusCode());
-        
+
         // The relationship is loaded with $review->load(['owner.telegramUser'])
         // This is verified by successful JSON response creation
         $data = json_decode($response->getContent(), true);
@@ -468,7 +467,7 @@ class UserReviewControllerTest extends TestCase
         $sendRequest = SendRequest::factory()->create([
             'user_id' => $this->otherUser->id
         ]);
-        
+
         // Create response with non-accepted status
         Response::factory()->create([
             'request_type' => 'send',
@@ -477,7 +476,7 @@ class UserReviewControllerTest extends TestCase
             'responder_id' => $this->otherUser->id,
             'status' => 'pending' // Not accepted
         ]);
-        
+
         $mockRequest = Mockery::mock(CreateReviewRequest::class);
         $mockRequest->shouldReceive('getDTO')
             ->once()
@@ -488,15 +487,15 @@ class UserReviewControllerTest extends TestCase
                 requestId: $sendRequest->id,
                 requestType: 'send'
             ));
-        
+
         $this->tgService->shouldReceive('getUserByTelegramId')
             ->with($mockRequest)
             ->once()
             ->andReturn($this->user);
-        
+
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('You cannot review this transaction');
-        
+
         $this->controller->create($mockRequest);
     }
 }

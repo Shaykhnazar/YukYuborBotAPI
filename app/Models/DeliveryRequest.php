@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Observers\RequestObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use App\Jobs\RecordDeliveryRequestToGoogleSheets;
 use App\Jobs\CloseRequestInGoogleSheets;
 
+#[ObservedBy(RequestObserver::class)]
 class DeliveryRequest extends Model
 {
     use HasFactory;

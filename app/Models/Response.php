@@ -49,14 +49,12 @@ class Response extends Model
     // ✅ IMPROVED: Helper methods to get the actual request objects
     public function sendRequest(): BelongsTo
     {
-        return $this->belongsTo(SendRequest::class, 'offer_id', 'id')
-            ->where('request_type', 'send');
+        return $this->belongsTo(SendRequest::class, 'offer_id', 'id');
     }
 
     public function deliveryRequest(): BelongsTo
     {
-        return $this->belongsTo(DeliveryRequest::class, 'offer_id', 'id')
-            ->where('request_type', 'delivery');
+        return $this->belongsTo(DeliveryRequest::class, 'offer_id', 'id');
     }
 
     // ✅ ADD: Helper method to get the request based on type

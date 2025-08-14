@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Parcel\ParcelRequest;
+use App\Http\Resources\Parcel\IndexRequestResource;
 use App\Models\DeliveryRequest;
 use App\Models\SendRequest;
-use App\Http\Resources\Parcel\IndexRequestResource;
-use App\Service\TelegramUserService;
+use App\Services\TelegramUserService;
 
 class RequestController extends Controller
 {
