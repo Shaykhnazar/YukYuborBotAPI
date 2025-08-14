@@ -21,6 +21,9 @@ trait TelegramUserHandler
                 return response()->json(['error' => 'No Telegram user data provided'], 401);
             }
 
+            // Decode base64-encoded header (to handle non-ASCII characters)
+            $userDataHeader = base64_decode($userDataHeader);
+
             // Parse the header data
             parse_str($userDataHeader, $userData);
 
