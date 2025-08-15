@@ -671,6 +671,12 @@ class ResponseController extends Controller
 //                'new_status' => 'accepted',
 //                'chat_id' => $chat->id
 //            ]);
+
+            // ✅ FIXED: Explicitly trigger Google Sheets acceptance tracking for deliverer's response
+            // This ensures columns O, P, Q get updated properly
+            \App\Jobs\UpdateGoogleSheetsAcceptanceTracking::dispatch($delivererResponse->id)
+                ->delay(now()->addSeconds(3))
+                ->onQueue('gsheets');
         } else {
             Log::warning('⚠️ Deliverer response not found for status update', [
                 'deliverer_user_id' => $deliveryRequest->user_id,
