@@ -80,13 +80,13 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         $deliveryRequest = null;
 
         if ($response->request_type === 'send') {
-            // User is responding TO a send request, offering their delivery request
-            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-        } else {
-            // User is responding TO a delivery request, offering their send request
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+            // Send request received the match, delivery request made the offer
             $sendRequest = \App\Models\SendRequest::find($response->request_id);
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+        } else {
+            // Delivery request received the match, send request made the offer
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
         }
 
         // Update both worksheets

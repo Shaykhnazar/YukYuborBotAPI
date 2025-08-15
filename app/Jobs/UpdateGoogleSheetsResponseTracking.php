@@ -105,11 +105,11 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
         }
 
         // For matching responses, the target request is the one that received the match (request_id)
-        // The request_type indicates which type of request is being responded to,
-        // but request_id always contains the ID of the request that receives the response
+        // The request_type indicates which type of request the receiving user has
+        // The request_id contains the receiving user's own request ID
         return $response->request_type === 'send'
-            ? \App\Models\DeliveryRequest::find($response->request_id)
-            : \App\Models\SendRequest::find($response->request_id);
+            ? \App\Models\SendRequest::find($response->request_id)
+            : \App\Models\DeliveryRequest::find($response->request_id);
     }
 
     /**
