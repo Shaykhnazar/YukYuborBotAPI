@@ -33,11 +33,9 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
     /**
      * @throws \Exception
      */
-    public function handle(): void
+    public function handle(GoogleSheetsService $googleSheetsService): void
     {
         try {
-            // Use the simplified service
-            $googleSheetsService = app(GoogleSheetsService::class);
 
             $response = Response::find($this->responseId);
 

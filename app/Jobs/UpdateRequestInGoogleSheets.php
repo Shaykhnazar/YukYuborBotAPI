@@ -53,6 +53,19 @@ class UpdateRequestInGoogleSheets implements ShouldQueue
                 $result = $this->requestType === 'send'
                     ? $googleSheetsService->recordCloseSendRequest($this->requestId)
                     : $googleSheetsService->recordCloseDeliveryRequest($this->requestId);
+            } elseif (in_array($request->status, ['matched', 'matched_manually'])) {
+                // When request is matched, update both acceptance tracking and status
+                // This ensures both send and delivery requests show as "matched" and "принят"
+                $result = $googleSheetsService->updateRequestResponseAccepted(
+                    $this->requestType, 
+                    $this->requestId
+                );
+                
+                Log::info('Request marked as matched/matched_manually, updated acceptance tracking', [
+                    'request_type' => $this->requestType,
+                    'request_id' => $this->requestId,
+                    'status' => $request->status
+                ]);
             } else {
                 // Use the status update methods for other statuses
                 $result = $this->requestType === 'send'

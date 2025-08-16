@@ -6,14 +6,55 @@ use Carbon\Carbon;
 use Revolution\Google\Sheets\Facades\Sheets;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class GoogleSheetsService
 {
     protected ?string $spreadsheetId;
+    private const LOCK_KEY = 'google_sheets_mutex';
+    private const LOCK_TIMEOUT = 30; // seconds
 
     public function __construct()
     {
         $this->spreadsheetId = config('google.sheets.spreadsheet_id');
+    }
+
+    /**
+     * Execute a Google Sheets operation with mutex locking to prevent concurrent access
+     */
+    private function withLock(callable $operation)
+    {
+        $lockKey = self::LOCK_KEY;
+        $timeout = self::LOCK_TIMEOUT;
+
+        Log::info('GoogleSheetsService: Attempting to acquire lock', ['lock_key' => $lockKey]);
+
+        // Try to acquire lock with timeout
+        $startTime = time();
+        while (time() - $startTime < $timeout) {
+            if (Cache::add($lockKey, time(), $timeout)) {
+                Log::info('GoogleSheetsService: Lock acquired successfully');
+
+                try {
+                    $result = $operation();
+                    return $result;
+                } finally {
+                    // Always release the lock
+                    Cache::forget($lockKey);
+                    Log::info('GoogleSheetsService: Lock released');
+                }
+            }
+
+            // Wait a bit before retrying
+            usleep(100000); // 100ms
+        }
+
+        Log::error('GoogleSheetsService: Failed to acquire lock within timeout', [
+            'timeout' => $timeout,
+            'lock_key' => $lockKey
+        ]);
+
+        throw new Exception('Could not acquire Google Sheets lock within timeout');
     }
 
     /**
@@ -39,7 +80,7 @@ class GoogleSheetsService
                 $user->city ?? '',
                 $user->created_at->toISOString(),
                 $user->telegramUser->username ?? '',
-                $user->telegramUser->telegram_id ?? ''
+                $user->telegramUser->telegram ?? ''
             ];
 
             Sheets::spreadsheet($this->spreadsheetId)
@@ -167,6 +208,7 @@ class GoogleSheetsService
 
     /**
      * Update response tracking columns when response is received
+     * @throws Exception
      */
     public function updateRequestResponseReceived($requestType, $requestId, $isFirstResponse = false): bool
     {
@@ -175,20 +217,21 @@ class GoogleSheetsService
             return true;
         }
 
-        try {
-            $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
+        return $this->withLock(function() use ($requestType, $requestId, $isFirstResponse) {
+            try {
+                $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
-//            Log::info("GoogleSheetsService: Starting updateRequestResponseReceived", [
-//                'request_type' => $requestType,
-//                'request_id' => $requestId,
-//                'worksheet' => $worksheetName,
-//                'is_first_response' => $isFirstResponse
-//            ]);
+                Log::info("GoogleSheetsService: Starting updateRequestResponseReceived with lock", [
+                    'request_type' => $requestType,
+                    'request_id' => $requestId,
+                    'worksheet' => $worksheetName,
+                    'is_first_response' => $isFirstResponse
+                ]);
 
-            // Get all data from the sheet
-            $allData = Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->all();
+                // Get all data from the sheet
+                $allData = Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->all();
 
             if (empty($allData)) {
                 Log::warning("Worksheet is empty", ['worksheet' => $worksheetName]);
@@ -246,19 +289,21 @@ class GoogleSheetsService
 //                'row_number' => $rowNumber
 //            ]);
 
-            return true;
-        } catch (Exception $e) {
-            Log::error("Failed to update response tracking in Google Sheets", [
-                'worksheet' => $worksheetName ?? 'unknown',
-                'request_id' => $requestId,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
+                return true;
+            } catch (Exception $e) {
+                Log::error("Failed to update response tracking in Google Sheets", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage()
+                ]);
+                return false;
+            }
+        });
     }
 
     /**
      * Update response tracking columns when response is accepted
+     * @throws Exception
      */
     public function updateRequestResponseAccepted($requestType, $requestId): bool
     {
@@ -267,19 +312,20 @@ class GoogleSheetsService
             return true;
         }
 
-        try {
-            $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
+        return $this->withLock(function() use ($requestType, $requestId) {
+            try {
+                $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
-//            Log::info("GoogleSheetsService: Starting updateRequestResponseAccepted", [
-//                'request_type' => $requestType,
-//                'request_id' => $requestId,
-//                'worksheet' => $worksheetName
-//            ]);
+                Log::info("GoogleSheetsService: Starting updateRequestResponseAccepted with lock", [
+                    'request_type' => $requestType,
+                    'request_id' => $requestId,
+                    'worksheet' => $worksheetName
+                ]);
 
-            // Get all data from the sheet
-            $allData = Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->all();
+                // Get all data from the sheet
+                $allData = Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->all();
 
             if (empty($allData)) {
                 Log::warning("Worksheet is empty", ['worksheet' => $worksheetName]);
@@ -336,15 +382,16 @@ class GoogleSheetsService
 //                'row_number' => $rowNumber
 //            ]);
 
-            return true;
-        } catch (Exception $e) {
-            Log::error("Failed to update acceptance tracking in Google Sheets", [
-                'worksheet' => $worksheetName ?? 'unknown',
-                'request_id' => $requestId,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
+                return true;
+            } catch (Exception $e) {
+                Log::error("Failed to update acceptance tracking in Google Sheets", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage()
+                ]);
+                return false;
+            }
+        });
     }
 
     /**

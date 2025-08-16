@@ -29,11 +29,9 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         private readonly int $responseId
     ) {}
 
-    public function handle(): void
+    public function handle(GoogleSheetsService $googleSheetsService): void
     {
         try {
-            // Use the simplified service
-            $googleSheetsService = app(GoogleSheetsService::class);
 
             $response = Response::find($this->responseId);
 
@@ -80,30 +78,49 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         $deliveryRequest = null;
 
         if ($response->offer_type === 'send') {
-            // Send request received the match, delivery request made the offer
+            // SendRequest is being offered, DeliveryRequest received the offer
             $sendRequest = \App\Models\SendRequest::find($response->offer_id);
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
         } else {
-            // Delivery request received the match, send request made the offer
+            // DeliveryRequest is being offered, SendRequest received the offer  
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
             $sendRequest = \App\Models\SendRequest::find($response->request_id);
         }
 
+        Log::info('UpdateGoogleSheetsAcceptanceTracking: Found requests for matching response', [
+            'response_id' => $response->id,
+            'offer_type' => $response->offer_type,
+            'offer_id' => $response->offer_id,
+            'request_id' => $response->request_id,
+            'send_request_found' => $sendRequest ? $sendRequest->id : 'NOT_FOUND',
+            'delivery_request_found' => $deliveryRequest ? $deliveryRequest->id : 'NOT_FOUND'
+        ]);
+
         // Update both worksheets
         if ($sendRequest) {
             $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id);
-//            Log::info('Send request acceptance updated in Google Sheets', [
-//                'response_id' => $response->id,
-//                'send_request_id' => $sendRequest->id,
-//            ]);
+            Log::info('Send request acceptance updated in Google Sheets', [
+                'response_id' => $response->id,
+                'send_request_id' => $sendRequest->id,
+            ]);
+        } else {
+            Log::warning('SendRequest not found for acceptance tracking', [
+                'response_id' => $response->id,
+                'expected_send_request_id' => $response->offer_type === 'send' ? $response->offer_id : $response->request_id
+            ]);
         }
 
         if ($deliveryRequest) {
             $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id);
-//            Log::info('Delivery request acceptance updated in Google Sheets', [
-//                'response_id' => $response->id,
-//                'delivery_request_id' => $deliveryRequest->id,
-//            ]);
+            Log::info('Delivery request acceptance updated in Google Sheets', [
+                'response_id' => $response->id,
+                'delivery_request_id' => $deliveryRequest->id,
+            ]);
+        } else {
+            Log::warning('DeliveryRequest not found for acceptance tracking', [
+                'response_id' => $response->id,
+                'expected_delivery_request_id' => $response->offer_type === 'delivery' ? $response->offer_id : $response->request_id
+            ]);
         }
     }
 
@@ -137,18 +154,27 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
      */
     private function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
     {
-        if ($response->response_type === Response::TYPE_MANUAL) {
-            // For manual responses, the target request is the one being responded to
-            return $response->offer_type === 'send'
-                ? \App\Models\SendRequest::find($response->offer_id)
-                : \App\Models\DeliveryRequest::find($response->offer_id);
+        // The target request is always identified by request_id (the one that received the response)
+        // First try to find it as a SendRequest
+        $sendRequest = \App\Models\SendRequest::find($response->request_id);
+        if ($sendRequest) {
+            return $sendRequest;
         }
 
-        // For matching responses, the target request is the one that received the match (request_id)
-        // The request_type indicates which type of request is being responded to,
-        // but request_id always contains the ID of the request that receives the response
-        return $response->offer_type === 'send'
-            ? \App\Models\DeliveryRequest::find($response->request_id)
-            : \App\Models\SendRequest::find($response->request_id);
+        // If not found as SendRequest, try DeliveryRequest
+        $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+        if ($deliveryRequest) {
+            return $deliveryRequest;
+        }
+
+        // If neither found, log the issue for debugging
+        Log::warning('Target request not found for acceptance tracking', [
+            'response_id' => $response->id,
+            'request_id' => $response->request_id,
+            'offer_id' => $response->offer_id,
+            'offer_type' => $response->offer_type
+        ]);
+
+        return null;
     }
 }

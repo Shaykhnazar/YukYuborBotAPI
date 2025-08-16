@@ -128,10 +128,20 @@ class RequestObserver
                 RecordSendRequestToGoogleSheets::dispatch($request->id)
                     ->delay(now()->addSeconds(2))
                     ->onQueue('gsheets');
+                    
+                Log::info('RequestObserver: Dispatched RecordSendRequestToGoogleSheets job', [
+                    'request_type' => $requestType,
+                    'request_id' => $request->id
+                ]);
             } else {
                 RecordDeliveryRequestToGoogleSheets::dispatch($request->id)
                     ->delay(now()->addSeconds(2))
                     ->onQueue('gsheets');
+                    
+                Log::info('RequestObserver: Dispatched RecordDeliveryRequestToGoogleSheets job', [
+                    'request_type' => $requestType,
+                    'request_id' => $request->id
+                ]);
             }
         } catch (\Exception $e) {
             Log::error('Failed to dispatch Google Sheets creation job', [

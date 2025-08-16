@@ -33,11 +33,9 @@ class RecordSendRequestToGoogleSheets implements ShouldQueue
         private readonly int $requestId
     ) {}
 
-    public function handle(): void
+    public function handle(GoogleSheetsService $googleSheetsService): void
     {
         try {
-            // Use the simplified service
-            $googleSheetsService = app(GoogleSheetsService::class);
 
             $request = SendRequest::with(['user', 'fromLocation', 'toLocation'])->find($this->requestId);
 
