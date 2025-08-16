@@ -65,6 +65,8 @@ class ReviewFactory extends Factory
             'owner_id' => User::factory(), // User writing the review
             'text' => $this->faker->randomElement($reviewTexts[$rating]),
             'rating' => $rating,
+            'request_id' => null,
+            'request_type' => null,
             'created_at' => $this->faker->dateTimeBetween('-60 days', 'now'),
             'updated_at' => now(),
         ];

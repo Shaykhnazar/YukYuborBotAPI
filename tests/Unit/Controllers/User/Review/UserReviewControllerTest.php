@@ -104,7 +104,7 @@ class UserReviewControllerTest extends TestCase
             'text' => 'Great service!',
             'rating' => 5,
             'request_id' => $sendRequest->id,
-            'offer_type' => 'send'
+            'request_type' => 'send'
         ]);
     }
 
@@ -119,7 +119,7 @@ class UserReviewControllerTest extends TestCase
             'user_id' => $this->otherUser->id,
             'owner_id' => $this->user->id,
             'request_id' => $sendRequest->id,
-            'offer_type' => 'send'
+            'request_type' => 'send'
         ]);
 
         $mockRequest = Mockery::mock(CreateReviewRequest::class);

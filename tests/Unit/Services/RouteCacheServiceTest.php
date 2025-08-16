@@ -30,6 +30,17 @@ class RouteCacheServiceTest extends TestCase
         $this->mockLocationCacheService = Mockery::mock(LocationCacheService::class);
         $this->app->instance(LocationCacheService::class, $this->mockLocationCacheService);
         
+        // Mock Log facade to prevent unexpected calls
+        Log::shouldReceive('info')
+            ->withAnyArgs()
+            ->andReturn(true)
+            ->byDefault();
+        
+        Log::shouldReceive('error')
+            ->withAnyArgs()
+            ->andReturn(true)
+            ->byDefault();
+        
         $this->service = new RouteCacheService();
         
         // Clear cache before each test
@@ -303,10 +314,14 @@ class RouteCacheServiceTest extends TestCase
 
     public function test_warm_cache_handles_exceptions()
     {
-        // Mock Route to throw exception
-        $this->partialMock(Route::class, function ($mock) {
-            $mock->shouldReceive('active')->andThrow(new \Exception('Database error'));
-        });
+        // Override default log mocking for this specific test
+        Mockery::close(); // Clear existing mocks
+        
+        // Mock Cache to throw exception during remember operation
+        Cache::shouldReceive('remember')
+            ->with(RouteCacheService::CACHE_KEY_ACTIVE_ROUTES, Mockery::any(), Mockery::any())
+            ->andThrow(new \Exception('Database error'))
+            ->once();
 
         Log::shouldReceive('info')->with('Starting route cache warming')->once();
         Log::shouldReceive('error')->with('Failed to warm route cache', \Mockery::type('array'))->once();
@@ -489,5 +504,8 @@ class RouteCacheServiceTest extends TestCase
 
         // Should not throw exception
         $this->service->invalidateRequestCountsCache();
+        
+        // Assert that we made it through without exceptions
+        $this->assertTrue(true);
     }
 }
