@@ -75,7 +75,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest2->id, // user's delivery request
             'offer_id' => $sendRequest1->id, // user's send request
             'status' => 'pending',
@@ -86,7 +86,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0, // manual responses have request_id = 0
             'offer_id' => $sendRequest1->id,
             'status' => 'pending',
@@ -124,7 +124,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest1->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -134,7 +134,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest2->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -144,7 +144,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest3->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -155,7 +155,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest4->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -165,7 +165,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest5->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -195,7 +195,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -233,7 +233,7 @@ class ResponseControllerTest extends TestCase
         $olderResponse = Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest1->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -244,7 +244,7 @@ class ResponseControllerTest extends TestCase
         $newerResponse = Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest2->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -280,7 +280,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -291,7 +291,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->otherUser->id,
             'responder_id' => $this->user->id,
-            'request_type' => 'delivery',
+            'offer_type' => 'delivery',
             'request_id' => 0,
             'offer_id' => $deliveryRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -341,7 +341,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -376,7 +376,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -415,7 +415,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -426,7 +426,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->otherUser->id,
             'responder_id' => $thirdUser->id,
-            'request_type' => 'delivery',
+            'offer_type' => 'delivery',
             'request_id' => 0,
             'offer_id' => $deliveryRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -437,7 +437,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $thirdUser->id,
             'responder_id' => $this->user->id,
-            'request_type' => 'delivery',
+            'offer_type' => 'delivery',
             'request_id' => 0,
             'offer_id' => $deliveryRequest->id,
             'response_type' => Response::TYPE_MANUAL,
@@ -467,7 +467,7 @@ class ResponseControllerTest extends TestCase
         Response::factory()->create([
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => 0,
             'offer_id' => $sendRequest->id,
             'response_type' => Response::TYPE_MANUAL,

@@ -84,7 +84,7 @@ Response status → accepted → ResponseObserver.updated() → UpdateGoogleShee
 ### Response Table Fields
 - **user_id**: Who receives/sees the response (the request owner)
 - **responder_id**: Who is making the response
-- **request_type**: Type of the receiving user's request (`send` or `delivery`)
+- **offer_type**: Type of the receiving user's request (`send` or `delivery`)
 - **request_id**: The receiving user's own request ID
 - **offer_id**: The offering user's request ID
 - **response_type**: `manual` or `matching`
@@ -93,12 +93,12 @@ Response status → accepted → ResponseObserver.updated() → UpdateGoogleShee
 ### Target Request Identification
 For Google Sheets tracking, the **target request** (which receives responses) is always:
 - **Request ID**: `response.request_id`
-- **Request Type**: `response.request_type`
-- **Worksheet**: `"Send requests"` if `request_type === 'send'`, `"Deliver requests"` if `request_type === 'delivery'`
+- **Request Type**: `response.offer_type`
+- **Worksheet**: `"Send requests"` if `offer_type === 'send'`, `"Deliver requests"` if `offer_type === 'delivery'`
 
 ### Matching Response Logic
 For matching responses, two requests are involved:
-1. **Target Request** (receives response): `request_id` in worksheet `request_type`
+1. **Target Request** (receives response): `request_id` in worksheet `offer_type`
 2. **Offering Request** (makes response): `offer_id` in opposite worksheet
 
 When acceptance occurs, **both requests should be updated** in their respective worksheets.
@@ -111,7 +111,7 @@ When acceptance occurs, **both requests should be updated** in their respective 
 **Queue**: gsheets  
 **Logic**:
 1. Find response by ID
-2. Determine target request using `request_id` and `request_type`
+2. Determine target request using `request_id` and `offer_type`
 3. Find row in appropriate worksheet
 4. Update columns L (получен), M (increment count), N (calculate wait time if first response)
 
@@ -176,7 +176,7 @@ php artisan queue:work --queue=gsheets,default
 1. **"Could not determine target request"**: Check Response table data integrity
 2. **Row not found in worksheet**: Verify request was properly created and recorded
 3. **Jobs not executing**: Check queue worker and Redis connection
-4. **Wrong worksheet updates**: Verify request_type field in Response table
+4. **Wrong worksheet updates**: Verify offer_type field in Response table
 
 ### Debug Commands
 ```bash

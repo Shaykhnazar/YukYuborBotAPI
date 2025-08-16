@@ -5,6 +5,9 @@ namespace App\Observers;
 use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
 use App\Services\RouteCacheService;
+use App\Jobs\RecordSendRequestToGoogleSheets;
+use App\Jobs\RecordDeliveryRequestToGoogleSheets;
+use App\Jobs\UpdateRequestInGoogleSheets;
 use Illuminate\Support\Facades\Log;
 
 class RequestObserver
@@ -20,12 +23,9 @@ class RequestObserver
     {
         $requestType = $this->getRequestType($request);
 
-//        Log::info('RequestObserver: Request created', [
-//            'request_type' => $requestType,
-//            'request_id' => $request->id,
-//            'status' => $request->status
-//        ]);
-
+        // Handle Google Sheets integration for new requests
+        $this->handleGoogleSheetsCreation($request, $requestType);
+        
         $this->invalidateRequestCountsCache($request, 'created');
     }
 
@@ -43,8 +43,9 @@ class RequestObserver
             'changes' => $changes
         ]);
 
-        // Only invalidate if status changed (affects request counts)
+        // Handle Google Sheets integration for status changes
         if (isset($changes['status'])) {
+            $this->handleGoogleSheetsUpdate($request, $requestType);
             $this->invalidateRequestCountsCache($request, 'updated');
         }
     }
@@ -112,6 +113,51 @@ class RequestObserver
                 'request_type' => $this->getRequestType($request),
                 'request_id' => $request->id,
                 'action' => $action,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Handle Google Sheets integration for new requests
+     */
+    private function handleGoogleSheetsCreation($request, string $requestType): void
+    {
+        try {
+            if ($requestType === 'send') {
+                RecordSendRequestToGoogleSheets::dispatch($request->id)
+                    ->delay(now()->addSeconds(2))
+                    ->onQueue('gsheets');
+            } else {
+                RecordDeliveryRequestToGoogleSheets::dispatch($request->id)
+                    ->delay(now()->addSeconds(2))
+                    ->onQueue('gsheets');
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to dispatch Google Sheets creation job', [
+                'request_type' => $requestType,
+                'request_id' => $request->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Handle Google Sheets integration for status updates
+     */
+    private function handleGoogleSheetsUpdate($request, string $requestType): void
+    {
+        try {
+            // Update Google Sheets when request status changes to specific statuses
+            if (in_array($request->status, ['closed', 'completed', 'matched_manually', 'matched', 'has_responses'])) {
+                UpdateRequestInGoogleSheets::dispatch($requestType, $request->id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to dispatch Google Sheets update job', [
+                'request_type' => $requestType,
+                'request_id' => $request->id,
                 'error' => $e->getMessage()
             ]);
         }

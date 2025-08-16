@@ -65,7 +65,7 @@ class UserRequestControllerTest extends TestCase
         ]);
 
         Response::factory()->create([
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $sendRequest->id,
             'user_id' => $this->user->id,
             'responder_id' => $this->otherUser->id,
@@ -506,7 +506,7 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->otherUser->id,
             'owner_id' => $this->user->id,
             'request_id' => $sendRequest->id,
-            'request_type' => 'send'
+            'offer_type' => 'send'
         ]);
 
         $request = (object)[

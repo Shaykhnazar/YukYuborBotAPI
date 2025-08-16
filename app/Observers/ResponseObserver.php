@@ -15,15 +15,6 @@ class ResponseObserver
      */
     public function created(Response $response): void
     {
-//        Log::info('ResponseObserver: Response created', [
-//            'response_id' => $response->id,
-//            'response_type' => $response->response_type,
-//            'request_type' => $response->request_type,
-//            'offer_id' => $response->offer_id,
-//            'request_id' => $response->request_id,
-//            'status' => $response->status
-//        ]);
-
         // Dispatch queued job to update Google Sheets tracking with a short delay
         UpdateGoogleSheetsResponseTracking::dispatch($response->id, true)
             ->delay(now()->addSeconds(3))
@@ -39,21 +30,28 @@ class ResponseObserver
      */
     public function updated(Response $response): void
     {
-        // Check if status changed to accepted
-        if ($response->wasChanged('status') && $response->status === Response::STATUS_ACCEPTED) {
-            Log::info('ResponseObserver: Response accepted', [
-                'response_id' => $response->id,
-                'response_type' => $response->response_type
-            ]);
+        // Check if status changed to accepted OR responded (for deliverer responses)
+        if ($response->status === Response::STATUS_ACCEPTED || $response->status === Response::STATUS_RESPONDED
+        ) {
+            if ($response->wasChanged('status')
+            ) {
 
-            // Dispatch queued job to update Google Sheets acceptance tracking with a short delay
-            UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id)
-                ->delay(now()->addSeconds(3))
-                ->onQueue('gsheets');
+                Log::info('ResponseObserver: Response accepted/responded', [
+                    'response_id' => $response->id,
+                    'response_type' => $response->response_type,
+                    'status' => $response->status
+                ]);
 
-            Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [
-                'response_id' => $response->id
-            ]);
+                // Dispatch queued job to update Google Sheets acceptance tracking with a short delay
+                UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
+
+                Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [
+                    'response_id' => $response->id,
+                    'status' => $response->status
+                ]);
+            }
         }
     }
 

@@ -37,6 +37,28 @@ return new class extends Migration
             $table->index(['currency', 'amount'], 'idx_responses_currency_amount');
             $table->index(['response_type', 'currency'], 'idx_responses_type_currency');
         });
+
+        /*
+    Example Usage Scenarios:
+      For a matching response (automatic system match):
+      - user_id: Deliverer who will see the send request
+      - responder_id: Sender who created the send request
+      - request_type: "send"
+      - request_id: Deliverer's delivery request ID
+      - offer_id: Sender's send request ID
+      - response_type: "matching"
+      - message, currency, amount: NULL
+
+      For a manual response (user manually responds):
+      - user_id: Request owner who will receive the response
+      - responder_id: User who clicked "Откликнуться"
+      - request_type: "send" or "delivery"
+      - request_id: 0 (not used)
+      - offer_id: The request ID being responded to
+      - response_type: "manual"
+      - message: Custom message from responder
+      - currency, amount: Optional price proposal
+    */
     }
 
     public function down(): void

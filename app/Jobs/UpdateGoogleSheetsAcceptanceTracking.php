@@ -79,14 +79,14 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         $sendRequest = null;
         $deliveryRequest = null;
 
-        if ($response->request_type === 'send') {
+        if ($response->offer_type === 'send') {
             // Send request received the match, delivery request made the offer
-            $sendRequest = \App\Models\SendRequest::find($response->request_id);
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
         } else {
             // Delivery request received the match, send request made the offer
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+            $sendRequest = \App\Models\SendRequest::find($response->request_id);
         }
 
         // Update both worksheets
@@ -139,7 +139,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
     {
         if ($response->response_type === Response::TYPE_MANUAL) {
             // For manual responses, the target request is the one being responded to
-            return $response->request_type === 'send'
+            return $response->offer_type === 'send'
                 ? \App\Models\SendRequest::find($response->offer_id)
                 : \App\Models\DeliveryRequest::find($response->offer_id);
         }
@@ -147,7 +147,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         // For matching responses, the target request is the one that received the match (request_id)
         // The request_type indicates which type of request is being responded to,
         // but request_id always contains the ID of the request that receives the response
-        return $response->request_type === 'send'
+        return $response->offer_type === 'send'
             ? \App\Models\DeliveryRequest::find($response->request_id)
             : \App\Models\SendRequest::find($response->request_id);
     }

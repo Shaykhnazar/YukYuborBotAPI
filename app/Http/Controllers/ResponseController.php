@@ -80,7 +80,7 @@ class ResponseController extends Controller
             }
 
 
-            if ($response->request_type === 'send') {
+            if ($response->offer_type === 'send') {
                 // Get the send request (what user clicked on)
                 $sendRequest = SendRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
 
@@ -144,7 +144,7 @@ class ResponseController extends Controller
                     ] : null
                 ];
 
-            } elseif ($response->request_type === 'delivery') {
+            } elseif ($response->offer_type === 'delivery') {
                 // Get the delivery request (what user clicked on)
                 $deliveryRequest = DeliveryRequest::with(['fromLocation', 'toLocation'])->find($response->offer_id);
 
@@ -221,14 +221,14 @@ class ResponseController extends Controller
         $user = $this->tgService->getUserByTelegramId($request);
 
         $validated = $request->validate([
-            'request_type' => 'required|in:send,delivery',
+            'offer_type' => 'required|in:send,delivery',
             'request_id' => 'required|integer',
             'message' => 'required|string',
             'currency' => 'nullable|string',
             'amount' => 'nullable|integer',
         ]);
 
-        $requestType = $validated['request_type'];
+        $requestType = $validated['offer_type'];
         $requestId = $validated['request_id'];
         $message = $validated['message'];
 
@@ -248,13 +248,13 @@ class ResponseController extends Controller
                 // Check if user already sent a response to this request owner
                 $subQuery->where('user_id', $targetRequest->user_id)
                         ->where('responder_id', $user->id)
-                        ->where('request_type', $requestType)
+                        ->where('offer_type', $requestType)
                         ->where('offer_id', $requestId);
             })->orWhere(function($subQuery) use ($targetRequest, $user, $requestType, $requestId) {
                 // Or check if user already has a response record for this request
                 $subQuery->where('user_id', $user->id)
                         ->where('responder_id', $targetRequest->user_id)
-                        ->where('request_type', $requestType)
+                        ->where('offer_type', $requestType)
                         ->where('offer_id', $requestId);
             });
         })->whereIn('status', ['pending', 'waiting', 'accepted'])
@@ -268,7 +268,7 @@ class ResponseController extends Controller
         // Check if there's a rejected response that we can reuse
         $rejectedResponse = Response::where('user_id', $targetRequest->user_id)
             ->where('responder_id', $user->id)
-            ->where('request_type', $requestType)
+            ->where('offer_type', $requestType)
             ->where('offer_id', $requestId)
             ->where('status', Response::STATUS_REJECTED)
             ->where('response_type', Response::TYPE_MANUAL)
@@ -290,7 +290,7 @@ class ResponseController extends Controller
             $response = Response::create([
                 'user_id' => $targetRequest->user_id, // Request owner receives the response
                 'responder_id' => $user->id, // User who clicked "Откликнуться"
-                'request_type' => $requestType,
+                'offer_type' => $requestType,
                 'request_id' => 0, // Not used in manual responses
                 'offer_id' => $requestId,
                 'status' => Response::STATUS_PENDING,
@@ -378,7 +378,7 @@ class ResponseController extends Controller
         }
 
         // Get the request and responder details
-        if ($response->request_type === 'send') {
+        if ($response->offer_type === 'send') {
             $targetRequest = SendRequest::find($response->offer_id);
         } else {
             $targetRequest = DeliveryRequest::find($response->offer_id);
@@ -405,8 +405,8 @@ class ResponseController extends Controller
             $chat = Chat::create([
                 'sender_id' => $user->id,
                 'receiver_id' => $responder->id,
-                'send_request_id' => $response->request_type === 'send' ? $response->offer_id : null,
-                'delivery_request_id' => $response->request_type === 'delivery' ? $response->offer_id : null,
+                'send_request_id' => $response->offer_type === 'send' ? $response->offer_id : null,
+                'delivery_request_id' => $response->offer_type === 'delivery' ? $response->offer_id : null,
                 'status' => 'active',
             ]);
         } else {
@@ -487,7 +487,7 @@ class ResponseController extends Controller
 
         // Find the response record for the deliverer
         $response = Response::where('user_id', $deliverer->id)
-            ->where('request_type', 'send')
+            ->where('offer_type', 'send')
             ->where('request_id', $deliveryRequest->id)
             ->where('offer_id', $sendRequest->id)
             ->where('status', 'pending')
@@ -560,7 +560,7 @@ class ResponseController extends Controller
 
         // Find the waiting response record (sender's response)
         $senderResponse = Response::where('user_id', $sender->id)
-            ->where('request_type', 'delivery')
+            ->where('offer_type', 'delivery')
             ->where('request_id', $sendRequest->id)
             ->where('offer_id', $deliveryRequest->id)
             ->where('status', 'waiting')
@@ -655,7 +655,7 @@ class ResponseController extends Controller
 
         // ✅ CRITICAL: Also update the deliverer's response status to accepted
         $delivererResponse = Response::where('user_id', $deliveryRequest->user_id)
-            ->where('request_type', 'send')
+            ->where('offer_type', 'send')
             ->where('request_id', $deliveryRequest->id)
             ->where('offer_id', $sendRequest->id)
             ->where('status', 'responded')
@@ -674,9 +674,9 @@ class ResponseController extends Controller
 
             // ✅ FIXED: Explicitly trigger Google Sheets acceptance tracking for deliverer's response
             // This ensures columns O, P, Q get updated properly
-            \App\Jobs\UpdateGoogleSheetsAcceptanceTracking::dispatch($delivererResponse->id)
-                ->delay(now()->addSeconds(3))
-                ->onQueue('gsheets');
+//            \App\Jobs\UpdateGoogleSheetsAcceptanceTracking::dispatch($delivererResponse->id)
+//                ->delay(now()->addSeconds(3))
+//                ->onQueue('gsheets');
         } else {
             Log::warning('⚠️ Deliverer response not found for status update', [
                 'deliverer_user_id' => $deliveryRequest->user_id,
@@ -757,7 +757,7 @@ class ResponseController extends Controller
             $deliveryRequestId = $id2;
 
             $response = Response::where('user_id', $user->id)
-                ->where('request_type', 'send')
+                ->where('offer_type', 'send')
                 ->where('request_id', $deliveryRequestId)
                 ->where('offer_id', $sendRequestId)
                 ->where('status', 'pending')
@@ -770,7 +770,7 @@ class ResponseController extends Controller
                 $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
                 if ($deliveryRequest && $deliveryRequest->status !== 'open') {
                     $hasOtherResponses = Response::where('user_id', $deliveryRequest->user_id)
-                        ->where('request_type', 'send')
+                        ->where('offer_type', 'send')
                         ->where('request_id', $deliveryRequestId)
                         ->whereIn('status', ['pending', 'waiting'])
                         ->where('id', '!=', $response->id)
@@ -798,7 +798,7 @@ class ResponseController extends Controller
 
             // Find the waiting response record
             $response = Response::where('user_id', $user->id)
-                ->where('request_type', 'delivery')
+                ->where('offer_type', 'delivery')
                 ->where('request_id', $sendRequestId)
                 ->where('offer_id', $deliveryRequestId)
                 ->where('status', 'waiting')
@@ -814,7 +814,7 @@ class ResponseController extends Controller
                 if ($deliveryRequest) {
                     // Find and reject the original deliverer's response using the correct user_id
                     $delivererResponse = Response::where('user_id', $deliveryRequest->user_id)
-                        ->where('request_type', 'send')
+                        ->where('offer_type', 'send')
                         ->where('offer_id', $sendRequestId)
                         ->whereIn('status', ['responded', 'accepted'])
                         ->first();
@@ -834,7 +834,7 @@ class ResponseController extends Controller
                 // Reset the send request status - check for other active responses
                 $sendRequest = SendRequest::find($sendRequestId);
                 if ($sendRequest && $sendRequest->status !== 'open') {
-                    $hasOtherResponses = Response::where('request_type', 'delivery')
+                    $hasOtherResponses = Response::where('offer_type', 'delivery')
                         ->where('request_id', $sendRequestId)
                         ->whereIn('status', ['pending', 'waiting'])
                         ->where('id', '!=', $response->id)
@@ -847,7 +847,7 @@ class ResponseController extends Controller
                 // Reset the delivery request status - check for other active responses
                 if ($deliveryRequest && $deliveryRequest->status !== 'open') {
                     $hasOtherResponses = Response::where('user_id', $deliveryRequest->user_id)
-                        ->where('request_type', 'send')
+                        ->where('offer_type', 'send')
                         ->where('request_id', $deliveryRequestId)
                         ->whereIn('status', ['pending', 'waiting'])
                         ->exists();
@@ -884,12 +884,16 @@ class ResponseController extends Controller
         $requestType = $parts[2];
         $requestId = $parts[3];
 
-        // Find and update the response record
-        $response = Response::where('user_id', $user->id)
-            ->where('request_type', $offerType)
+        // Find the response record that the user wants to cancel
+        // User can cancel responses where they are either the receiver (user_id) or the responder (responder_id)
+        $response = Response::where(function($query) use ($user) {
+                $query->where('user_id', $user->id)
+                      ->orWhere('responder_id', $user->id);
+            })
+            ->where('offer_type', $offerType)
             ->where('request_id', $requestId)
             ->where('offer_id', $offerId)
-            ->where('status', 'waiting')
+            ->whereIn('status', ['waiting', 'accepted', 'pending', 'responded'])
             ->first();
 
         if (!$response) {

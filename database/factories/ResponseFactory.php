@@ -23,16 +23,16 @@ class ResponseFactory extends Factory
      */
     public function definition(): array
     {
-        $requestType = $this->faker->randomElement(['send', 'delivery']);
+        $offerType = $this->faker->randomElement(['send', 'delivery']);
 
         return [
             'user_id' => User::factory(),
             'responder_id' => User::factory(),
-            'request_type' => $requestType,
-            'request_id' => $requestType === 'send'
+            'offer_type' => $offerType,
+            'request_id' => $offerType === 'send'
                 ? DeliveryRequest::factory()
                 : SendRequest::factory(),
-            'offer_id' => $requestType === 'send'
+            'offer_id' => $offerType === 'send'
                 ? SendRequest::factory()
                 : DeliveryRequest::factory(),
             'status' => $this->faker->randomElement(['pending', 'accepted', 'rejected', 'waiting']),
@@ -57,7 +57,7 @@ class ResponseFactory extends Factory
             return [
                 'user_id' => $deliverer->id, // deliverer will see this
                 'responder_id' => $sender->id, // sender made the offer
-                'request_type' => 'send',
+                'offer_type' => 'send',
                 'request_id' => $deliveryRequest->id, // deliverer's request
                 'offer_id' => $sendRequest->id, // sender's request
             ];
@@ -78,7 +78,7 @@ class ResponseFactory extends Factory
             return [
                 'user_id' => $sender->id, // sender will see this
                 'responder_id' => $deliverer->id, // deliverer is responding
-                'request_type' => 'delivery',
+                'offer_type' => 'delivery',
                 'request_id' => $sendRequest->id, // sender's request
                 'offer_id' => $deliveryRequest->id, // deliverer's request
             ];
@@ -145,7 +145,7 @@ class ResponseFactory extends Factory
         return $this->state(fn () => [
             'user_id'        => $deliveryRequest->user_id,
             'responder_id'   => $sendRequest->user_id,
-            'request_type'   => 'send',
+            'offer_type'   => 'send',
             'request_id'     => $deliveryRequest->id,
             'offer_id'       => $sendRequest->id,
         ]);
@@ -156,7 +156,7 @@ class ResponseFactory extends Factory
         return $this->state(fn () => [
             'user_id'        => $sendRequest->user_id,
             'responder_id'   => $deliveryRequest->user_id,
-            'request_type'   => 'delivery',
+            'offer_type'   => 'delivery',
             'request_id'     => $sendRequest->id,
             'offer_id'       => $deliveryRequest->id,
         ]);

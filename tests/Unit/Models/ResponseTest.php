@@ -121,7 +121,7 @@ class ResponseTest extends TestCase
 
     public function test_get_request_attribute_returns_null_for_invalid_type()
     {
-        $response = Response::factory()->create(['request_type' => 'invalid']);
+        $response = Response::factory()->create(['offer_type' => 'invalid']);
 
         $this->assertNull($response->getRequestAttribute());
     }
@@ -222,7 +222,7 @@ class ResponseTest extends TestCase
             'responder_id' => $this->responder->id,
             'status' => Response::STATUS_ACCEPTED,
             'response_type' => Response::TYPE_MANUAL,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'message' => 'Test message'

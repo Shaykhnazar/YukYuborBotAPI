@@ -81,7 +81,7 @@ class SendRequestTest extends TestCase
     {
         Response::factory()->count(3)->create([
             'request_id' => $this->sendRequest->id,
-            'request_type' => 'send'
+            'offer_type' => 'send'
         ]);
 
         $this->assertInstanceOf(Collection::class, $this->sendRequest->responses);
@@ -93,7 +93,7 @@ class SendRequestTest extends TestCase
     {
         Response::factory()->count(2)->create([
             'offer_id' => $this->sendRequest->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'response_type' => 'manual'
         ]);
 
@@ -105,7 +105,7 @@ class SendRequestTest extends TestCase
     {
         Response::factory()->count(2)->create([
             'offer_id' => $this->sendRequest->id,
-            'request_type' => 'delivery'
+            'offer_type' => 'delivery'
         ]);
 
         $this->assertInstanceOf(Collection::class, $this->sendRequest->offerResponses);
@@ -242,13 +242,13 @@ class SendRequestTest extends TestCase
         // Create matching response
         Response::factory()->create([
             'request_id' => $this->sendRequest->id,
-            'request_type' => 'send'
+            'offer_type' => 'send'
         ]);
 
         // Create manual response
         Response::factory()->create([
             'offer_id' => $this->sendRequest->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'response_type' => 'manual'
         ]);
 
@@ -262,7 +262,7 @@ class SendRequestTest extends TestCase
         $chat = Chat::factory()->create();
         Response::factory()->create([
             'request_id' => $this->sendRequest->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'status' => 'accepted',
             'chat_id' => $chat->id
         ]);

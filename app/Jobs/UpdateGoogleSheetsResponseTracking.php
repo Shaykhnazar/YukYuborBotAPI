@@ -55,7 +55,7 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
                 Log::warning('Could not determine target request for response tracking', [
                     'response_id' => $response->id,
                     'response_type' => $response->response_type,
-                    'request_type' => $response->request_type,
+                    'offer_type' => $response->offer_type,
                     'offer_id' => $response->offer_id,
                     'request_id' => $response->request_id,
                 ]);
@@ -73,13 +73,6 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
                 $targetRequest->id,
                 $isActuallyFirstResponse
             );
-
-//            Log::info('Response tracking updated via job', [
-//                'response_id' => $response->id,
-//                'target_request_id' => $targetRequest->id,
-//                'request_type' => $requestType,
-//                'is_first_response' => $isActuallyFirstResponse,
-//            ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to update response tracking via job', [
@@ -99,17 +92,14 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
     {
         if ($response->response_type === Response::TYPE_MANUAL) {
             // For manual responses, the target request is the one being responded to (offer_id)
-            return $response->request_type === 'send'
+            return $response->offer_type === 'send'
                 ? \App\Models\SendRequest::find($response->offer_id)
                 : \App\Models\DeliveryRequest::find($response->offer_id);
         }
 
-        // For matching responses, the target request is the one that received the match (request_id)
-        // The request_type indicates which type of request the receiving user has
-        // The request_id contains the receiving user's own request ID
-        return $response->request_type === 'send'
-            ? \App\Models\SendRequest::find($response->request_id)
-            : \App\Models\DeliveryRequest::find($response->request_id);
+        return $response->offer_type === 'send'
+            ? \App\Models\SendRequest::find($response->offer_id)
+            : \App\Models\DeliveryRequest::find($response->offer_id);
     }
 
     /**
@@ -127,11 +117,11 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
                 // 1. Manual responses where offer_id matches (someone manually responded to this send request)
                 // 2. Matching responses where request_id matches (this send request received a match)
                 $query->where(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('request_type', 'send')
+                    $subQuery->where('offer_type', 'send')
                         ->where('response_type', 'manual')
                         ->where('offer_id', $targetRequestId);
                 })->orWhere(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('request_type', 'send')
+                    $subQuery->where('offer_type', 'send')
                         ->where('response_type', 'matching')
                         ->where('request_id', $targetRequestId);
                 });
@@ -140,11 +130,11 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
                 // 1. Manual responses where offer_id matches (someone manually responded to this delivery request)
                 // 2. Matching responses where request_id matches (this delivery request received a match)
                 $query->where(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('request_type', 'delivery')
+                    $subQuery->where('offer_type', 'delivery')
                         ->where('response_type', 'manual')
                         ->where('offer_id', $targetRequestId);
                 })->orWhere(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('request_type', 'delivery')
+                    $subQuery->where('offer_type', 'delivery')
                         ->where('response_type', 'matching')
                         ->where('request_id', $targetRequestId);
                 });

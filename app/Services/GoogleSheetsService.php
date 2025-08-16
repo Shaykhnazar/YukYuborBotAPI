@@ -38,7 +38,7 @@ class GoogleSheetsService
                 $user->phone ?? '',
                 $user->city ?? '',
                 $user->created_at->toISOString(),
-                '@' . ($user->telegramUser->username ?? ''),
+                $user->telegramUser->username ?? '',
                 $user->telegramUser->telegram_id ?? ''
             ];
 
@@ -361,6 +361,32 @@ class GoogleSheetsService
     public function recordCloseSendRequest($requestId): bool
     {
         return $this->updateRequestStatus('Send requests', $requestId, 'closed');
+    }
+
+    /**
+     * Update delivery request status to current status from database
+     */
+    public function updateDeliveryRequestStatus($requestId): bool
+    {
+        $request = \App\Models\DeliveryRequest::find($requestId);
+        if (!$request) {
+            Log::warning("Delivery request not found for status update", ['request_id' => $requestId]);
+            return false;
+        }
+        return $this->updateRequestStatus('Deliver requests', $requestId, $request->status);
+    }
+
+    /**
+     * Update send request status to current status from database
+     */
+    public function updateSendRequestStatus($requestId): bool
+    {
+        $request = \App\Models\SendRequest::find($requestId);
+        if (!$request) {
+            Log::warning("Send request not found for status update", ['request_id' => $requestId]);
+            return false;
+        }
+        return $this->updateRequestStatus('Send requests', $requestId, $request->status);
     }
 
     /**

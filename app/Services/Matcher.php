@@ -146,7 +146,7 @@ class Matcher
             [
                 'user_id' => $userId,
                 'responder_id' => $responderId,
-                'request_type' => $requestType,
+                'offer_type' => $requestType,
                 'request_id' => $requestId,
                 'offer_id' => $offerId,
             ],
@@ -194,7 +194,7 @@ class Matcher
         $status = $action === 'accept' ? 'responded' : 'rejected';
 
         $updated = Response::where('user_id', $delivererUserId)
-            ->where('request_type', 'send')
+            ->where('offer_type', 'send')
             ->where('request_id', $deliveryRequestId)
             ->where('offer_id', $sendRequestId)
             ->update(['status' => $status]);
