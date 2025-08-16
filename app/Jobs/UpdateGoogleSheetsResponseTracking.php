@@ -90,16 +90,28 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
      */
     private function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
     {
-        if ($response->response_type === Response::TYPE_MANUAL) {
-            // For manual responses, the target request is the one being responded to (offer_id)
-            return $response->offer_type === 'send'
-                ? \App\Models\SendRequest::find($response->offer_id)
-                : \App\Models\DeliveryRequest::find($response->offer_id);
+        // The target request is always the one identified by request_id (the one that received the response)
+        // First try to find it as a SendRequest
+        $sendRequest = \App\Models\SendRequest::find($response->request_id);
+        if ($sendRequest) {
+            return $sendRequest;
         }
 
-        return $response->offer_type === 'send'
-            ? \App\Models\SendRequest::find($response->offer_id)
-            : \App\Models\DeliveryRequest::find($response->offer_id);
+        // If not found as SendRequest, try DeliveryRequest
+        $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+        if ($deliveryRequest) {
+            return $deliveryRequest;
+        }
+
+        // If neither found, log the issue for debugging
+        Log::warning('Target request not found for response', [
+            'response_id' => $response->id,
+            'request_id' => $response->request_id,
+            'offer_id' => $response->offer_id,
+            'offer_type' => $response->offer_type
+        ]);
+
+        return null;
     }
 
     /**
@@ -107,42 +119,22 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
      */
     private function isFirstResponseForRequest(Response $currentResponse, $targetRequest): bool
     {
-        $targetRequestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
         $targetRequestId = $targetRequest->id;
 
-        // Count all responses for this target request (excluding the current one)
-        $existingResponsesCount = Response::where(function ($query) use ($targetRequestId, $targetRequestType) {
-            if ($targetRequestType === 'send') {
-                // For send requests, look for:
-                // 1. Manual responses where offer_id matches (someone manually responded to this send request)
-                // 2. Matching responses where request_id matches (this send request received a match)
-                $query->where(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('offer_type', 'send')
-                        ->where('response_type', 'manual')
-                        ->where('offer_id', $targetRequestId);
-                })->orWhere(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('offer_type', 'send')
-                        ->where('response_type', 'matching')
-                        ->where('request_id', $targetRequestId);
-                });
-            } else {
-                // For delivery requests, look for:
-                // 1. Manual responses where offer_id matches (someone manually responded to this delivery request)
-                // 2. Matching responses where request_id matches (this delivery request received a match)
-                $query->where(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('offer_type', 'delivery')
-                        ->where('response_type', 'manual')
-                        ->where('offer_id', $targetRequestId);
-                })->orWhere(function ($subQuery) use ($targetRequestId) {
-                    $subQuery->where('offer_type', 'delivery')
-                        ->where('response_type', 'matching')
-                        ->where('request_id', $targetRequestId);
-                });
-            }
-        })
+        // Count all responses that target this specific request (excluding the current one)
+        // This includes both manual and matching responses where request_id matches the target
+        $existingResponsesCount = Response::where('request_id', $targetRequestId)
             ->where('id', '!=', $currentResponse->id)
             ->where('created_at', '<', $currentResponse->created_at)
             ->count();
+
+        Log::info('Checking if first response for target request', [
+            'current_response_id' => $currentResponse->id,
+            'target_request_id' => $targetRequestId,
+            'target_request_type' => get_class($targetRequest),
+            'existing_responses_count' => $existingResponsesCount,
+            'is_first' => $existingResponsesCount === 0
+        ]);
 
         return $existingResponsesCount === 0;
     }

@@ -30,26 +30,43 @@ class ResponseObserver
      */
     public function updated(Response $response): void
     {
-        // Check if status changed to accepted OR responded (for deliverer responses)
-        if ($response->status === Response::STATUS_ACCEPTED || $response->status === Response::STATUS_RESPONDED
-        ) {
-            if ($response->wasChanged('status')
-            ) {
+        if ($response->wasChanged('status')) {
+            $previousStatus = $response->getOriginal('status');
+            $currentStatus = $response->status;
+            
+            Log::info('ResponseObserver: Response status changed', [
+                'response_id' => $response->id,
+                'previous_status' => $previousStatus,
+                'current_status' => $currentStatus,
+                'response_type' => $response->response_type,
+                'offer_type' => $response->offer_type
+            ]);
+            
+            // Note: We don't need to call UpdateGoogleSheetsResponseTracking on status changes
+            // because response tracking (counts) should only happen once when the response is created
+            // Status changes should only trigger acceptance tracking, not response count tracking
+            
+            // When sender accepts deliverer's response (waiting → accepted OR responded → accepted)
+            // Update acceptance tracking in Google Sheets (показать "принят")
+            if ($currentStatus === Response::STATUS_ACCEPTED && 
+                    in_array($previousStatus, [Response::STATUS_WAITING, Response::STATUS_RESPONDED])) {
 
-                Log::info('ResponseObserver: Response accepted/responded', [
+                Log::info('ResponseObserver: Sender accepted deliverer response', [
                     'response_id' => $response->id,
                     'response_type' => $response->response_type,
-                    'status' => $response->status
+                    'offer_type' => $response->offer_type,
+                    'previous_status' => $previousStatus
                 ]);
 
-                // Dispatch queued job to update Google Sheets acceptance tracking with a short delay
+                // Dispatch job to update Google Sheets acceptance tracking
                 UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id)
                     ->delay(now()->addSeconds(3))
                     ->onQueue('gsheets');
 
-                Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [
+                Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job for sender acceptance', [
                     'response_id' => $response->id,
-                    'status' => $response->status
+                    'previous_status' => $previousStatus,
+                    'current_status' => $currentStatus
                 ]);
             }
         }
