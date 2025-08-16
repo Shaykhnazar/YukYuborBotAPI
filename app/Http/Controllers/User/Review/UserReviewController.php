@@ -59,7 +59,7 @@ class UserReviewController extends BaseController
 
             // Check if user is involved in this request (either as sender or has accepted responses)
             $isInvolved = $request->user_id === $owner->id ||
-                         \App\Models\Response::where('request_type', 'send')
+                         \App\Models\Response::where('offer_type', 'send')
                                             ->where('offer_id', $dto->requestId)
                                             ->where('user_id', $owner->id)
                                             ->where('status', 'accepted')
@@ -72,7 +72,7 @@ class UserReviewController extends BaseController
 
             // Check if user is involved in this request (either as deliverer or has accepted responses)
             $isInvolved = $request->user_id === $owner->id ||
-                         \App\Models\Response::where('request_type', 'delivery')
+                         \App\Models\Response::where('offer_type', 'delivery')
                                             ->where('offer_id', $dto->requestId)
                                             ->where('user_id', $owner->id)
                                             ->where('status', 'accepted')

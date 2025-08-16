@@ -60,9 +60,9 @@ class Response extends Model
     // ✅ ADD: Helper method to get the request based on type
     public function getRequestAttribute()
     {
-        if ($this->request_type === 'send') {
+        if ($this->offer_type === 'send') {
             return $this->sendRequest;
-        } elseif ($this->request_type === 'delivery') {
+        } elseif ($this->offer_type === 'delivery') {
             return $this->deliveryRequest;
         }
         return null;

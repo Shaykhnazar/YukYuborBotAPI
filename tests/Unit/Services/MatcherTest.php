@@ -85,7 +85,7 @@ class MatcherTest extends TestCase
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
             'responder_id' => $this->senderUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'response_type' => 'matching'
@@ -196,7 +196,7 @@ class MatcherTest extends TestCase
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
             'responder_id' => $this->senderUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'delivery',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'response_type' => 'matching'
@@ -250,7 +250,7 @@ class MatcherTest extends TestCase
         // Create existing deliverer response
         Response::factory()->create([
             'user_id' => $this->delivererUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'status' => 'pending'
@@ -265,7 +265,7 @@ class MatcherTest extends TestCase
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->senderUser->id,
             'responder_id' => $this->delivererUser->id,
-            'request_type' => 'delivery',
+            'offer_type' => 'delivery',
             'request_id' => $sendRequest->id,
             'offer_id' => $deliveryRequest->id,
             'status' => 'waiting'
@@ -288,7 +288,7 @@ class MatcherTest extends TestCase
         // Create existing deliverer response
         Response::factory()->create([
             'user_id' => $this->delivererUser->id,
-            'request_type' => 'send',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'status' => 'pending'

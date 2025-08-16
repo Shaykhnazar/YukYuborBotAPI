@@ -94,11 +94,11 @@ class SendRequestController extends BaseController
             Response::where(function($query) use ($id) {
                 $query->where(function($subQuery) use ($id) {
                     // Responses where this send request is the main request
-                    $subQuery->where('request_type', 'send')
+                    $subQuery->where('offer_type', 'send')
                              ->where('request_id', $id);
                 })->orWhere(function($subQuery) use ($id) {
                     // Responses where this send request appears as an offer
-                    $subQuery->where('request_type', 'delivery')
+                    $subQuery->where('offer_type', 'delivery')
                              ->where('offer_id', $id);
                 });
             })->delete();

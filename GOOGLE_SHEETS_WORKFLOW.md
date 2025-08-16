@@ -2,7 +2,7 @@
 
 ## Overview
 
-The PostLink API integrates with Google Sheets to track delivery and send requests, including response tracking and acceptance metrics. This document outlines the complete workflow and identifies current issues with the response acceptance/decline tracking.
+The PostLink API integrates with Google Sheets to track delivery and send requests, including response tracking and acceptance metrics. This document outlines the complete workflow based on the current implementation.
 
 ## Architecture Components
 
@@ -11,14 +11,12 @@ The PostLink API integrates with Google Sheets to track delivery and send reques
 - **Configuration**: Uses `revolution/laravel-google-sheets` package with service account authentication
 
 ### 2. Job Queue System
-- **UpdateGoogleSheetsResponseTracking**: Handles response received tracking
-- **UpdateGoogleSheetsAcceptanceTracking**: Handles response acceptance tracking
-- **RecordSendRequestToGoogleSheets**: Records new send requests
-- **RecordDeliveryRequestToGoogleSheets**: Records new delivery requests
-- **RecordUserToGoogleSheets**: Records new users
+- **UpdateGoogleSheetsResponseTracking**: Handles response received tracking (columns L, M, N)
+- **UpdateGoogleSheetsAcceptanceTracking**: Handles response acceptance tracking (columns O, P, Q)
 
 ### 3. Observer Pattern
-- **ResponseObserver**: Monitors Response model changes and dispatches jobs
+- **ResponseObserver**: Monitors Response model changes and dispatches tracking jobs
+- **RequestObserver**: Monitors request creation and calls GoogleSheetsService directly
 
 ## Google Sheets Structure
 
@@ -52,158 +50,109 @@ The PostLink API integrates with Google Sheets to track delivery and send reques
 
 ### 1. Request Creation Flow
 ```
-User creates request → Model Observer → Job dispatched → GoogleSheetsService
-                                                      ↓
-                                              Append row to sheet
-                                                      ↓
-                                              Cache row position
-                                                      ↓
-                                              Set creation lock
+User creates request → RequestObserver → GoogleSheetsService.recordAdd[Send|Delivery]Request()
+                                                    ↓
+                                            Append row to sheet with initial data
+                                                    ↓
+                                            Columns L,M,N,O,P,Q set to defaults
+                                            (не получен, 0, '', не принят, '', '')
 ```
 
-### 2. Response Creation Flow (CURRENTLY WORKING)
+### 2. Response Creation Flow
 ```
-Response created → ResponseObserver.created() → UpdateGoogleSheetsResponseTracking job
-                                                              ↓
-                                                    Find request row in sheet
-                                                              ↓
-                                                    Update columns L, M, N
-                                                    (Response received, count, wait time)
-```
-
-### 3. Response Acceptance Flow (ISSUE HERE)
-```
-Response accepted → ResponseObserver.updated() → UpdateGoogleSheetsAcceptanceTracking job
-                                                                ↓
-                                                      Find request row in sheet
-                                                                ↓
-                                                      Update columns O, P, Q
-                                                      (Acceptance status, time, wait time)
+Response created → ResponseObserver.created() → UpdateGoogleSheetsResponseTracking job (3s delay)
+                                                             ↓
+                                                   Find target request (using request_id)
+                                                             ↓
+                                                   Update columns L, M, N
+                                                   (получен, increment count, calculate wait time)
 ```
 
-## Current Issues Analysis
-
-### Problem: Row Finding Failures
-
-#### Root Cause
-The `findRowPosition()` method fails to locate recently created request rows in Google Sheets, causing acceptance tracking updates to fail.
-
-#### Technical Details
-1. **Race Condition**: Response acceptance jobs run before request rows are fully cached
-2. **Search Logic Issues**: Complex batch search algorithm sometimes misses rows
-3. **Cache Misses**: Row position cache frequently missing for new requests
-4. **API Limitations**: Google Sheets API has eventual consistency issues
-
-#### Evidence from Logs
+### 3. Response Acceptance Flow
 ```
-Request ID 109 not found in Deliver requests
-Could not find row position for request after exhaustive search
+Response status → accepted → ResponseObserver.updated() → UpdateGoogleSheetsAcceptanceTracking job (3s delay)
+                                                                         ↓
+                                                               For matching responses:
+                                                               Update BOTH send & delivery requests
+                                                                         ↓
+                                                               Update columns O, P, Q
+                                                               (принят, acceptance time, wait time)
 ```
 
-### Current Mitigation Strategies
+## Response Table Structure & Logic
 
-#### 1. Job Delays
-- **Response tracking**: 10-second delay
-- **Acceptance tracking**: 10-second delay
-- **Purpose**: Give time for request rows to be added and cached
+### Response Table Fields
+- **user_id**: Who receives/sees the response (the request owner)
+- **responder_id**: Who is making the response
+- **offer_type**: Type of the receiving user's request (`send` or `delivery`)
+- **request_id**: The receiving user's own request ID
+- **offer_id**: The offering user's request ID
+- **response_type**: `manual` or `matching`
+- **status**: `pending` → `responded` → `accepted` (or `rejected`)
 
-#### 2. Cache Coordination
-- **Creation locks**: Prevent concurrent access during row creation
-- **Row position caching**: Cache row positions indefinitely
-- **Wait logic**: Jobs wait for creation locks before searching
+### Target Request Identification
+For Google Sheets tracking, the **target request** (which receives responses) is always:
+- **Request ID**: `response.request_id`
+- **Request Type**: `response.offer_type`
+- **Worksheet**: `"Send requests"` if `offer_type === 'send'`, `"Deliver requests"` if `offer_type === 'delivery'`
 
-#### 3. Retry Logic
-- **Multiple search attempts**: Up to 3 retries with increasing delays
-- **Fallback search**: Full range search if batch search fails
-- **Graceful failures**: Jobs return success even if row not found
+### Matching Response Logic
+For matching responses, two requests are involved:
+1. **Target Request** (receives response): `request_id` in worksheet `offer_type`
+2. **Offering Request** (makes response): `offer_id` in opposite worksheet
 
-## Identified Workflow Issues
+When acceptance occurs, **both requests should be updated** in their respective worksheets.
 
-### Issue 1: Wrong Request Type Mapping
-**Problem**: The acceptance tracking logic might be looking in the wrong worksheet.
+## Job Execution Details
 
-**Current Logic**:
-```php
-// In UpdateGoogleSheetsAcceptanceTracking job
-$requestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
-$googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id);
-```
+### UpdateGoogleSheetsResponseTracking
+**Trigger**: Response created  
+**Delay**: 3 seconds  
+**Queue**: gsheets  
+**Logic**:
+1. Find response by ID
+2. Determine target request using `request_id` and `offer_type`
+3. Find row in appropriate worksheet
+4. Update columns L (получен), M (increment count), N (calculate wait time if first response)
 
-**Potential Issue**: For matching responses, we might need to update BOTH worksheets, not just one.
+### UpdateGoogleSheetsAcceptanceTracking
+**Trigger**: Response status changes to 'accepted'  
+**Delay**: 3 seconds  
+**Queue**: gsheets  
+**Logic**:
+1. Find response by ID
+2. For **matching responses**: Update both send and delivery requests
+3. For **manual responses**: Update only the target request
+4. Update columns O (принят), P (acceptance time), Q (calculate wait time)
 
-### Issue 2: Complex Response Relationship Logic
-**Problem**: The job tries to determine which request received the response using complex logic.
+### Additional Tracking in ResponseController
+For matching responses, when deliverer's response is updated to 'accepted' in `handleSenderAcceptance()`, an additional `UpdateGoogleSheetsAcceptanceTracking` job is explicitly dispatched to ensure proper tracking of both responses.
 
-**Current Logic**:
-```php
-// For matching responses, the logic is more complex
-return $response->request_type === 'send' ?
-    \App\Models\DeliveryRequest::find($response->request_id)
-    : \App\Models\SendRequest::find($response->request_id);
-```
+## Current Implementation Status
 
-**Issue**: This might not correctly identify which request should be updated in Google Sheets.
+### Working Components
+✅ Request creation tracking  
+✅ Response received tracking (columns L, M, N)  
+✅ Response acceptance tracking (columns O, P, Q)  
+✅ Dual worksheet updates for matching responses  
+✅ Race condition handling with job delays  
+✅ Proper request identification logic  
 
-### Issue 3: Misaligned Tracking Expectations
-**Problem**: We might be tracking the wrong entity's status.
-
-**Question**: When a response is accepted, which request should be updated?
-- The request that received the response?
-- The request that made the response?
-- Both requests?
-
-## Proposed Solutions
-
-### Solution 1: Simplify Row Finding
-Replace complex search with direct sheet scanning:
-```php
-// Get all data in one call and search in memory
-$allData = $sheet->range('A:A')->get();
-// Search through array instead of multiple API calls
-```
-
-### Solution 2: Dual Worksheet Updates
-For matching responses, update both related requests:
-```php
-// Update both send and delivery request sheets when response is accepted
-if ($response->response_type === 'matching') {
-    $this->updateSendRequestSheet($sendRequestId);
-    $this->updateDeliveryRequestSheet($deliveryRequestId);
-}
-```
-
-### Solution 3: Event-Driven Architecture
-Instead of observers, use Laravel events:
-```php
-// Dispatch events with clear intent
-ResponseAccepted::dispatch($response);
-ResponseDeclined::dispatch($response);
-```
-
-### Solution 4: Background Synchronization
-Implement a periodic sync job that ensures all data is correctly reflected:
-```php
-// Run every hour to sync any missed updates
-SyncGoogleSheetsData::dispatch()->everyHour();
-```
-
-## Recommended Next Steps
-
-1. **Audit Current Data**: Check Google Sheets to see what data is actually missing
-2. **Simplify Search Logic**: Replace complex search with simple full-range scan
-3. **Clarify Business Logic**: Determine exactly which requests should be updated when
-4. **Add Monitoring**: Implement better logging and monitoring for failed updates
-5. **Consider Alternative Approaches**: Evaluate if Google Sheets is the right tool for this use case
+### Recent Fixes
+- Fixed request ID mapping in both tracking jobs
+- Added explicit job dispatch for deliverer's response acceptance
+- Corrected target request identification logic
+- Fixed acceptance tracking for matching responses
 
 ## Testing Checklist
 
-- [ ] Create send request → Verify appears in "Send requests" sheet
-- [ ] Create delivery request → Verify appears in "Deliver requests" sheet  
-- [ ] Create response → Verify response tracking columns update
-- [ ] Accept response → Verify acceptance columns update
-- [ ] Decline response → Verify status doesn't change inappropriately
-- [ ] Test with multiple rapid requests → Verify no race conditions
-- [ ] Check cache behavior → Verify row positions are cached correctly
+- [x] Create send request → Verify appears in "Send requests" sheet
+- [x] Create delivery request → Verify appears in "Deliver requests" sheet
+- [x] Create matching response → Verify response tracking columns update (L, M, N)
+- [x] Accept matching response → Verify acceptance columns update (O, P, Q) in both worksheets
+- [x] Create manual response → Verify response tracking works
+- [x] Accept manual response → Verify acceptance tracking works
+- [ ] Test with multiple rapid responses → Verify no race conditions
 - [ ] Monitor job queue → Verify no failed jobs accumulating
 
 ## Configuration Requirements
@@ -219,4 +168,25 @@ GOOGLE_SERVICE_FILE=path/to/service-account.json
 ```bash
 # Ensure queue worker is running for gsheets queue
 php artisan queue:work --queue=gsheets,default
+```
+
+## Troubleshooting
+
+### Common Issues
+1. **"Could not determine target request"**: Check Response table data integrity
+2. **Row not found in worksheet**: Verify request was properly created and recorded
+3. **Jobs not executing**: Check queue worker and Redis connection
+4. **Wrong worksheet updates**: Verify offer_type field in Response table
+
+### Debug Commands
+```bash
+# Check job queue status
+php artisan queue:monitor gsheets
+
+# Check recent jobs
+php artisan horizon:status
+
+# Manual job dispatch for testing
+php artisan tinker
+UpdateGoogleSheetsAcceptanceTracking::dispatch($responseId);
 ```

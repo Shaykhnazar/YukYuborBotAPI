@@ -9,8 +9,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
-use App\Jobs\RecordSendRequestToGoogleSheets;
-use App\Jobs\CloseRequestInGoogleSheets;
 
 #[ObservedBy(RequestObserver::class)]
 class SendRequest extends Model
@@ -52,8 +50,8 @@ class SendRequest extends Model
     {
         return $this->hasMany(Response::class, 'request_id', 'id')
             ->where(function($query) {
-                $query->where('request_type', 'send')
-                    ->orWhere('request_type', 'delivery');
+                $query->where('offer_type', 'send')
+                    ->orWhere('offer_type', 'delivery');
             });
     }
 
@@ -61,7 +59,7 @@ class SendRequest extends Model
     public function manualResponses(): HasMany
     {
         return $this->hasMany(Response::class, 'offer_id', 'id')
-            ->where('request_type', 'send')
+            ->where('offer_type', 'send')
             ->where('response_type', 'manual');
     }
 
@@ -72,11 +70,11 @@ class SendRequest extends Model
             $query->where(function($subQuery) {
                 // Matching responses: this send request is the primary request
                 $subQuery->where('request_id', $this->id)
-                    ->whereIn('request_type', ['send', 'delivery']);
+                    ->whereIn('offer_type', ['send', 'delivery']);
             })->orWhere(function($subQuery) {
                 // Manual responses: someone manually responded to this send request
                 $subQuery->where('offer_id', $this->id)
-                    ->where('request_type', 'send')
+                    ->where('offer_type', 'send')
                     ->where('response_type', 'manual');
             });
         });
@@ -86,7 +84,7 @@ class SendRequest extends Model
     public function offerResponses(): HasMany
     {
         return $this->hasMany(Response::class, 'offer_id', 'id')
-            ->where('request_type', 'delivery');
+            ->where('offer_type', 'delivery');
     }
 
     // All responses related to this send request (both as request and offer)
@@ -94,9 +92,9 @@ class SendRequest extends Model
     {
         return $this->hasMany(Response::class, function($query) {
             $query->where(function($subQuery) {
-                $subQuery->where('request_id', $this->id)->where('request_type', 'send');
+                $subQuery->where('request_id', $this->id)->where('offer_type', 'send');
             })->orWhere(function($subQuery) {
-                $subQuery->where('offer_id', $this->id)->where('request_type', 'delivery');
+                $subQuery->where('offer_id', $this->id)->where('offer_type', 'delivery');
             });
         });
     }
@@ -111,7 +109,7 @@ class SendRequest extends Model
             'id', // Foreign key on chats table
             'id', // Local key on send_requests table
             'chat_id' // Local key on responses table
-        )->where('responses.request_type', 'send')
+        )->where('responses.offer_type', 'send')
          ->whereIn('responses.status', ['accepted', 'waiting']);
     }
 
@@ -171,43 +169,4 @@ class SendRequest extends Model
             : $this->toLocation->parent;
     }
 
-    /**
-     * Boot method to handle Google Sheets integration
-     */
-    protected static function boot()
-    {
-        parent::boot();
-
-        static::created(function ($request) {
-            try {
-                // Dispatch queued job to add send request to Google Sheets
-                RecordSendRequestToGoogleSheets::dispatch($request->id)
-                    ->delay(now()->addSeconds(2))
-                    ->onQueue('gsheets');
-            } catch (\Exception $e) {
-                // Log error but don't fail request creation
-                \Log::error('Failed to dispatch send request Google Sheets job during creation', [
-                    'request_id' => $request->id,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        });
-
-        static::updated(function ($request) {
-            try {
-                // Update Google Sheets when request status changes to closed
-                if ($request->isDirty('status') && in_array($request->status, ['closed', 'completed'])) {
-                    CloseRequestInGoogleSheets::dispatch('send', $request->id)
-                        ->delay(now()->addSeconds(3))
-                        ->onQueue('gsheets');
-                }
-            } catch (\Exception $e) {
-                // Log error but don't fail request update
-                \Log::error('Failed to update send request in Google Sheets during update', [
-                    'request_id' => $request->id,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        });
-    }
 }
