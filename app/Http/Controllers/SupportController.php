@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller as BaseController;
 use App\Services\TelegramUserService;
+use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -12,7 +13,9 @@ class SupportController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,
-    ) {}
+    )
+    {
+    }
 
     public function sendMessage(Request $request): JsonResponse
     {
@@ -36,26 +39,37 @@ class SupportController extends BaseController
         }
 
         try {
+            // Send the support trigger message
             $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
                 'chat_id' => $telegramId,
-                'text' => 'служба поддержки'
+                'text' => '/support',
+                'parse_mode' => 'HTML'
             ]);
 
             if ($response->successful()) {
+                $data = $response->json();
+
+                if ($data['ok']) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => 'Support request initiated successfully'
+                    ]);
+                }
+
                 return response()->json([
-                    'success' => true,
-                    'message' => 'Support message sent successfully'
-                ]);
+                    'success' => false,
+                    'message' => 'Telegram API error: '.($data['description'] ?? 'Unknown error')
+                ], 400);
             }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to send message'
+                'message' => 'Failed to send message to Telegram'
             ], 500);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error sending support message: ' . $e->getMessage()
+                'message' => 'Error sending support message: '.$e->getMessage()
             ], 500);
         }
     }

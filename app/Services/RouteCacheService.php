@@ -31,7 +31,7 @@ class RouteCacheService
     public function getActiveRoutes(): Collection
     {
         return Cache::remember(self::CACHE_KEY_ACTIVE_ROUTES, self::CACHE_TTL_ROUTES, function () {
-//            Log::info('Cache miss: Loading active routes from database');
+            Log::info('Cache miss: Loading active routes from database');
 
             return Route::active()
                 ->with(['fromLocation.parent', 'toLocation.parent'])
@@ -46,11 +46,9 @@ class RouteCacheService
     public function getPopularRoutes(): Collection
     {
         return Cache::remember(self::CACHE_KEY_POPULAR_ROUTES, self::CACHE_TTL_COUNTS, function () {
-//            Log::info('Cache miss: Building popular routes from database');
+            Log::info('Cache miss: Building popular routes from database');
 
-            $routes = $this->getActiveRoutes();
-
-            return $routes->map(function ($route) {
+            return $this->getActiveRoutes()->map(function ($route) {
                 // Get from location details
                 $fromLocation = $route->fromLocation;
                 $fromCountry = $fromLocation->type === 'country'
@@ -107,7 +105,7 @@ class RouteCacheService
         $cacheKey = self::CACHE_KEY_ROUTE_REQUESTS_COUNT_PREFIX . $routeId;
 
         return Cache::remember($cacheKey, self::CACHE_TTL_COUNTS, function () use ($routeId) {
-//            Log::info('Cache miss: Calculating route requests count', ['route_id' => $routeId]);
+            Log::info('Cache miss: Calculating route requests count', ['route_id' => $routeId]);
 
             $route = Route::with(['fromLocation.children', 'toLocation.children'])->find($routeId);
 
@@ -125,7 +123,7 @@ class RouteCacheService
     public function getRoutesWithRequestCounts(): Collection
     {
         return Cache::remember(self::CACHE_KEY_ACTIVE_REQUESTS_COUNTS, self::CACHE_TTL_COUNTS, function () {
-//            Log::info('Cache miss: Loading routes with request counts from database');
+            Log::info('Cache miss: Loading routes with request counts from database');
 
             $routes = $this->getActiveRoutes();
 
@@ -147,10 +145,10 @@ class RouteCacheService
         $cacheKey = self::CACHE_KEY_COUNTRY_ROUTES_PREFIX . "{$fromCountryId}_{$toCountryId}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL_ROUTES, function () use ($fromCountryId, $toCountryId) {
-//            Log::info('Cache miss: Loading country routes from database', [
-//                'from_country_id' => $fromCountryId,
-//                'to_country_id' => $toCountryId
-//            ]);
+            Log::info('Cache miss: Loading country routes from database', [
+                'from_country_id' => $fromCountryId,
+                'to_country_id' => $toCountryId
+            ]);
 
             return Route::active()
                 ->forCountries($fromCountryId, $toCountryId)

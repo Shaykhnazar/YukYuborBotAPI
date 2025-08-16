@@ -506,7 +506,7 @@ class UserRequestControllerTest extends TestCase
             'user_id' => $this->otherUser->id,
             'owner_id' => $this->user->id,
             'request_id' => $sendRequest->id,
-            'offer_type' => 'send'
+            'request_type' => 'send'
         ]);
 
         $request = (object)[

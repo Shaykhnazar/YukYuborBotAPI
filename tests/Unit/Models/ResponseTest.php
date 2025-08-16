@@ -145,8 +145,8 @@ class ResponseTest extends TestCase
 
     public function test_scope_accepted()
     {
-        Response::factory()->create(['status' => Response::STATUS_ACCEPTED]);
-        Response::factory()->create(['status' => Response::STATUS_PENDING]);
+        Response::factory()->accepted()->create();
+        Response::factory()->pending()->create();
 
         $acceptedResponses = Response::accepted()->get();
 
