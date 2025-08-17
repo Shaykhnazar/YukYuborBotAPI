@@ -50,7 +50,7 @@ class Matcher
             $this->createResponseRecord(
                 $deliveryRequest->user_id, // deliverer will see this
                 $send->user_id,            // sender made the offer
-                'delivery',                // type of request being updated
+                'send',                // type of request being updated
                 $deliveryRequest->id,      // deliverer's request ID
                 $send->id                 // sender's request ID
             );

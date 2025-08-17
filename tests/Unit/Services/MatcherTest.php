@@ -196,7 +196,7 @@ class MatcherTest extends TestCase
         $this->assertDatabaseHas('responses', [
             'user_id' => $this->delivererUser->id,
             'responder_id' => $this->senderUser->id,
-            'offer_type' => 'delivery',
+            'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
             'offer_id' => $sendRequest->id,
             'response_type' => 'matching'
