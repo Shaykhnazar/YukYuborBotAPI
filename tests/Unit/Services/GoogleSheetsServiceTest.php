@@ -280,11 +280,11 @@ class GoogleSheetsServiceTest extends TestCase
 
         $this->mockSheets->shouldReceive('spreadsheet')
             ->with('test-spreadsheet-id')
-            ->times(4)
+            ->times(5)
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('sheet')
             ->with('Send requests')
-            ->times(4)
+            ->times(5)
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('all')
             ->once()
@@ -309,6 +309,14 @@ class GoogleSheetsServiceTest extends TestCase
 
         $this->mockSheets->shouldReceive('range')
             ->with('N1')
+            ->once()
+            ->andReturnSelf();
+        $this->mockSheets->shouldReceive('update')
+            ->with(Mockery::type('array'))
+            ->once();
+
+        $this->mockSheets->shouldReceive('range')
+            ->with('O1')
             ->once()
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('update')
@@ -380,7 +388,7 @@ class GoogleSheetsServiceTest extends TestCase
 
         // Mock all the range updates
         $this->mockSheets->shouldReceive('range')
-            ->with('O1')
+            ->with('P1')
             ->once()
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('update')
@@ -388,7 +396,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $this->mockSheets->shouldReceive('range')
-            ->with('P1')
+            ->with('Q1')
             ->once()
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('update')
@@ -396,7 +404,7 @@ class GoogleSheetsServiceTest extends TestCase
             ->once();
 
         $this->mockSheets->shouldReceive('range')
-            ->with('Q1')
+            ->with('R1')
             ->once()
             ->andReturnSelf();
         $this->mockSheets->shouldReceive('update')

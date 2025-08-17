@@ -46,28 +46,37 @@ class ResponseObserver
             // because response tracking (counts) should only happen once when the response is created
             // Status changes should only trigger acceptance tracking, not response count tracking
 
-            // Only trigger acceptance tracking when the SENDER accepts the DELIVERER's offer
-            // This is the final step that should show "принят" for both requests
-            // Look for: waiting → accepted (sender accepting deliverer's delivery offer)
-            if ($currentStatus === Response::STATUS_ACCEPTED && 
-                    $previousStatus === Response::STATUS_WAITING) {
+            // Trigger acceptance tracking in two scenarios:
+            // 1. When SENDER accepts the DELIVERER's offer (final step): waiting → accepted 
+            // 2. When DELIVERER accepts the SEND request (intermediate step): pending → responded
+            
+            if (($currentStatus === Response::STATUS_ACCEPTED && $previousStatus === Response::STATUS_WAITING) ||
+                ($currentStatus === Response::STATUS_RESPONDED && $previousStatus === Response::STATUS_PENDING)) {
 
-                Log::info('ResponseObserver: Final acceptance - sender accepted deliverer offer', [
+                $isDelivererAcceptance = $currentStatus === Response::STATUS_RESPONDED;
+                $isFinalAcceptance = $currentStatus === Response::STATUS_ACCEPTED;
+
+                Log::info('ResponseObserver: Response acceptance detected', [
                     'response_id' => $response->id,
                     'response_type' => $response->response_type,
                     'offer_type' => $response->offer_type,
-                    'previous_status' => $previousStatus
+                    'previous_status' => $previousStatus,
+                    'current_status' => $currentStatus,
+                    'is_deliverer_acceptance' => $isDelivererAcceptance,
+                    'is_final_acceptance' => $isFinalAcceptance
                 ]);
 
-                // Dispatch job to update Google Sheets acceptance tracking for BOTH requests
+                // For traveller acceptance (responded status), only update their own request status initially
+                // For final acceptance, update both requests
                 UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id)
                     ->delay(now()->addSeconds(3))
                     ->onQueue('gsheets');
 
-                Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job for final acceptance', [
+                Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsAcceptanceTracking job', [
                     'response_id' => $response->id,
                     'previous_status' => $previousStatus,
-                    'current_status' => $currentStatus
+                    'current_status' => $currentStatus,
+                    'acceptance_type' => $isDelivererAcceptance ? 'deliverer' : 'final'
                 ]);
             }
         }

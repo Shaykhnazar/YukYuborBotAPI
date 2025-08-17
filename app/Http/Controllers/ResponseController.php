@@ -900,8 +900,16 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Response not found'], 404);
         }
 
+        // Store response details before deletion for status management
+        $responseOfferType = $response->offer_type;
+        $responseOfferId = $response->offer_id;
+        $responseRequestId = $response->request_id;
+
         // Delete the response record for cancellation
         $response->delete();
+
+        // Update request statuses based on remaining responses
+        $this->updateRequestStatusAfterCancellation($responseOfferType, $responseOfferId, $responseRequestId);
 
         return response()->json(['message' => 'Response cancelled']);
     }
@@ -922,8 +930,16 @@ class ResponseController extends Controller
             return response()->json(['error' => 'Manual response not found or cannot be cancelled'], 404);
         }
 
+        // Store response details before deletion for status management
+        $responseOfferType = $response->offer_type;
+        $responseOfferId = $response->offer_id;
+        $responseRequestId = $response->request_id;
+
         // Delete the response record for cancellation
         $response->delete();
+
+        // Update request status based on remaining responses for manual responses
+        $this->updateRequestStatusAfterManualCancellation($responseOfferType, $responseOfferId);
 
         // Send notification to request owner that response was cancelled
 //        $this->sendTelegramNotification(
@@ -933,6 +949,102 @@ class ResponseController extends Controller
 //        );
 
         return response()->json(['message' => 'Manual response cancelled successfully']);
+    }
+
+    /**
+     * Update request status after matching response cancellation
+     */
+    private function updateRequestStatusAfterCancellation(string $offerType, int $offerId, int $requestId): void
+    {
+        // Update the offer request status
+        if ($offerType === 'send') {
+            $sendRequest = SendRequest::find($offerId);
+            if ($sendRequest && $sendRequest->status !== 'open') {
+                // Check if there are any remaining active responses
+                $hasOtherResponses = Response::where('offer_id', $offerId)
+                    ->where('offer_type', 'send')
+                    ->whereIn('status', ['pending', 'waiting', 'responded'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $sendRequest->update(['status' => $newStatus]);
+            }
+        } elseif ($offerType === 'delivery') {
+            $deliveryRequest = DeliveryRequest::find($offerId);
+            if ($deliveryRequest && $deliveryRequest->status !== 'open') {
+                // Check if there are any remaining active responses
+                $hasOtherResponses = Response::where('offer_id', $offerId)
+                    ->where('offer_type', 'delivery')
+                    ->whereIn('status', ['pending', 'waiting', 'responded'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $deliveryRequest->update(['status' => $newStatus]);
+            }
+        }
+
+        // Update the main request status
+        if ($offerType === 'send') {
+            // For send offers, the main request is a delivery request
+            $deliveryRequest = DeliveryRequest::find($requestId);
+            if ($deliveryRequest && $deliveryRequest->status !== 'open') {
+                // Check if there are any remaining active responses for this delivery request
+                $hasOtherResponses = Response::where('request_id', $requestId)
+                    ->where('offer_type', 'send')
+                    ->whereIn('status', ['pending', 'waiting', 'responded'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $deliveryRequest->update(['status' => $newStatus]);
+            }
+        } elseif ($offerType === 'delivery') {
+            // For delivery offers, the main request is a send request
+            $sendRequest = SendRequest::find($requestId);
+            if ($sendRequest && $sendRequest->status !== 'open') {
+                // Check if there are any remaining active responses for this send request
+                $hasOtherResponses = Response::where('request_id', $requestId)
+                    ->where('offer_type', 'delivery')
+                    ->whereIn('status', ['pending', 'waiting', 'responded'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $sendRequest->update(['status' => $newStatus]);
+            }
+        }
+    }
+
+    /**
+     * Update request status after manual response cancellation
+     */
+    private function updateRequestStatusAfterManualCancellation(string $offerType, int $offerId): void
+    {
+        if ($offerType === 'send') {
+            $sendRequest = SendRequest::find($offerId);
+            if ($sendRequest && $sendRequest->status !== 'open') {
+                // Check if there are any remaining manual responses
+                $hasOtherResponses = Response::where('offer_id', $offerId)
+                    ->where('offer_type', 'send')
+                    ->where('response_type', Response::TYPE_MANUAL)
+                    ->whereIn('status', ['pending', 'waiting'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $sendRequest->update(['status' => $newStatus]);
+            }
+        } elseif ($offerType === 'delivery') {
+            $deliveryRequest = DeliveryRequest::find($offerId);
+            if ($deliveryRequest && $deliveryRequest->status !== 'open') {
+                // Check if there are any remaining manual responses
+                $hasOtherResponses = Response::where('offer_id', $offerId)
+                    ->where('offer_type', 'delivery')
+                    ->where('response_type', Response::TYPE_MANUAL)
+                    ->whereIn('status', ['pending', 'waiting'])
+                    ->exists();
+
+                $newStatus = $hasOtherResponses ? 'has_responses' : 'open';
+                $deliveryRequest->update(['status' => $newStatus]);
+            }
+        }
     }
 
     /**
@@ -949,7 +1061,7 @@ class ResponseController extends Controller
         $telegramId = $user->telegramUser->telegram;
         $notificationText = "📬 {$message}";
 
-        $token = env('TELEGRAM_BOT_TOKEN');
+        $token = config('auth.guards.tgwebapp.token');
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $notificationText,

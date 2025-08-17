@@ -58,7 +58,8 @@ class UpdateRequestInGoogleSheets implements ShouldQueue
                 // This ensures both send and delivery requests show as "matched" and "принят"
                 $result = $googleSheetsService->updateRequestResponseAccepted(
                     $this->requestType, 
-                    $this->requestId
+                    $this->requestId,
+                    null // No specific response time available here, will use fallback logic
                 );
                 
                 Log::info('Request marked as matched/matched_manually, updated acceptance tracking', [
