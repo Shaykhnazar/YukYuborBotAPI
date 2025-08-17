@@ -49,18 +49,9 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 //                'request_type' => $response->request_type,
 //            ]);
 
-            // For matching responses, behavior depends on response status
+            // For matching responses, update BOTH related requests
             if ($response->response_type === Response::TYPE_MATCHING) {
-                if ($response->status === Response::STATUS_ACCEPTED) {
-                    // Final acceptance - update both requests
-                    $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
-                } elseif ($response->status === Response::STATUS_RESPONDED) {
-                    // Deliverer responded - only update the deliverer's request for now
-                    $this->updateDelivererRequestOnly($response, $googleSheetsService);
-                } else {
-                    // Other statuses - use normal logic
-                    $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
-                }
+                $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
             } else {
                 // For manual responses, update only the target request
                 $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
@@ -91,7 +82,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
             $sendRequest = \App\Models\SendRequest::find($response->offer_id);
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
         } else {
-            // DeliveryRequest is being offered, SendRequest received the offer  
+            // DeliveryRequest is being offered, SendRequest received the offer
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
             $sendRequest = \App\Models\SendRequest::find($response->request_id);
         }
@@ -143,7 +134,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
     {
         // When deliverer responds, only update their delivery request
         // The send request should only be updated when sender finally accepts
-        
+
         if ($response->offer_type === 'send') {
             // Deliverer owns a delivery request and is responding to a send request
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
