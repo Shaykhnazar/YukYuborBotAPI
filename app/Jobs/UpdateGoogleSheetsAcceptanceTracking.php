@@ -49,9 +49,18 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 //                'request_type' => $response->request_type,
 //            ]);
 
-            // For matching responses, update BOTH related requests
+            // For matching responses, behavior depends on response status
             if ($response->response_type === Response::TYPE_MATCHING) {
-                $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
+                if ($response->status === Response::STATUS_ACCEPTED) {
+                    // Final acceptance - update both requests
+                    $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
+                } elseif ($response->status === Response::STATUS_RESPONDED) {
+                    // Deliverer responded - only update the deliverer's request for now
+                    $this->updateDelivererRequestOnly($response, $googleSheetsService);
+                } else {
+                    // Other statuses - use normal logic
+                    $this->updateBothRequestsForMatchingResponse($response, $googleSheetsService);
+                }
             } else {
                 // For manual responses, update only the target request
                 $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
@@ -96,9 +105,12 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
             'delivery_request_found' => $deliveryRequest ? $deliveryRequest->id : 'NOT_FOUND'
         ]);
 
+        // Pass the response created_at time as the time when the response was received
+        $responseReceivedTime = $response->created_at->toISOString();
+
         // Update both worksheets
         if ($sendRequest) {
-            $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id);
+            $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id, $responseReceivedTime);
             Log::info('Send request acceptance updated in Google Sheets', [
                 'response_id' => $response->id,
                 'send_request_id' => $sendRequest->id,
@@ -111,7 +123,7 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         }
 
         if ($deliveryRequest) {
-            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id);
+            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id, $responseReceivedTime);
             Log::info('Delivery request acceptance updated in Google Sheets', [
                 'response_id' => $response->id,
                 'delivery_request_id' => $deliveryRequest->id,
@@ -121,6 +133,37 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
                 'response_id' => $response->id,
                 'expected_delivery_request_id' => $response->offer_type === 'delivery' ? $response->offer_id : $response->request_id
             ]);
+        }
+    }
+
+    /**
+     * Update only the deliverer's request when they respond (not final acceptance yet)
+     */
+    private function updateDelivererRequestOnly(Response $response, $googleSheetsService): void
+    {
+        // When deliverer responds, only update their delivery request
+        // The send request should only be updated when sender finally accepts
+        
+        if ($response->offer_type === 'send') {
+            // Deliverer owns a delivery request and is responding to a send request
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+            if ($deliveryRequest) {
+                $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id, $response->created_at->toISOString());
+                Log::info('Deliverer request updated in Google Sheets (deliverer responded)', [
+                    'response_id' => $response->id,
+                    'delivery_request_id' => $deliveryRequest->id,
+                ]);
+            }
+        } else {
+            // This case shouldn't happen in normal flow, but handle it for completeness
+            $sendRequest = \App\Models\SendRequest::find($response->request_id);
+            if ($sendRequest) {
+                $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id, $response->created_at->toISOString());
+                Log::info('Send request updated in Google Sheets (deliverer responded)', [
+                    'response_id' => $response->id,
+                    'send_request_id' => $sendRequest->id,
+                ]);
+            }
         }
     }
 
@@ -140,7 +183,8 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         }
 
         $requestType = ($targetRequest instanceof \App\Models\SendRequest) ? 'send' : 'delivery';
-        $googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id);
+        $responseReceivedTime = $response->created_at->toISOString();
+        $googleSheetsService->updateRequestResponseAccepted($requestType, $targetRequest->id, $responseReceivedTime);
 
 //        Log::info('Manual response acceptance tracking updated via job', [
 //            'response_id' => $response->id,

@@ -126,7 +126,7 @@ class GoogleSheetsService
                 $request->to_date ? $request->to_date->toISOString() : '',
                 $request->size_type ?? '',
                 $request->description ?? '',
-                $request->status ?? 'open',
+                $this->translateStatusForSheets($request->status ?? 'open'),
                 $request->created_at->toISOString(),
                 $request->updated_at->toISOString(),
                 'не получен', // Ответ получен
@@ -180,7 +180,7 @@ class GoogleSheetsService
                 $request->to_date ? $request->to_date->toISOString() : '',
                 $request->size_type ?? '',
                 $request->description ?? '',
-                $request->status ?? 'open',
+                $this->translateStatusForSheets($request->status ?? 'open'),
                 $request->created_at->toISOString(),
                 $request->updated_at->toISOString(),
                 'не получен', // Ответ получен
@@ -305,14 +305,14 @@ class GoogleSheetsService
      * Update response tracking columns when response is accepted
      * @throws Exception
      */
-    public function updateRequestResponseAccepted($requestType, $requestId): bool
+    public function updateRequestResponseAccepted($requestType, $requestId, $responseReceivedTime = null): bool
     {
         if (is_null($this->spreadsheetId)) {
             Log::warning('Google Sheets spreadsheet ID not configured, skipping updateRequestResponseAccepted');
             return true;
         }
 
-        return $this->withLock(function() use ($requestType, $requestId) {
+        return $this->withLock(function() use ($requestType, $requestId, $responseReceivedTime) {
             try {
                 $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
@@ -360,15 +360,32 @@ class GoogleSheetsService
                 ->range("P{$rowNumber}")
                 ->update([[$currentTime]]);
 
-            // Update Column Q: Waiting time for acceptance (calculated from created_at to acceptance time)
-            $createdAt = isset($allData[$rowNumber - 1][9]) ? $allData[$rowNumber - 1][9] : ''; // Column J (index 9)
-            if ($createdAt) {
-                $acceptanceWaitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                Sheets::spreadsheet($this->spreadsheetId)
-                    ->sheet($worksheetName)
-                    ->range("Q{$rowNumber}")
-                    ->update([[$acceptanceWaitingTime]]);
+            // Update Column Q: Waiting time for acceptance (calculated from when user received the specific response to acceptance time)
+            if ($responseReceivedTime) {
+                // Use the specific response received time passed from the calling code
+                $acceptanceWaitingTime = $this->calculateWaitingTime($responseReceivedTime, $currentTime);
+            } else {
+                // Fallback: try to use the first response time if available
+                $firstResponseTime = isset($allData[$rowNumber - 1][13]) ? $allData[$rowNumber - 1][13] : ''; // Column N (index 13)
+                
+                if (!empty($firstResponseTime)) {
+                    // Calculate from first response time to acceptance time
+                    $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
+                } else {
+                    // Last fallback: calculate from created_at
+                    $createdAt = isset($allData[$rowNumber - 1][9]) ? $allData[$rowNumber - 1][9] : ''; // Column J (index 9)
+                    if ($createdAt) {
+                        $acceptanceWaitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
+                    } else {
+                        $acceptanceWaitingTime = 'Нет данных о времени ответа';
+                    }
+                }
             }
+            
+            Sheets::spreadsheet($this->spreadsheetId)
+                ->sheet($worksheetName)
+                ->range("Q{$rowNumber}")
+                ->update([[$acceptanceWaitingTime]]);
 
             // Update status column to "matched" when response is accepted
             Sheets::spreadsheet($this->spreadsheetId)
@@ -475,7 +492,7 @@ class GoogleSheetsService
             Sheets::spreadsheet($this->spreadsheetId)
                 ->sheet($worksheetName)
                 ->range("I{$rowNumber}")
-                ->update([[$status]]);
+                ->update([[$this->translateStatusForSheets($status)]]);
 
             Sheets::spreadsheet($this->spreadsheetId)
                 ->sheet($worksheetName)
@@ -666,5 +683,21 @@ class GoogleSheetsService
         }
 
         return $results;
+    }
+
+    /**
+     * Translate miniapp status to Google Sheets display format
+     */
+    private function translateStatusForSheets(string $status): string
+    {
+        return match($status) {
+            'open' => 'open',
+            'has_responses' => 'waiting for responses',
+            'matched' => 'matched',
+            'matched_manually' => 'matched manually', 
+            'closed' => 'closed',
+            'completed' => 'completed',
+            default => $status // Return original status if no translation found
+        };
     }
 }
