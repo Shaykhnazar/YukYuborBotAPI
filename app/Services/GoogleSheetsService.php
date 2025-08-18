@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Response;
 use Carbon\Carbon;
 use Revolution\Google\Sheets\Facades\Sheets;
 use Exception;
@@ -376,7 +377,7 @@ class GoogleSheetsService
             } else {
                 // Fallback: try to use the first response time if available
                 $firstResponseTime = isset($allData[$rowNumber - 1][13]) ? $allData[$rowNumber - 1][13] : ''; // Column N (index 13)
-                
+
                 if (!empty($firstResponseTime)) {
                     // Calculate from first response time to acceptance time
                     $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
@@ -390,7 +391,7 @@ class GoogleSheetsService
                     }
                 }
             }
-            
+
             Sheets::spreadsheet($this->spreadsheetId)
                 ->sheet($worksheetName)
                 ->range("R{$rowNumber}")
@@ -703,10 +704,72 @@ class GoogleSheetsService
             'open' => 'open',
             'has_responses' => 'waiting for responses',
             'matched' => 'matched',
-            'matched_manually' => 'matched manually', 
+            'matched_manually' => 'matched manually',
             'closed' => 'closed',
             'completed' => 'completed',
             default => $status // Return original status if no translation found
         };
     }
+
+    /**
+     * Get the target request that received the response
+     */
+    public function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
+    {
+        // For automatic matching responses: request_id points to the target request
+        if ($response->request_id && $response->request_id > 0) {
+            if ($response->request_type === 'send') {
+                // First try to find it as a SendRequest
+                $sendRequest = \App\Models\SendRequest::find($response->request_id);
+                if ($sendRequest) {
+                    return $sendRequest;
+                }
+            } elseif ($response->request_type === 'delivery') {
+                // If not found as SendRequest, try DeliveryRequest
+                $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+                if ($deliveryRequest) {
+                    return $deliveryRequest;
+                }
+            }
+        }
+
+        // For manual responses: request_id is 0, use offer_id and offer_type to find the offering request
+        if ($response->response_type === 'manual' && $response->offer_id && $response->offer_type) {
+            if ($response->offer_type === 'send') {
+                $targetRequest = \App\Models\SendRequest::find($response->offer_id);
+                if ($targetRequest) {
+                    Log::info('Found target request for manual response', [
+                        'response_id' => $response->id,
+                        'target_request_type' => 'send',
+                        'target_request_id' => $targetRequest->id,
+                        'offer_id' => $response->offer_id
+                    ]);
+                    return $targetRequest;
+                }
+            } elseif ($response->offer_type === 'delivery') {
+                $targetRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+                if ($targetRequest) {
+                    Log::info('Found target request for manual response', [
+                        'response_id' => $response->id,
+                        'target_request_type' => 'delivery',
+                        'target_request_id' => $targetRequest->id,
+                        'offer_id' => $response->offer_id
+                    ]);
+                    return $targetRequest;
+                }
+            }
+        }
+
+        // If neither found, log the issue for debugging
+        Log::warning('Target request not found for response', [
+            'response_id' => $response->id,
+            'request_id' => $response->request_id,
+            'offer_id' => $response->offer_id,
+            'offer_type' => $response->offer_type,
+            'response_type' => $response->response_type
+        ]);
+
+        return null;
+    }
+
 }

@@ -47,7 +47,7 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
                 return;
             }
 
-            $targetRequest = $this->getTargetRequest($response);
+            $targetRequest = $googleSheetsService->getTargetRequest($response);
 
             if (! $targetRequest) {
                 Log::warning('Could not determine target request for response tracking', [
@@ -83,64 +83,6 @@ class UpdateGoogleSheetsResponseTracking implements ShouldQueue
         }
     }
 
-    /**
-     * Get the target request that received the response
-     */
-    private function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
-    {
-        // For automatic matching responses: request_id points to the target request
-        if ($response->request_id && $response->request_id > 0) {
-            // First try to find it as a SendRequest
-            $sendRequest = \App\Models\SendRequest::find($response->request_id);
-            if ($sendRequest) {
-                return $sendRequest;
-            }
-
-            // If not found as SendRequest, try DeliveryRequest
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-            if ($deliveryRequest) {
-                return $deliveryRequest;
-            }
-        }
-
-        // For manual responses: request_id is 0, use offer_id and offer_type to find the offering request
-        if ($response->response_type === 'manual' && $response->offer_id && $response->offer_type) {
-            if ($response->offer_type === 'send') {
-                $targetRequest = \App\Models\SendRequest::find($response->offer_id);
-                if ($targetRequest) {
-                    Log::info('Found target request for manual response', [
-                        'response_id' => $response->id,
-                        'target_request_type' => 'send',
-                        'target_request_id' => $targetRequest->id,
-                        'offer_id' => $response->offer_id
-                    ]);
-                    return $targetRequest;
-                }
-            } elseif ($response->offer_type === 'delivery') {
-                $targetRequest = \App\Models\DeliveryRequest::find($response->offer_id);
-                if ($targetRequest) {
-                    Log::info('Found target request for manual response', [
-                        'response_id' => $response->id,
-                        'target_request_type' => 'delivery',
-                        'target_request_id' => $targetRequest->id,
-                        'offer_id' => $response->offer_id
-                    ]);
-                    return $targetRequest;
-                }
-            }
-        }
-
-        // If neither found, log the issue for debugging
-        Log::warning('Target request not found for response', [
-            'response_id' => $response->id,
-            'request_id' => $response->request_id,
-            'offer_id' => $response->offer_id,
-            'offer_type' => $response->offer_type,
-            'response_type' => $response->response_type
-        ]);
-
-        return null;
-    }
 
     /**
      * Check if this is the first response for the target request
