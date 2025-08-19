@@ -35,7 +35,9 @@ class ResponseFactory extends Factory
             'offer_id' => $offerType === 'send'
                 ? SendRequest::factory()
                 : DeliveryRequest::factory(),
-            'status' => $this->faker->randomElement(['pending', 'accepted', 'rejected', 'waiting']),
+            'deliverer_status' => $this->faker->randomElement(['pending', 'accepted', 'rejected']),
+            'sender_status' => $this->faker->randomElement(['pending', 'accepted', 'rejected']),
+            'overall_status' => 'pending',
             'chat_id' => null,
             'message' => $this->faker->optional(0.3)->sentence(),
             'created_at' => $this->faker->dateTimeBetween('-7 days', 'now'),
@@ -91,7 +93,9 @@ class ResponseFactory extends Factory
     public function pending(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => Response::STATUS_PENDING,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING,
             'chat_id' => null,
         ]);
     }
@@ -102,8 +106,23 @@ class ResponseFactory extends Factory
     public function accepted(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => Response::STATUS_ACCEPTED,
+            'deliverer_status' => Response::DUAL_STATUS_ACCEPTED,
+            'sender_status' => Response::DUAL_STATUS_ACCEPTED,
+            'overall_status' => Response::OVERALL_STATUS_ACCEPTED,
             'chat_id' => Chat::factory(),
+        ]);
+    }
+
+    /**
+     * Partially accepted response (one user accepted)
+     */
+    public function partiallyAccepted(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'deliverer_status' => Response::DUAL_STATUS_ACCEPTED,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PARTIAL,
+            'chat_id' => null,
         ]);
     }
 
@@ -113,18 +132,9 @@ class ResponseFactory extends Factory
     public function rejected(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => Response::STATUS_REJECTED,
-            'chat_id' => null,
-        ]);
-    }
-
-    /**
-     * Waiting response (waiting for confirmation)
-     */
-    public function waiting(): static
-    {
-        return $this->state(fn (array $attributes) => [
-            'status' => Response::STATUS_WAITING,
+            'deliverer_status' => Response::DUAL_STATUS_REJECTED,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_REJECTED,
             'chat_id' => null,
         ]);
     }

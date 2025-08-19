@@ -5,213 +5,95 @@ namespace App\Services;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
 use App\Models\SendRequest;
+use App\Services\Matching\RequestMatchingService;
+use App\Services\Matching\ResponseCreationService;
+use App\Services\Matching\ResponseStatusService;
 use Illuminate\Support\Facades\Log;
 
 class Matcher
 {
     public function __construct(
-        protected TelegramNotificationService $telegramService
+        protected TelegramNotificationService $telegramService,
+        protected RequestMatchingService $matchingService,
+        protected ResponseCreationService $creationService,
+        protected ResponseStatusService $statusService
     ) {}
 
-    /**
-     * When a SEND request is created, find matching DELIVERY requests
-     * and notify the DELIVERY users (potential carriers)
-     * Only creates responses for travelers initially - sender sees nothing until traveler accepts
-     */
     public function matchSendRequest(SendRequest $sendRequest): void
     {
-        $matchedDeliveries = $this->findMatchingDeliveryRequests($sendRequest);
+        $matchedDeliveries = $this->matchingService->findMatchingDeliveryRequests($sendRequest);
 
         foreach ($matchedDeliveries as $delivery) {
-            // Create response for deliverer to see send request (ONLY for traveler initially)
-            $this->createResponseRecord(
-                $delivery->user_id,        // deliverer will see this
-                $sendRequest->user_id,     // sender made the offer
-                'send',                    // type of request
+            $this->creationService->createMatchingResponse(
+                $delivery->user_id,        // deliverer receives the match
+                $sendRequest->user_id,     // sender offered the match
+                'send',                    // type of offer
                 $delivery->id,             // deliverer's request ID
                 $sendRequest->id          // sender's request ID
             );
 
-            // Notify the DELIVERY user about the SEND request with callback buttons
             $this->notifyDeliveryUserAboutNewSend($sendRequest, $delivery);
         }
+
+        Log::info('Send request matching completed', [
+            'send_request_id' => $sendRequest->id,
+            'matches_found' => $matchedDeliveries->count()
+        ]);
     }
 
-    /**
-     * When a DELIVERY request is created, find matching SEND requests
-     * Only creates responses for travelers initially - sender sees nothing until traveler accepts
-     */
     public function matchDeliveryRequest(DeliveryRequest $deliveryRequest): void
     {
-        $matchedSends = $this->findMatchingSendRequests($deliveryRequest);
+        $matchedSends = $this->matchingService->findMatchingSendRequests($deliveryRequest);
 
         foreach ($matchedSends as $send) {
-            // Create response for deliverer to see send request (ONLY for traveler initially)
-            $this->createResponseRecord(
-                $deliveryRequest->user_id, // deliverer will see this
-                $send->user_id,            // sender made the offer
-                'send',                // type of request being updated
-                $deliveryRequest->id,      // deliverer's request ID
-                $send->id                 // sender's request ID
+            $this->creationService->createMatchingResponse(
+                $deliveryRequest->user_id, // deliverer receives the match notification (always deliverer first!)
+                $send->user_id,            // sender offered the match (they created the send request)
+                'send',                    // type of offer (send request is being offered to deliverer)
+                $deliveryRequest->id,      // deliverer's request ID (receiving request)
+                $send->id                  // sender's request ID (offered request)
             );
 
-            // Notify the DELIVERY user about existing SEND requests
-            $this->notifyDeliveryUserAboutExistingSend($send, $deliveryRequest);
-        }
-    }
-
-    /**
-     * When deliverer responds to a send request, create response for sender
-     */
-    public function createDelivererResponse(int $sendRequestId, int $deliveryRequestId, string $action): void
-    {
-        $sendRequest = SendRequest::find($sendRequestId);
-        $deliveryRequest = DeliveryRequest::find($deliveryRequestId);
-
-        if (!$sendRequest || !$deliveryRequest) {
-            Log::warning('Send or delivery request not found', [
-                'send_id' => $sendRequestId,
-                'delivery_id' => $deliveryRequestId
-            ]);
-            return;
+            $this->notifyDeliveryUserAboutNewSend($send, $deliveryRequest);
         }
 
-        if ($action === 'accept') {
-            // Create response for sender to see deliverer's acceptance
-            $this->createResponseRecord(
-                $sendRequest->user_id,     // sender will see this
-                $deliveryRequest->user_id, // deliverer is responding
-                'delivery',                // type of response
-                $sendRequest->id,          // sender's request ID
-                $deliveryRequest->id,      // deliverer's request ID
-                'waiting'                  // waiting for sender's confirmation
-            );
+        Log::info('Delivery request matching completed', [
+            'delivery_request_id' => $deliveryRequest->id,
+            'matches_found' => $matchedSends->count()
+        ]);
+    }
 
-            // Notify sender about deliverer's acceptance
-            $this->notifySenderAboutDelivererResponse($sendRequest, $deliveryRequest);
+    public function handleUserResponse(int $responseId, int $userId, string $action): bool
+    {
+        $response = Response::find($responseId);
+
+        if (!$response) {
+            Log::warning('Response not found', ['response_id' => $responseId]);
+            return false;
         }
 
-        // Update the original deliverer's response
-        $this->updateDelivererResponseStatus($deliveryRequest->user_id, $sendRequest->id, $deliveryRequest->id, $action);
-    }
+        $status = $action === 'accept' ? 'accepted' : 'rejected';
+        $updated = $this->statusService->updateUserStatus($response, $userId, $status);
 
-    /**
-     * Find matching delivery requests for a send request
-     */
-    private function findMatchingDeliveryRequests(SendRequest $sendRequest): \Illuminate\Database\Eloquent\Collection
-    {
-        return DeliveryRequest::where('from_location_id', $sendRequest->from_location_id)
-            ->where('to_location_id', $sendRequest->to_location_id)
-            ->where(function($query) use ($sendRequest) {
-                $query->where('from_date', '<=', $sendRequest->to_date)
-                    ->where('to_date', '>=', $sendRequest->from_date);
-            })
-            ->where(function($query) use ($sendRequest) {
-                $query->where('size_type', $sendRequest->size_type)
-                    ->orWhere('size_type', 'Не указана')
-                    ->orWhere('size_type', null);
-            })
-            ->whereIn('status', ['open', 'has_responses'])
-            ->where('user_id', '!=', $sendRequest->user_id)
-            ->get();
-    }
-
-    /**
-     * Find matching send requests for a delivery request
-     */
-    private function findMatchingSendRequests(DeliveryRequest $deliveryRequest): \Illuminate\Database\Eloquent\Collection
-    {
-        return SendRequest::where('from_location_id', $deliveryRequest->from_location_id)
-            ->where('to_location_id', $deliveryRequest->to_location_id)
-            ->where(function($query) use ($deliveryRequest) {
-                $query->where('from_date', '<=', $deliveryRequest->to_date)
-                    ->where('to_date', '>=', $deliveryRequest->from_date);
-            })
-            ->where(function($query) use ($deliveryRequest) {
-                $query->where('size_type', $deliveryRequest->size_type)
-                    ->orWhere('size_type', 'Не указана')
-                    ->orWhere('size_type', null);
-            })
-            ->whereIn('status', ['open', 'has_responses'])
-            ->where('user_id', '!=', $deliveryRequest->user_id)
-            ->get();
-    }
-
-    /**
-     * Create a response record in the database
-     */
-    private function createResponseRecord(int $userId, int $responderId, string $requestType, int $requestId, int $offerId, string $status = 'pending'): void
-    {
-        $response = Response::updateOrCreate(
-            [
+        if (!$updated) {
+            Log::warning('Failed to update user status', [
+                'response_id' => $responseId,
                 'user_id' => $userId,
-                'responder_id' => $responderId,
-                'offer_type' => $requestType,
-                'request_id' => $requestId,
-                'offer_id' => $offerId,
-            ],
-            [
-                'status' => $status,
-                'response_type' => Response::TYPE_MATCHING,
-                'message' => null
-            ]
-        );
-
-        // Update request status to 'has_responses' when first response is created
-        $this->updateRequestStatusToHasResponses($requestId, $requestType);
-
-//        Log::info('Response record created/updated', [
-//            'user_id' => $userId,
-//            'responder_id' => $responderId,
-//            'request_type' => $requestType,
-//            'request_id' => $requestId,
-//            'offer_id' => $offerId,
-//            'status' => $status,
-//            'response_id' => $response->id
-//        ]);
-    }
-
-    /**
-     * Update request status to 'has_responses' when responses are created
-     */
-    private function updateRequestStatusToHasResponses(int $requestId, string $requestType): void
-    {
-        if ($requestType === 'send') {
-            DeliveryRequest::where('id', $requestId)
-                ->where('status', 'open')
-                ->update(['status' => 'has_responses']);
-        } else {
-            SendRequest::where('id', $requestId)
-                ->where('status', 'open')
-                ->update(['status' => 'has_responses']);
+                'action' => $action
+            ]);
+            return false;
         }
-    }
-    /**
-     * Update deliverer response status
-     */
-    private function updateDelivererResponseStatus(int $delivererUserId, int $sendRequestId, int $deliveryRequestId, string $action): void
-    {
-        $status = $action === 'accept' ? 'responded' : 'rejected';
 
-        $updated = Response::where('user_id', $delivererUserId)
-            ->where('offer_type', 'send')
-            ->where('request_id', $deliveryRequestId)
-            ->where('offer_id', $sendRequestId)
-            ->update(['status' => $status]);
+        Log::info('User response handled successfully', [
+            'response_id' => $responseId,
+            'user_id' => $userId,
+            'action' => $action,
+            'overall_status' => $response->fresh()->overall_status
+        ]);
 
-//        Log::info('Deliverer response status updated', [
-//            'deliverer_user_id' => $delivererUserId,
-//            'send_request_id' => $sendRequestId,
-//            'delivery_request_id' => $deliveryRequestId,
-//            'action' => $action,
-//            'status' => $status,
-//            'updated_count' => $updated
-//        ]);
+        return true;
     }
 
-    /**
-     * Notify delivery user about new send request with callback buttons
-     */
     private function notifyDeliveryUserAboutNewSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
         $user = $delivery->user;
@@ -235,15 +117,11 @@ class Matcher
                 $keyboard
             );
         } else {
-            // Fallback to simple message if keyboard creation failed
             $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
             $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
         }
     }
 
-    /**
-     * Notify delivery user about existing send requests with callback buttons
-     */
     private function notifyDeliveryUserAboutExistingSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
     {
         $user = $delivery->user;
@@ -267,30 +145,11 @@ class Matcher
                 $keyboard
             );
         } else {
-            // Fallback to simple message if keyboard creation failed
             $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
             $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
         }
     }
 
-    /**
-     * Notify sender when deliverer responds to their request
-     */
-    private function notifySenderAboutDelivererResponse(SendRequest $sendRequest, DeliveryRequest $delivery): void
-    {
-        $user = $sendRequest->user;
-        if (!$user || !$user->telegramUser) {
-            Log::warning("No telegram_id for user of send request ID {$sendRequest->id}");
-            return;
-        }
-
-        $text = $this->buildSenderNotificationText($sendRequest, $delivery);
-        $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
-    }
-
-    /**
-     * Build notification text for deliverer about new send request
-     */
     private function buildNewSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
     {
         $text = "🎉 Поздравляем, по Вашей <b>заявке №{$delivery->id}</b> найден заказ!\n\n";
@@ -315,9 +174,6 @@ class Matcher
         return $text;
     }
 
-    /**
-     * Build notification text for deliverer about existing send requests
-     */
     private function buildExistingSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
     {
         $text = "🎉 Найдены посылки для доставки по Вашей заявке!\n\n";
@@ -337,22 +193,4 @@ class Matcher
         return $text;
     }
 
-    /**
-     * Build notification text for sender about deliverer response
-     */
-    private function buildSenderNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
-    {
-        $text = "🎉 Отличные новости! Найден перевозчик для вашей посылки №{$sendRequest->id}!\n\n";
-        $text .= "<b>Детали перевозчика:</b>\n";
-        $text .= "<b>📍 Маршрут:</b> {$delivery->fromLocation->fullRouteName} → {$delivery->toLocation->fullRouteName}\n";
-        $text .= "<b>🗓 Даты поездки:</b> {$delivery->from_date} - {$delivery->to_date}\n";
-
-        if ($delivery->description && $delivery->description !== 'Пропустить') {
-            $text .= "<b>📝 Примечания:</b> {$delivery->description}\n";
-        }
-
-        $text .= "\n<b>Проверьте раздел 'Отклики' чтобы подтвердить сотрудничество.</b>";
-
-        return $text;
-    }
 }

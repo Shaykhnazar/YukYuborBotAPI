@@ -1,0 +1,98 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\RequestStatus;
+use App\Models\User;
+use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
+use App\Repositories\Contracts\ResponseRepositoryInterface;
+use App\Repositories\Contracts\SendRequestRepositoryInterface;
+use Illuminate\Support\Facades\DB;
+
+class RequestService
+{
+    public function __construct(
+        private SendRequestRepositoryInterface $sendRequestRepository,
+        private DeliveryRequestRepositoryInterface $deliveryRequestRepository,
+        private ResponseRepositoryInterface $responseRepository
+    ) {}
+
+    public function checkActiveRequestsLimit(User $user, int $maxActiveRequests = 3): void
+    {
+        $activeDeliveryCount = $this->deliveryRequestRepository->countActiveByUser($user);
+        $activeSendCount = $this->sendRequestRepository->countActiveByUser($user);
+        $totalActiveRequests = $activeDeliveryCount + $activeSendCount;
+
+        if ($totalActiveRequests >= $maxActiveRequests) {
+            throw new \Exception('Удалите либо завершите одну из активных заявок, чтобы создать новую.');
+        }
+    }
+
+    public function canDeleteRequest($request): bool
+    {
+        return !in_array($request->status, [
+            RequestStatus::MATCHED->value,
+            RequestStatus::MATCHED_MANUALLY->value,
+            RequestStatus::COMPLETED->value
+        ], true);
+    }
+
+    public function canCloseRequest($request): bool
+    {
+        return in_array($request->status, [
+            RequestStatus::MATCHED->value,
+            RequestStatus::MATCHED_MANUALLY->value
+        ], true);
+    }
+
+    public function deleteRequest($request): void
+    {
+        if (!$this->canDeleteRequest($request)) {
+            throw new \Exception('Cannot delete completed or matched request');
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $requestType = $request instanceof \App\Models\SendRequest ? 'send' : 'delivery';
+            $this->responseRepository->deleteByRequestId($request->id, $requestType);
+            
+            if ($requestType === 'send') {
+                $this->sendRequestRepository->delete($request->id);
+            } else {
+                $this->deliveryRequestRepository->delete($request->id);
+            }
+            
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    public function closeRequest($request): void
+    {
+        if (!$this->canCloseRequest($request)) {
+            throw new \Exception('Can only close matched requests');
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $requestType = $request instanceof \App\Models\SendRequest ? 'send' : 'delivery';
+            
+            if ($requestType === 'send') {
+                $this->sendRequestRepository->updateStatus($request->id, RequestStatus::CLOSED->value);
+            } else {
+                $this->deliveryRequestRepository->updateStatus($request->id, RequestStatus::CLOSED->value);
+            }
+            
+            $this->responseRepository->closeByRequestId($request->id);
+            
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+}

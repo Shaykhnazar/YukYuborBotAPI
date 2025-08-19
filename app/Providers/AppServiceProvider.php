@@ -26,7 +26,12 @@ class AppServiceProvider extends ServiceProvider
 
         // Bind Matcher with dependency injection
         $this->app->bind(Matcher::class, function ($app) {
-            return new Matcher($app->make(TelegramNotificationService::class));
+            return new Matcher(
+                $app->make(TelegramNotificationService::class),
+                $app->make(\App\Services\Matching\RequestMatchingService::class),
+                $app->make(\App\Services\Matching\ResponseCreationService::class),
+                $app->make(\App\Services\Matching\ResponseStatusService::class)
+            );
         });
     }
 

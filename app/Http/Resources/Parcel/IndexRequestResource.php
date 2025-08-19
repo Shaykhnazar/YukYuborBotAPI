@@ -14,12 +14,20 @@ class IndexRequestResource extends JsonResource
      */
     public function toArray($request): array
     {
-        // Always use the original request owner data (current user's own requests)
-        $displayUser = $this->user;
-        $telegram = $displayUser->telegramUser;
-
-        // Determine if we should show responder data
+        // For closed/matched requests, show the other party (responder)
+        // For open/pending requests, show the request owner
+        $displayUser = null;
         $isResponder = isset($this->responder_user);
+        
+        if ($isResponder && in_array($this->status, ['matched', 'matched_manually', 'closed', 'completed'])) {
+            // Closed/matched request with responder - show the other party
+            $displayUser = $this->responder_user;
+            $telegram = $displayUser->telegramUser ?? null;
+        } else {
+            // Open/pending request or no responder - show the request owner
+            $displayUser = $this->user;
+            $telegram = $displayUser->telegramUser;
+        }
 
         // Calculate type-specific request counts (only closed/completed requests)
         $sendRequestsCount = $displayUser->sendRequests()

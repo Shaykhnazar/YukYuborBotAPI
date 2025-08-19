@@ -84,7 +84,7 @@ class SendRequest extends Model
     public function offerResponses(): HasMany
     {
         return $this->hasMany(Response::class, 'offer_id', 'id')
-            ->where('offer_type', 'delivery');
+            ->where('offer_type', 'send');
     }
 
     // All responses related to this send request (both as request and offer)
@@ -105,12 +105,12 @@ class SendRequest extends Model
         return $this->hasOneThrough(
             Chat::class,
             Response::class,
-            'request_id', // Foreign key on responses table (for send requests)
+            'offer_id', // Foreign key on responses table (send request as offer)
             'id', // Foreign key on chats table
             'id', // Local key on send_requests table
             'chat_id' // Local key on responses table
         )->where('responses.offer_type', 'send')
-         ->whereIn('responses.status', ['accepted', 'waiting']);
+         ->whereIn('responses.overall_status', ['accepted', 'partial']);
     }
 
 

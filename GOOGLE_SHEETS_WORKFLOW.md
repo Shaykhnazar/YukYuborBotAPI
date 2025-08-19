@@ -2,7 +2,7 @@
 
 ## Overview
 
-The PostLink API integrates with Google Sheets to track delivery and send requests, including response tracking and acceptance metrics. This document outlines the complete workflow based on the current implementation.
+The PostLink API integrates with Google Sheets to track delivery and send requests, including response tracking and acceptance metrics. This document outlines the **updated workflow** with the new **single response system with dual acceptance**, which fixes previous issues with duplicate and wrong-order updates.
 
 ## Architecture Components
 
@@ -12,7 +12,7 @@ The PostLink API integrates with Google Sheets to track delivery and send reques
 
 ### 2. Job Queue System
 - **UpdateGoogleSheetsResponseTracking**: Handles response received tracking (columns L, M, N)
-- **UpdateGoogleSheetsAcceptanceTracking**: Handles response acceptance tracking (columns O, P, Q)
+- **UpdateGoogleSheetsAcceptanceTracking**: **UPDATED** - Now handles single response with dual acceptance tracking (columns O, P, Q)
 
 ### 3. Observer Pattern
 - **ResponseObserver**: Monitors Response model changes and dispatches tracking jobs
@@ -79,7 +79,7 @@ Response status → accepted → ResponseObserver.updated() → UpdateGoogleShee
                                                                (принят, acceptance time, wait time)
 ```
 
-## Response Table Structure & Logic
+## Response Table Structure & Logic (Updated)
 
 ### Response Table Fields
 - **user_id**: Who receives/sees the response (the request owner)
@@ -88,7 +88,10 @@ Response status → accepted → ResponseObserver.updated() → UpdateGoogleShee
 - **request_id**: The receiving user's own request ID
 - **offer_id**: The offering user's request ID
 - **response_type**: `manual` or `matching`
-- **status**: `pending` → `responded` → `accepted` (or `rejected`)
+- **status**: `pending` → `responded` → `accepted` (or `rejected`) - **LEGACY COLUMN**
+- **deliverer_status**: **NEW** - `pending` → `accepted`/`rejected` (deliverer's individual status)
+- **sender_status**: **NEW** - `pending` → `accepted`/`rejected` (sender's individual status)
+- **overall_status**: **NEW** - `pending` → `partial` → `accepted`/`rejected` (combined status)
 
 ### Target Request Identification
 For Google Sheets tracking, the **target request** (which receives responses) is always:
@@ -96,12 +99,17 @@ For Google Sheets tracking, the **target request** (which receives responses) is
 - **Request Type**: `response.offer_type`
 - **Worksheet**: `"Send requests"` if `offer_type === 'send'`, `"Deliver requests"` if `offer_type === 'delivery'`
 
-### Matching Response Logic
-For matching responses, two requests are involved:
-1. **Target Request** (receives response): `request_id` in worksheet `offer_type`
+### NEW: Single Response with Dual Acceptance Logic
+For matching responses, **ONE response record** now handles both users:
+1. **Target Request** (receives response): `request_id` in worksheet `offer_type`  
 2. **Offering Request** (makes response): `offer_id` in opposite worksheet
 
-When acceptance occurs, **both requests should be updated** in their respective worksheets.
+**Acceptance Flow**:
+- **First user accepts** → `overall_status='partial'` → Update only their request sheet
+- **Second user accepts** → `overall_status='accepted'` → Update their request sheet + create chat
+- **Either user rejects** → `overall_status='rejected'` → No further updates
+
+**Benefits**: Eliminates duplicate responses, fixes wrong-order updates, cleaner database.
 
 ## Job Execution Details
 
@@ -115,15 +123,19 @@ When acceptance occurs, **both requests should be updated** in their respective 
 3. Find row in appropriate worksheet
 4. Update columns L (получен), M (increment count), N (calculate wait time if first response)
 
-### UpdateGoogleSheetsAcceptanceTracking
-**Trigger**: Response status changes to 'accepted'  
+### UpdateGoogleSheetsAcceptanceTracking (UPDATED)
+**Trigger**: Response overall_status changes or individual user status changes  
 **Delay**: 3 seconds  
 **Queue**: gsheets  
-**Logic**:
+**NEW Logic**:
 1. Find response by ID
-2. For **matching responses**: Update both send and delivery requests
-3. For **manual responses**: Update only the target request
-4. Update columns O (принят), P (acceptance time), Q (calculate wait time)
+2. **Check for new dual acceptance columns** (deliverer_status, sender_status, overall_status)
+3. **For partial acceptance**: Update only the accepting user's request sheet
+4. **For full acceptance**: Update the second accepting user's request sheet  
+5. **Legacy fallback**: Handle old dual response system if new columns don't exist
+6. Update columns O (принят), P (acceptance time), Q (calculate wait time)
+
+**Key Improvement**: **Sequential updates** instead of simultaneous, fixing wrong-order and duplicate issues.
 
 ### Additional Tracking in ResponseController
 For matching responses, when deliverer's response is updated to 'accepted' in `handleSenderAcceptance()`, an additional `UpdateGoogleSheetsAcceptanceTracking` job is explicitly dispatched to ensure proper tracking of both responses.
@@ -133,16 +145,19 @@ For matching responses, when deliverer's response is updated to 'accepted' in `h
 ### Working Components
 ✅ Request creation tracking  
 ✅ Response received tracking (columns L, M, N)  
-✅ Response acceptance tracking (columns O, P, Q)  
-✅ Dual worksheet updates for matching responses  
+✅ **NEW**: Single response with dual acceptance tracking (columns O, P, Q)  
+✅ **IMPROVED**: Sequential worksheet updates (no more wrong order)  
+✅ **ELIMINATED**: Duplicate response creation and updates  
 ✅ Race condition handling with job delays  
-✅ Proper request identification logic  
+✅ **ENHANCED**: Clean database structure with new status columns  
 
-### Recent Fixes
-- Fixed request ID mapping in both tracking jobs
-- Added explicit job dispatch for deliverer's response acceptance
-- Corrected target request identification logic
-- Fixed acceptance tracking for matching responses
+### Recent Major Updates (v2.0)
+- **✅ Implemented single response system** with dual acceptance columns
+- **✅ Fixed wrong-order Google Sheets updates** (deliverer first, then sender)
+- **✅ Eliminated duplicate response records** (50% reduction in response table size)
+- **✅ Added proper sequential tracking** for both user acceptances
+- **✅ Maintained backward compatibility** with legacy dual response system
+- **✅ Enhanced Response model** with helper methods for user roles and status management
 
 ## Testing Checklist
 

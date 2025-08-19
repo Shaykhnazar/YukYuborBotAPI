@@ -31,7 +31,16 @@ class MatcherTest extends TestCase
         parent::setUp();
 
         $this->telegramService = Mockery::mock(TelegramNotificationService::class);
-        $this->matcher = new Matcher($this->telegramService);
+        $matchingService = Mockery::mock(\App\Services\Matching\RequestMatchingService::class);
+        $creationService = Mockery::mock(\App\Services\Matching\ResponseCreationService::class);
+        $statusService = Mockery::mock(\App\Services\Matching\ResponseStatusService::class);
+        
+        $this->matcher = new Matcher(
+            $this->telegramService,
+            $matchingService,
+            $creationService,
+            $statusService
+        );
 
         $this->senderUser = User::factory()->create();
         $this->delivererUser = User::factory()->create();

@@ -2,53 +2,33 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller as BaseController;
+use App\Enums\RequestStatus;
 use App\Http\Requests\Delivery\CreateDeliveryRequest;
-use App\Models\Chat;
-use App\Models\DeliveryRequest;
-use App\Models\Response;
-use App\Models\SendRequest;
-use App\Services\Matcher;
+use App\Jobs\MatchRequestsJob;
+use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
+use App\Services\RequestService;
 use App\Services\TelegramUserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class DeliveryController extends BaseController
+class DeliveryController extends Controller
 {
     public function __construct(
         protected TelegramUserService $userService,
-        protected Matcher $matcher
-    )
-    {
-    }
+        protected RequestService $requestService,
+        protected DeliveryRequestRepositoryInterface $deliveryRequestRepository
+    ) {}
 
     public function create(CreateDeliveryRequest $request)
     {
-        $user = $this->userService->getUserByTelegramId($request);
+        try {
+            $user = $this->userService->getUserByTelegramId($request);
+            
+            $this->requestService->checkActiveRequestsLimit($user);
 
-        // Check active requests limit (combined for both delivery and send)
-        $activeDeliveryCount = DeliveryRequest::where('user_id', $user->id)
-            ->whereNotIn('status', ['closed'])
-            ->count();
-
-        $activeSendCount = SendRequest::where('user_id', $user->id)
-            ->whereNotIn('status', ['closed'])
-            ->count();
-
-        $totalActiveRequests = $activeDeliveryCount + $activeSendCount;
-        $maxActiveRequests = 3; // Total limit for both types
-
-        if ($totalActiveRequests >= $maxActiveRequests) {
-            return response()->json([
-                'error' => 'Удалите либо завершите одну из активных заявок, чтобы создать новую.',
-                'errorTitle' => 'Превышен лимит заявок'
-            ], 422);
-        }
-
-        $dto = $request->getDTO();
-        $deliveryReq = new DeliveryRequest(
-            [
+            $dto = $request->getDTO();
+            
+            $deliveryRequest = $this->deliveryRequestRepository->create([
                 'from_location_id' => $dto->fromLocId,
                 'to_location_id' => $dto->toLocId,
                 'description' => $dto->desc ?? null,
@@ -57,13 +37,25 @@ class DeliveryController extends BaseController
                 'price' => $dto->price ?? null,
                 'currency' => $dto->currency ?? null,
                 'user_id' => $user->id,
-                'status' => 'open',
-            ]
-        );
-        $deliveryReq->save();
-        $this->matcher->matchDeliveryRequest($deliveryReq);
+                'status' => RequestStatus::OPEN->value,
+            ]);
 
-        return response()->json($deliveryReq);
+            // Dispatch matching job in background
+            MatchRequestsJob::dispatch('delivery', $deliveryRequest->id);
+
+            return response()->json($deliveryRequest);
+
+        } catch (\Exception $e) {
+            Log::error('Error creating delivery request', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null
+            ]);
+
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка создания заявки'
+            ], 422);
+        }
     }
 
     public function delete(Request $request, int $id)
@@ -71,128 +63,66 @@ class DeliveryController extends BaseController
         try {
             $user = $this->userService->getUserByTelegramId($request);
 
-            $deliveryRequest = DeliveryRequest::where('id', $id)
-                ->where('user_id', $user->id)
-                ->first();
+            $deliveryRequest = $this->deliveryRequestRepository->findByUserAndId($user, $id);
 
             if (!$deliveryRequest) {
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request status is completed or matched
-            if (in_array($deliveryRequest->status, ['matched', 'matched_manually', 'completed'])) {
-                return response()->json([
-                    'error' => 'Cannot delete completed or matched request'
-                ], 409);
-            }
-
-            DB::beginTransaction();
-
-            // Delete all related responses where this delivery request appears
-            // as either the main request or as an offer
-            Response::where(function($query) use ($id) {
-                $query->where(function($subQuery) use ($id) {
-                    // Responses where this delivery request is the main request
-                    $subQuery->where('offer_type', 'delivery')
-                             ->where('request_id', $id);
-                })->orWhere(function($subQuery) use ($id) {
-                    // Responses where this delivery request appears as an offer
-                    $subQuery->where('offer_type', 'send')
-                             ->where('offer_id', $id);
-                });
-            })->delete();
-
-            // Delete any chats related to this delivery request
-            Chat::where('delivery_request_id', $id)->update(['status' => 'closed']);
-
-            // Delete the request
-            $deliveryRequest->delete();
-
-            DB::commit();
-
-//            Log::info('Delivery request deleted successfully', [
-//                'request_id' => $id,
-//                'user_id' => $user->id
-//            ]);
+            $this->requestService->deleteRequest($deliveryRequest);
 
             return response()->json(['message' => 'Request deleted successfully']);
 
         } catch (\Exception $e) {
-            DB::rollBack();
-
             Log::error('Error deleting delivery request', [
                 'request_id' => $id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
 
-            return response()->json([
-                'error' => 'Failed to delete request'
-            ], 500);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
     public function close(Request $request, int $id)
     {
-        $user = $this->userService->getUserByTelegramId($request);
-
-        $deliveryRequest = DeliveryRequest::where('id', $id)
-            ->where('user_id', $user->id)
-            ->first();
-
-        if (!$deliveryRequest) {
-            return response()->json(['error' => 'Delivery request not found'], 404);
-        }
-
-        if (!in_array($deliveryRequest->status, ['matched', 'matched_manually'])) {
-            return response()->json(['error' => 'Can only close matched requests'], 409);
-        }
-
-        DB::beginTransaction();
-
         try {
-            // Update the delivery request status
-            $deliveryRequest->update(['status' => 'closed']);
+            $user = $this->userService->getUserByTelegramId($request);
 
-            // FIX: Also update the matched send request
-            if ($deliveryRequest->matched_send_id) {
-                $sendRequest = \App\Models\SendRequest::find($deliveryRequest->matched_send_id);
-                $sendRequest?->update(['status' => 'closed']);
+            $deliveryRequest = $this->deliveryRequestRepository->findByUserAndId($user, $id);
+
+            if (!$deliveryRequest) {
+                return response()->json(['error' => 'Delivery request not found'], 404);
             }
 
-            // Close ALL responses that involve this request (in either field)
-            Response::where(function($query) use ($id) {
-                $query->where('request_id', $id)
-                    ->orWhere('offer_id', $id);
-            })
-                ->whereIn('status', ['accepted', 'waiting', 'responded', 'pending'])
-                ->update(['status' => 'closed']);
-
-            // FIX: Update chat status to closed
-//            Chat::where('delivery_request_id', $id)
-//                ->update([
-//                    'delivery_request_id' => null,
-//                    'status' => 'closed'
-//                ]);
-
-            DB::commit();
-
-//            Log::info('Delivery request closed successfully', [
-//                'request_id' => $id,
-//                'user_id' => $user->id
-//            ]);
+            $this->requestService->closeRequest($deliveryRequest);
 
             return response()->json(['message' => 'Delivery request closed successfully']);
 
         } catch (\Exception $e) {
-            DB::rollBack();
-
             Log::error('Error closing delivery request', [
                 'request_id' => $id,
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => 'Failed to close request'], 500);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function index(Request $request)
+    {
+        try {
+            $user = $this->userService->getUserByTelegramId($request);
+            $deliveryRequests = $this->deliveryRequestRepository->findActiveByUser($user);
+
+            return response()->json($deliveryRequests);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching user delivery requests', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null
+            ]);
+
+            return response()->json(['error' => 'Failed to fetch requests'], 500);
         }
     }
 }

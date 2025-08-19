@@ -107,11 +107,84 @@ Key relationships:
 
 ### Request/Response Flow
 
+#### Overview
+The application supports two distinct response types with different acceptance flows:
+
+1. **Matching Responses** (Automatic) - System-generated matches
+2. **Manual Responses** (User-initiated) - Direct user responses to requests
+
+#### Matching Response Flow (Dual Acceptance)
+
+**System Behavior:**
 1. Users create SendRequests or DeliveryRequests
-2. Matching system creates Responses between compatible requests
-3. Users can accept/reject responses
-4. Accepted responses create Chat instances
-5. Real-time messaging via WebSocket channels
+2. Background matching system finds compatible requests
+3. System automatically creates Responses between matches
+4. **Deliverers ALWAYS receive first notification** (regardless of creation order)
+
+**User Flow:**
+1. **Step 1 - Deliverer Action**: Deliverer receives match notification and can accept/reject
+2. **Step 2 - Sender Action**: If deliverer accepts, sender gets notified and can accept/reject  
+3. **Step 3 - Chat Creation**: Only when BOTH users accept, chat is created automatically
+
+**Business Logic:**
+- **Deliverers**: Service providers who decide first if they want the job
+- **Senders**: Customers who choose from interested deliverers only
+- **Dual acceptance ensures**: Both parties agree before partnership begins
+
+```php
+// Matching Response Structure
+offer_type: 'send'        // Send requests are ALWAYS offered to deliverers
+user_id: deliverer        // Deliverer receives notification
+responder_id: sender      // Sender owns the send request
+response_type: 'matching' // System-generated match
+overall_status: 'pending' → 'partial' → 'accepted'
+deliverer_status: 'pending' → 'accepted'  
+sender_status: 'pending' → 'accepted'
+```
+
+#### Manual Response Flow (Single Acceptance)
+
+**User Behavior:**
+1. User A manually responds to User B's request
+2. **Only User B (request owner) can accept/reject**
+3. **User A (response sender) can only wait or cancel**
+4. **Single acceptance**: If User B accepts, chat opens immediately
+
+**No Dual Acceptance:**
+- Manual responses bypass the dual acceptance system
+- Only the request owner has decision power
+- Response sender cannot take action (except cancel)
+
+```php
+// Manual Response Structure  
+offer_type: 'send' | 'delivery'  // Based on request type being responded to
+user_id: request_owner           // Request owner can accept/reject
+responder_id: response_sender    // Response sender waits
+response_type: 'manual'          // User-initiated response
+overall_status: 'pending' → 'accepted' (single step)
+can_act_on: true (request owner only)
+```
+
+#### Key Differences Summary
+
+| Aspect | Matching Response | Manual Response |
+|--------|------------------|-----------------|
+| **Initiation** | System automatic | User manual |
+| **Notification** | Deliverer first | Request owner only |
+| **Acceptance** | Dual (both users) | Single (request owner) |
+| **Chat Creation** | After both accept | After single acceptance |
+| **User Actions** | Both can act | Only request owner acts |
+| **Business Model** | B2B marketplace | Direct service request |
+
+#### Response Status Flow
+
+**Matching Response Statuses:**
+- `pending` → `partial` (first user accepted) → `accepted` (both accepted)
+- `pending` → `rejected` (either user rejected)
+
+**Manual Response Statuses:**  
+- `pending` → `accepted` (request owner accepted)
+- `pending` → `rejected` (request owner rejected)
 
 ### Key Controllers
 
@@ -143,7 +216,128 @@ The application adapts behavior based on `app()->environment()`:
 
 ## Key Business Logic
 
+### Matching System Business Rules
+
 The `Matcher` service handles the core algorithm for matching send requests with delivery requests based on location compatibility and user preferences.
+
+## Technical Implementation Details
+
+### **Response Action Logic**
+
+#### Manual Response Implementation
+```php
+// app/Models/Response.php - canUserTakeAction()
+public function canUserTakeAction($userId): bool
+{
+    // For manual responses, only the request owner can act
+    if ($this->response_type === self::TYPE_MANUAL) {
+        return $this->user_id === $userId && $this->overall_status === self::OVERALL_STATUS_PENDING;
+    }
+    
+    // For matching responses, use dual acceptance system
+    $role = $this->getUserRole($userId);
+    if ($role === 'deliverer') {
+        return $this->deliverer_status === self::DUAL_STATUS_PENDING;
+    } elseif ($role === 'sender') {
+        return $this->sender_status === self::DUAL_STATUS_PENDING;
+    }
+    return false;
+}
+```
+
+#### Frontend Action Button Logic
+```javascript
+// ResponsesList.vue - Template conditions
+// Non-manual responses (matching)
+v-if="response.status === 'pending' && response.can_act_on && response.response_type !== 'manual'"
+
+// Manual responses only
+v-else-if="response.response_type === 'manual' && response.status === 'pending'"
+  // Request owner sees accept/reject buttons
+  v-if="response.can_act_on"
+  // Response sender sees waiting message only  
+  v-else
+```
+
+### **Google Sheets Integration Flow**
+
+#### Matching Responses (Dual Tracking)
+```php
+// UpdateGoogleSheetsAcceptanceTracking.php
+if ($userRole === 'deliverer') {
+    // First acceptance → mark as "received" 
+    $googleSheetsService->updateRequestResponseReceived();
+} elseif ($userRole === 'sender') {
+    // Second acceptance → mark as "accepted"
+    $googleSheetsService->updateRequestResponseAccepted();
+}
+```
+
+#### Manual Responses (Single Tracking)
+- Only track final acceptance when request owner accepts
+- No intermediate "received" status needed
+
+### **CRITICAL: Matching Notification Flow**
+
+**Core Principle: In matching mode, deliverers ALWAYS receive the first notification, regardless of who created their request first. Only after deliverer acceptance should sender be notified.**
+
+#### **Correct Flow for Both Scenarios:**
+
+**Scenario 1: Sender Creates First → Deliverer Creates Second**
+```php
+// When deliverer creates request, they find existing send requests
+$this->creationService->createMatchingResponse(
+    $delivery->user_id,        // ✅ DELIVERER receives notification  
+    $sendRequest->user_id,     // sender offered their request
+    'send',                    // send request offered to deliverer
+    $delivery->id,             // deliverer's request receives
+    $sendRequest->id          // sender's request offered
+);
+// Result: DELIVERER gets notified about send opportunity
+```
+
+**Scenario 2: Deliverer Creates First → Sender Creates Second**
+```php
+// When sender creates request, they find existing delivery requests
+$this->creationService->createMatchingResponse(
+    $deliveryRequest->user_id, // ✅ DELIVERER receives notification
+    $send->user_id,           // sender offered their request  
+    'send',                   // send request offered to deliverer
+    $deliveryRequest->id,     // deliverer's request receives
+    $send->id                 // sender's request offered
+);
+// Result: DELIVERER gets notified about send opportunity
+```
+
+#### **Complete Business Flow:**
+
+1. **Request Creation** → Automatic matching occurs
+2. **ALWAYS: Deliverer Gets First Notification** 📱
+   - "New send request matches your delivery route!"
+   - Deliverer can accept/reject via Telegram bot
+3. **If Deliverer Accepts** → `deliverer_status: 'accepted'`, `overall_status: 'partial'`
+4. **THEN: Sender Gets Notification** 📱 (triggered by ResponseObserver)
+   - "A deliverer accepted your request! Confirm partnership?"
+   - Sender can accept/reject
+5. **If Both Accept** → `overall_status: 'accepted'`, Chat created automatically
+6. **Google Sheets Integration** → Both acceptance events tracked for analytics
+
+#### **Response Structure Logic:**
+
+**ALL matching responses use `offer_type: 'send'` because:**
+- ✅ Send requests are ALWAYS being offered TO deliverers
+- ✅ Deliverers evaluate send opportunities (service providers)
+- ✅ Senders' requests are the "product" being offered
+- ✅ Consistent database structure and URL formats
+- ✅ Response URLs: `send_{sendId}_delivery_{deliveryId}`
+
+#### **Business Benefits:**
+
+- **Deliverers as Service Providers**: They decide first if they want the job
+- **Senders as Customers**: They choose from interested deliverers only
+- **Efficient Filtering**: Senders only see serious offers (pre-accepted by deliverers)
+- **Consistent UX**: Same flow regardless of creation timing
+- **Proper Incentives**: Deliverers commit before senders evaluate
 
 DTOs (Data Transfer Objects) are used for request validation and data structuring:
 - `CreateSendRequestDTO`
@@ -162,3 +356,5 @@ DTOs (Data Transfer Objects) are used for request validation and data structurin
 
 We have not used to laravel migrations in this project instead we use raw PostgreSQL query,
 so if you want to know about the structure ask me about it
+
+- Response logic user flow and creating logic for matching and manual types
