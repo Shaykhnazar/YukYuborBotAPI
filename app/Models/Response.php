@@ -217,6 +217,14 @@ class Response extends Model
      */
     public function canUserTakeAction($userId): bool
     {
+        // For manual responses, only the request owner (who received the response) can take action
+        if ($this->response_type === self::TYPE_MANUAL) {
+            // In manual responses, user_id is the request owner (receiver)
+            // responder_id is the response sender
+            return $this->user_id === $userId && $this->overall_status === self::OVERALL_STATUS_PENDING;
+        }
+
+        // For matching responses, use dual acceptance system
         $role = $this->getUserRole($userId);
 
         if ($role === 'deliverer') {

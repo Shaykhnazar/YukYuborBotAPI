@@ -108,7 +108,8 @@ class UserRequestQueryService
             $manualResponsesList = $request->manualResponses ?? collect();
             $offerResponsesList = $request->offerResponses ?? collect();
             
-            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList);
+            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList)
+                ->unique('id'); // Remove duplicates by ID
 
             // Filter responses where current user is involved
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
