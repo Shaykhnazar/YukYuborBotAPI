@@ -121,15 +121,15 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
             'overall_status' => $response->overall_status
         ]);
 
-        // Update the appropriate request based on user role and business logic:
-        // - When deliverer accepts → update sender's request (sender got a response)  
-        // - When sender accepts → update deliverer's request (deliverer got accepted)
+        // Update the appropriate request based on user role for timing tracking:
+        // - When deliverer accepts → update deliverer's own delivery request (for timing)  
+        // - When sender accepts → update sender's own send request (for timing)
         if ($userRole === 'deliverer') {
-            // Deliverer accepted → update sender's send request
-            $this->updateSenderRequestInNewSystem($response, $googleSheetsService);
-        } elseif ($userRole === 'sender') {
-            // Sender accepted → update deliverer's delivery request
+            // Deliverer accepted → update deliverer's delivery request
             $this->updateDelivererRequestInNewSystem($response, $googleSheetsService);
+        } elseif ($userRole === 'sender') {
+            // Sender accepted → update sender's send request
+            $this->updateSenderRequestInNewSystem($response, $googleSheetsService);
         }
         
         // For manual responses that are fully accepted, also update the single target request
