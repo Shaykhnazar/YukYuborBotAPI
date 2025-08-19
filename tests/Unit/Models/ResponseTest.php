@@ -34,11 +34,16 @@ class ResponseTest extends TestCase
 
     public function test_has_status_constants()
     {
-        $this->assertEquals('pending', Response::STATUS_PENDING);
-        $this->assertEquals('accepted', Response::STATUS_ACCEPTED);
-        $this->assertEquals('rejected', Response::STATUS_REJECTED);
-        $this->assertEquals('waiting', Response::STATUS_WAITING);
-        $this->assertEquals('responded', Response::STATUS_RESPONDED);
+        // Test dual status constants
+        $this->assertEquals('pending', Response::DUAL_STATUS_PENDING);
+        $this->assertEquals('accepted', Response::DUAL_STATUS_ACCEPTED);
+        $this->assertEquals('rejected', Response::DUAL_STATUS_REJECTED);
+        
+        // Test overall status constants
+        $this->assertEquals('pending', Response::OVERALL_STATUS_PENDING);
+        $this->assertEquals('partial', Response::OVERALL_STATUS_PARTIAL);
+        $this->assertEquals('accepted', Response::OVERALL_STATUS_ACCEPTED);
+        $this->assertEquals('rejected', Response::OVERALL_STATUS_REJECTED);
     }
 
     public function test_has_type_constants()
@@ -131,15 +136,15 @@ class ResponseTest extends TestCase
         // Clear existing data and create specific test data
         Response::query()->delete();
 
-        Response::factory()->create(['status' => Response::STATUS_PENDING]);
-        Response::factory()->create(['status' => Response::STATUS_PENDING]);
-        Response::factory()->create(['status' => Response::STATUS_ACCEPTED]);
+        Response::factory()->pending()->create();
+        Response::factory()->pending()->create();
+        Response::factory()->accepted()->create();
 
         $pendingResponses = Response::pending()->get();
 
         $this->assertCount(2, $pendingResponses);
         $pendingResponses->each(function ($response) {
-            $this->assertEquals(Response::STATUS_PENDING, $response->status);
+            $this->assertEquals(Response::OVERALL_STATUS_PENDING, $response->overall_status);
         });
     }
 
@@ -151,18 +156,18 @@ class ResponseTest extends TestCase
         $acceptedResponses = Response::accepted()->get();
 
         $this->assertCount(1, $acceptedResponses);
-        $this->assertEquals(Response::STATUS_ACCEPTED, $acceptedResponses->first()->status);
+        $this->assertEquals(Response::OVERALL_STATUS_ACCEPTED, $acceptedResponses->first()->overall_status);
     }
 
-    public function test_scope_responded()
+    public function test_scope_partial()
     {
-        Response::factory()->create(['status' => Response::STATUS_RESPONDED]);
-        Response::factory()->create(['status' => Response::STATUS_PENDING]);
+        Response::factory()->partiallyAccepted()->create();
+        Response::factory()->pending()->create();
 
-        $respondedResponses = Response::responded()->get();
+        $partialResponses = Response::partial()->get();
 
-        $this->assertCount(1, $respondedResponses);
-        $this->assertEquals(Response::STATUS_RESPONDED, $respondedResponses->first()->status);
+        $this->assertCount(1, $partialResponses);
+        $this->assertEquals(Response::OVERALL_STATUS_PARTIAL, $partialResponses->first()->overall_status);
     }
 
     public function test_scope_for_user()
@@ -220,7 +225,9 @@ class ResponseTest extends TestCase
         $data = [
             'user_id' => $this->user->id,
             'responder_id' => $this->responder->id,
-            'status' => Response::STATUS_ACCEPTED,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING,
             'response_type' => Response::TYPE_MANUAL,
             'offer_type' => 'send',
             'request_id' => $deliveryRequest->id,
@@ -231,7 +238,7 @@ class ResponseTest extends TestCase
         $response = Response::create($data);
 
         $this->assertInstanceOf(Response::class, $response);
-        $this->assertEquals(Response::STATUS_ACCEPTED, $response->status);
+        $this->assertEquals(Response::OVERALL_STATUS_PENDING, $response->overall_status);
         $this->assertEquals(Response::TYPE_MANUAL, $response->response_type);
         $this->assertEquals('Test message', $response->message);
     }

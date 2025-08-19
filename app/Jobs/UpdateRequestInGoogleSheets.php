@@ -53,25 +53,21 @@ class UpdateRequestInGoogleSheets implements ShouldQueue
                 $result = $this->requestType === 'send'
                     ? $googleSheetsService->recordCloseSendRequest($this->requestId)
                     : $googleSheetsService->recordCloseDeliveryRequest($this->requestId);
-            } elseif (in_array($request->status, ['matched', 'matched_manually'])) {
-                // When request is matched, update both acceptance tracking and status
-                // This ensures both send and delivery requests show as "matched" and "принят"
-                $result = $googleSheetsService->updateRequestResponseAccepted(
-                    $this->requestType, 
-                    $this->requestId,
-                    null // No specific response time available here, will use fallback logic
-                );
-                
-                Log::info('Request marked as matched/matched_manually, updated acceptance tracking', [
-                    'request_type' => $this->requestType,
-                    'request_id' => $this->requestId,
-                    'status' => $request->status
-                ]);
             } else {
-                // Use the status update methods for other statuses
+                // For all other statuses (open, has_responses, matched, matched_manually), 
+                // just update the request status in Google Sheets
+                // NOTE: Do NOT call acceptance tracking here for matched status!
+                // Acceptance tracking is handled by ResponseObserver when individual responses are accepted
                 $result = $this->requestType === 'send'
                     ? $googleSheetsService->updateSendRequestStatus($this->requestId)
                     : $googleSheetsService->updateDeliveryRequestStatus($this->requestId);
+                    
+                Log::info('Request status updated in Google Sheets (status only)', [
+                    'request_type' => $this->requestType,
+                    'request_id' => $this->requestId,
+                    'status' => $request->status,
+                    'note' => 'Acceptance tracking handled separately by ResponseObserver'
+                ]);
             }
 
             Log::info('Request status updated in Google Sheets via job', [

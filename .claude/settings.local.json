@@ -6,7 +6,10 @@
       "Bash(vendor/bin/phpunit:*)",
       "Bash(php -l:*)",
       "Bash(composer require:*)",
-      "Bash(php artisan vendor:publish:*)"
+      "Bash(php artisan vendor:publish:*)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

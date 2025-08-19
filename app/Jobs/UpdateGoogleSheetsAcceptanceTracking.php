@@ -26,48 +26,37 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
     public int $timeout = 120;
 
     public function __construct(
-        private readonly int $responseId
+        private readonly int $responseId,
+        private readonly ?string $acceptanceType = null
     ) {}
 
     public function handle(GoogleSheetsService $googleSheetsService): void
     {
         try {
-
             $response = Response::find($this->responseId);
 
             if (! $response) {
                 Log::warning('Response not found for Google Sheets acceptance tracking', [
                     'response_id' => $this->responseId,
                 ]);
-
                 return;
             }
 
-//            Log::info('Processing acceptance tracking for response', [
-//                'response_id' => $response->id,
-//                'response_type' => $response->response_type,
-//                'request_type' => $response->request_type,
-//            ]);
+            Log::info('Processing acceptance tracking for response (new system)', [
+                'response_id' => $response->id,
+                'response_type' => $response->response_type,
+                'deliverer_status' => $response->deliverer_status,
+                'sender_status' => $response->sender_status,
+                'overall_status' => $response->overall_status,
+                'offer_type' => $response->offer_type
+            ]);
 
-            // For matching responses, behavior depends on response status
-            if ($response->response_type === Response::TYPE_MATCHING) {
-                if ($response->status === Response::STATUS_RESPONDED) {
-                    // Deliverer responded - only update the deliverer's request
-                    $this->updateDelivererRequestOnly($response, $googleSheetsService);
-                } elseif ($response->status === Response::STATUS_ACCEPTED) {
-                    // Final acceptance by sender - only update the sender's request
-                    // (deliverer was already updated in the previous step)
-                    $this->updateSenderRequestOnly($response, $googleSheetsService);
-                } else {
-                    // Other statuses - handle manually or log
-                    Log::warning('Unexpected response status for acceptance tracking', [
-                        'response_id' => $response->id,
-                        'status' => $response->status
-                    ]);
-                }
+            // NEW SYSTEM: Use individual status columns for proper sequential tracking
+            if ($response->deliverer_status || $response->sender_status) {
+                $this->handleNewSystemTracking($response, $googleSheetsService, $this->acceptanceType);
             } else {
-                // For manual responses, update only the target request
-                $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+                // LEGACY SYSTEM: Fallback for old responses
+                $this->handleLegacySystemTracking($response, $googleSheetsService);
             }
 
         } catch (\Exception $e) {
@@ -82,7 +71,196 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
     }
 
     /**
-     * Update only the deliverer's request when they respond (not final acceptance yet)
+     * Handle tracking using the new single response system with dual acceptance
+     */
+    private function handleNewSystemTracking(Response $response, GoogleSheetsService $googleSheetsService, ?string $acceptanceType = null): void
+    {
+        // In the new system, we track acceptances sequentially:
+        // 1. Deliverer accepts first → update deliverer's request
+        // 2. Sender accepts second → update sender's request
+        
+        $userRole = null;
+        $shouldUpdate = false;
+        
+        // Use acceptance type from observer if provided (more accurate)
+        if ($acceptanceType) {
+            $userRole = $acceptanceType;
+            $shouldUpdate = true;
+        } else {
+            // Fallback: determine which user just accepted based on status change
+            if ($response->deliverer_status === 'accepted' && $response->sender_status !== 'accepted') {
+                $userRole = 'deliverer';
+                $shouldUpdate = true;
+            } elseif ($response->sender_status === 'accepted' && $response->deliverer_status !== 'accepted') {
+                $userRole = 'sender'; 
+                $shouldUpdate = true;
+            } elseif ($response->deliverer_status === 'accepted' && $response->sender_status === 'accepted') {
+                // Both are accepted, this should only happen if acceptanceType wasn't provided
+                // Default to sender (last to accept) for backwards compatibility
+                $userRole = 'sender';
+                $shouldUpdate = true;
+                Log::warning('Both users accepted but no acceptanceType provided, defaulting to sender', [
+                    'response_id' => $response->id
+                ]);
+            }
+        }
+        
+        if (!$shouldUpdate) {
+            Log::info('No acceptance to track in new system', [
+                'response_id' => $response->id,
+                'deliverer_status' => $response->deliverer_status,
+                'sender_status' => $response->sender_status,
+                'acceptance_type' => $acceptanceType
+            ]);
+            return;
+        }
+
+        Log::info('Tracking acceptance for role in new system', [
+            'response_id' => $response->id,
+            'user_role' => $userRole,
+            'overall_status' => $response->overall_status
+        ]);
+
+        // Update the appropriate request based on user role and business logic:
+        // - When deliverer accepts → update sender's request (sender got a response)  
+        // - When sender accepts → update deliverer's request (deliverer got accepted)
+        if ($userRole === 'deliverer') {
+            // Deliverer accepted → update sender's send request
+            $this->updateSenderRequestInNewSystem($response, $googleSheetsService);
+        } elseif ($userRole === 'sender') {
+            // Sender accepted → update deliverer's delivery request
+            $this->updateDelivererRequestInNewSystem($response, $googleSheetsService);
+        }
+        
+        // For manual responses that are fully accepted, also update the single target request
+        if ($response->response_type === Response::TYPE_MANUAL && $response->overall_status === 'accepted') {
+            $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+        }
+    }
+    
+    /**
+     * Update deliverer's request in new system
+     */
+    private function updateDelivererRequestInNewSystem(Response $response, GoogleSheetsService $googleSheetsService): void
+    {
+        // Find deliverer's delivery request using getUserRole logic
+        $delivererUser = $response->getDelivererUser();
+        if (!$delivererUser) {
+            Log::warning('Deliverer user not found for response', [
+                'response_id' => $response->id
+            ]);
+            return;
+        }
+
+        // For matching responses, deliverer is always user_id (receives notification)
+        // Find the delivery request owned by the deliverer
+        $deliveryRequest = null;
+        
+        if ($response->offer_type === 'send') {
+            // Send request offered to deliverer, find deliverer's delivery request  
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+        } elseif ($response->offer_type === 'delivery') {
+            // Delivery request offered by deliverer
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
+        }
+        
+        // Verify this delivery request actually belongs to the deliverer
+        if ($deliveryRequest && $deliveryRequest->user_id === $delivererUser->id) {
+            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id, now()->toISOString());
+            Log::info('Updated deliverer request in Google Sheets (new system)', [
+                'response_id' => $response->id,
+                'delivery_request_id' => $deliveryRequest->id,
+                'deliverer_user_id' => $delivererUser->id,
+            ]);
+        } else {
+            Log::warning('Deliverer\'s delivery request not found or ownership mismatch (new system)', [
+                'response_id' => $response->id,
+                'deliverer_user_id' => $delivererUser->id,
+                'delivery_request_user_id' => $deliveryRequest?->user_id,
+                'delivery_request_id' => $deliveryRequest?->id,
+                'offer_type' => $response->offer_type,
+                'request_id' => $response->request_id,
+                'offer_id' => $response->offer_id
+            ]);
+        }
+    }
+    
+    /**
+     * Update sender's request in new system  
+     */
+    private function updateSenderRequestInNewSystem(Response $response, GoogleSheetsService $googleSheetsService): void
+    {
+        // Find sender's send request using getUserRole logic
+        $senderUser = $response->getSenderUser();
+        if (!$senderUser) {
+            Log::warning('Sender user not found for response', [
+                'response_id' => $response->id
+            ]);
+            return;
+        }
+
+        // For matching responses, sender is always responder_id (owns the send request)
+        // Find the send request owned by the sender
+        $sendRequest = null;
+        
+        if ($response->offer_type === 'send') {
+            // Send request offered by sender
+            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
+        } elseif ($response->offer_type === 'delivery') {
+            // Delivery request offered, sender receives the offer 
+            $sendRequest = \App\Models\SendRequest::find($response->request_id);
+        }
+        
+        // Verify this send request actually belongs to the sender
+        if ($sendRequest && $sendRequest->user_id === $senderUser->id) {
+            $googleSheetsService->updateRequestResponseAccepted('send', $sendRequest->id, now()->toISOString());
+            Log::info('Updated sender request in Google Sheets (new system)', [
+                'response_id' => $response->id,
+                'send_request_id' => $sendRequest->id,
+                'sender_user_id' => $senderUser->id,
+            ]);
+        } else {
+            Log::warning('Sender\'s send request not found or ownership mismatch (new system)', [
+                'response_id' => $response->id,
+                'sender_user_id' => $senderUser->id,
+                'send_request_user_id' => $sendRequest?->user_id,
+                'send_request_id' => $sendRequest?->id,
+                'offer_type' => $response->offer_type,
+                'request_id' => $response->request_id,
+                'offer_id' => $response->offer_id
+            ]);
+        }
+    }
+    
+    /**
+     * Handle legacy system tracking (old dual response system)
+     */
+    private function handleLegacySystemTracking(Response $response, GoogleSheetsService $googleSheetsService): void
+    {
+        // For matching responses, behavior depends on response status
+        if ($response->response_type === Response::TYPE_MATCHING) {
+            if ($response->overall_status === Response::OVERALL_STATUS_PARTIAL) {
+                // Deliverer responded - only update the deliverer's request
+                $this->updateDelivererRequestOnly($response, $googleSheetsService);
+            } elseif ($response->overall_status === Response::OVERALL_STATUS_ACCEPTED) {
+                // Final acceptance by sender - only update the sender's request
+                // (deliverer was already updated in the previous step)
+                $this->updateSenderRequestOnly($response, $googleSheetsService);
+            } else {
+                // Other statuses - handle manually or log
+                Log::warning('Unexpected response status for acceptance tracking (legacy)', [
+                    'response_id' => $response->id,
+                    'overall_status' => $response->overall_status
+                ]);
+            }
+        } else {
+            // For manual responses, update only the target request
+            $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+        }
+    }
+
+    /**
+     * Update only the deliverer's request when they respond (not final acceptance yet) - LEGACY
      */
     private function updateDelivererRequestOnly(Response $response, $googleSheetsService): void
     {

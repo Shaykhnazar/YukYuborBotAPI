@@ -2,54 +2,34 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller as BaseController;
+use App\Enums\RequestStatus;
 use App\Http\Requests\Send\CreateSendRequest;
-use App\Models\DeliveryRequest;
-use App\Models\Response;
-use App\Models\SendRequest;
-use App\Services\Matcher;
+use App\Jobs\MatchRequestsJob;
+use App\Repositories\Contracts\SendRequestRepositoryInterface;
+use App\Services\RequestService;
 use App\Services\TelegramUserService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class SendRequestController extends BaseController
+class SendRequestController extends Controller
 {
     public function __construct(
         protected TelegramUserService $userService,
-        protected Matcher $matcher
-    )
-    {
-    }
+        protected RequestService $requestService,
+        protected SendRequestRepositoryInterface $sendRequestRepository
+    ) {}
 
     public function create(CreateSendRequest $request)
     {
-        $user = $this->userService->getUserByTelegramId($request);
+        try {
+            $user = $this->userService->getUserByTelegramId($request);
+            
+            $this->requestService->checkActiveRequestsLimit($user);
 
-        // Check active requests limit (combined for both delivery and send)
-        $activeDeliveryCount = DeliveryRequest::where('user_id', $user->id)
-            ->whereNotIn('status', ['closed'])
-            ->count();
-
-        $activeSendCount = SendRequest::where('user_id', $user->id)
-            ->whereNotIn('status', ['closed'])
-            ->count();
-
-        $totalActiveRequests = $activeDeliveryCount + $activeSendCount;
-        $maxActiveRequests = 3; // Total limit for both types
-
-        if ($totalActiveRequests >= $maxActiveRequests) {
-            return response()->json([
-                'error' => 'Удалите либо завершите одну из активных заявок, чтобы создать новую.',
-                'errorTitle' => 'Превышен лимит заявок'
-            ], 422);
-        }
-
-
-        $dto = $request->getDTO();
-        $sendReq = new SendRequest(
-            [
+            $dto = $request->getDTO();
+            
+            $sendRequest = $this->sendRequestRepository->create([
                 'from_location_id' => $dto->fromLocId,
                 'to_location_id' => $dto->toLocId,
                 'description' => $dto->desc ?? null,
@@ -58,13 +38,25 @@ class SendRequestController extends BaseController
                 'price' => $dto->price ?? null,
                 'currency' => $dto->currency ?? null,
                 'user_id' => $user->id,
-                'status' => 'open',
-            ]
-        );
-        $sendReq->save();
-        $this->matcher->matchSendRequest($sendReq);
+                'status' => RequestStatus::OPEN->value,
+            ]);
 
-        return response()->json($sendReq);
+            // Dispatch matching job in background
+            MatchRequestsJob::dispatch('send', $sendRequest->id);
+
+            return response()->json($sendRequest);
+
+        } catch (\Exception $e) {
+            Log::error('Error creating send request', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null
+            ]);
+
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка создания заявки'
+            ], 422);
+        }
     }
 
     public function delete(Request $request, int $id)
@@ -72,130 +64,66 @@ class SendRequestController extends BaseController
         try {
             $user = $this->userService->getUserByTelegramId($request);
 
-            $sendRequest = SendRequest::where('id', $id)
-                ->where('user_id', $user->id)
-                ->first();
+            $sendRequest = $this->sendRequestRepository->findByUserAndId($user, $id);
 
             if (!$sendRequest) {
                 return response()->json(['error' => 'Request not found'], 404);
             }
 
-            // Check if request status is completed or matched
-            if (in_array($sendRequest->status, ['matched', 'matched_manually', 'completed'])) {
-                return response()->json([
-                    'error' => 'Cannot delete completed or matched request'
-                ], 409);
-            }
-
-            DB::beginTransaction();
-
-            // Delete all related responses where this send request appears
-            // as either the main request or as an offer
-            Response::where(function($query) use ($id) {
-                $query->where(function($subQuery) use ($id) {
-                    // Responses where this send request is the main request
-                    $subQuery->where('offer_type', 'send')
-                             ->where('request_id', $id);
-                })->orWhere(function($subQuery) use ($id) {
-                    // Responses where this send request appears as an offer
-                    $subQuery->where('offer_type', 'delivery')
-                             ->where('offer_id', $id);
-                });
-            })->delete();
-
-            // Delete any chats related to this send request
-//            Chat::where('send_request_id', $id)->update(['status' => 'closed']);
-
-            // Delete the request
-            $sendRequest->delete();
-
-            DB::commit();
-
-//            Log::info('Send request deleted successfully', [
-//                'request_id' => $id,
-//                'user_id' => $user->id
-//            ]);
+            $this->requestService->deleteRequest($sendRequest);
 
             return response()->json(['message' => 'Request deleted successfully']);
 
         } catch (\Exception $e) {
-            DB::rollBack();
-
             Log::error('Error deleting send request', [
                 'request_id' => $id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
 
-            return response()->json([
-                'error' => 'Failed to delete request'
-            ], 500);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
     public function close(Request $request, int $id)
     {
-        $user = $this->userService->getUserByTelegramId($request);
-
-        $sendRequest = SendRequest::where('id', $id)
-            ->where('user_id', $user->id)
-            ->first();
-
-        if (!$sendRequest) {
-            return response()->json(['error' => 'Send request not found'], 404);
-        }
-
-        if (!in_array($sendRequest->status, ['matched', 'matched_manually'])) {
-            return response()->json(['error' => 'Can only close matched requests'], 409);
-        }
-
-        DB::beginTransaction();
-
         try {
-            // Update the send request status
-            $sendRequest->update(['status' => 'closed']);
+            $user = $this->userService->getUserByTelegramId($request);
 
-            // FIX: Also update the matched delivery request
-            if ($sendRequest->matched_delivery_id) {
-                $deliveryRequest = \App\Models\DeliveryRequest::find($sendRequest->matched_delivery_id);
-                if ($deliveryRequest) {
-                    $deliveryRequest->update(['status' => 'closed']);
-                }
+            $sendRequest = $this->sendRequestRepository->findByUserAndId($user, $id);
+
+            if (!$sendRequest) {
+                return response()->json(['error' => 'Send request not found'], 404);
             }
 
-            // Close ALL responses that involve this request (in either field)
-            Response::where(function($query) use ($id) {
-                $query->where('request_id', $id)
-                    ->orWhere('offer_id', $id);
-            })
-                ->whereIn('status', ['accepted', 'waiting', 'responded', 'pending'])
-                ->update(['status' => 'closed']);
-
-            // FIX: Update chat status to closed
-//            Chat::where('send_request_id', $id)
-//                ->update([
-//                    'send_request_id' => null,
-//                    'status' => 'closed'
-//                ]);
-
-            DB::commit();
-
-//            Log::info('Send request closed successfully', [
-//                'request_id' => $id,
-//                'user_id' => $user->id
-//            ]);
+            $this->requestService->closeRequest($sendRequest);
 
             return response()->json(['message' => 'Send request closed successfully']);
 
         } catch (\Exception $e) {
-            DB::rollBack();
-
             Log::error('Error closing send request', [
                 'request_id' => $id,
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => 'Failed to close request'], 500);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function index(Request $request)
+    {
+        try {
+            $user = $this->userService->getUserByTelegramId($request);
+            $sendRequests = $this->sendRequestRepository->findActiveByUser($user);
+
+            return response()->json($sendRequests);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching user send requests', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null
+            ]);
+
+            return response()->json(['error' => 'Failed to fetch requests'], 500);
         }
     }
 }

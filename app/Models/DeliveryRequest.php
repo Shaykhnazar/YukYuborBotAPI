@@ -110,7 +110,7 @@ class DeliveryRequest extends Model
             'id', // Local key on delivery_requests table
             'chat_id' // Local key on responses table
         )->where('responses.offer_type', 'delivery')
-         ->whereIn('responses.status', ['accepted', 'waiting']);
+         ->whereIn('responses.overall_status', ['accepted', 'partial']);
     }
 
 

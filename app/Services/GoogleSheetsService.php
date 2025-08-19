@@ -716,29 +716,58 @@ class GoogleSheetsService
      */
     public function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
     {
-        // For automatic matching responses: request_id points to the target request
-        if ($response->request_id && $response->request_id > 0) {
-            if ($response->request_type === 'send') {
-                // First try to find it as a SendRequest
-                $sendRequest = \App\Models\SendRequest::find($response->request_id);
-                if ($sendRequest) {
-                    return $sendRequest;
-                }
-            } elseif ($response->request_type === 'delivery') {
-                // If not found as SendRequest, try DeliveryRequest
+        // NEW SYSTEM: For matching responses, determine target based on offer_type and structure
+        if ($response->response_type === Response::TYPE_MATCHING) {
+            if ($response->offer_type === 'send') {
+                // SendRequest is offered → DeliveryRequest receives it (target is delivery request)
                 $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+                
+                Log::info('Searching for target delivery request (new system)', [
+                    'response_id' => $response->id,
+                    'searching_delivery_id' => $response->request_id,
+                    'found' => !!$deliveryRequest,
+                    'offer_type' => $response->offer_type
+                ]);
+                
                 if ($deliveryRequest) {
+                    Log::info('Found target delivery request for matching response (new system)', [
+                        'response_id' => $response->id,
+                        'target_request_type' => 'delivery',
+                        'target_request_id' => $deliveryRequest->id,
+                        'offer_type' => $response->offer_type
+                    ]);
                     return $deliveryRequest;
+                }
+            } else { // offer_type === 'delivery'
+                // DeliveryRequest is offered → SendRequest receives it (target is send request)
+                $sendRequest = \App\Models\SendRequest::find($response->request_id);
+                
+                Log::info('Searching for target send request (new system)', [
+                    'response_id' => $response->id,
+                    'searching_send_id' => $response->request_id,
+                    'found' => !!$sendRequest,
+                    'offer_type' => $response->offer_type
+                ]);
+                
+                if ($sendRequest) {
+                    Log::info('Found target send request for matching response (new system)', [
+                        'response_id' => $response->id,
+                        'target_request_type' => 'send', 
+                        'target_request_id' => $sendRequest->id,
+                        'offer_type' => $response->offer_type
+                    ]);
+                    return $sendRequest;
                 }
             }
         }
-
-        // For manual responses: request_id is 0, use offer_id and offer_type to find the offering request
-        if ($response->response_type === 'manual' && $response->offer_id && $response->offer_type) {
+        
+        // For manual responses: Find the request being responded to
+        elseif ($response->response_type === Response::TYPE_MANUAL) {
             if ($response->offer_type === 'send') {
+                // Manual response to a send request
                 $targetRequest = \App\Models\SendRequest::find($response->offer_id);
                 if ($targetRequest) {
-                    Log::info('Found target request for manual response', [
+                    Log::info('Found target send request for manual response', [
                         'response_id' => $response->id,
                         'target_request_type' => 'send',
                         'target_request_id' => $targetRequest->id,
@@ -747,9 +776,10 @@ class GoogleSheetsService
                     return $targetRequest;
                 }
             } elseif ($response->offer_type === 'delivery') {
+                // Manual response to a delivery request
                 $targetRequest = \App\Models\DeliveryRequest::find($response->offer_id);
                 if ($targetRequest) {
-                    Log::info('Found target request for manual response', [
+                    Log::info('Found target delivery request for manual response', [
                         'response_id' => $response->id,
                         'target_request_type' => 'delivery',
                         'target_request_id' => $targetRequest->id,

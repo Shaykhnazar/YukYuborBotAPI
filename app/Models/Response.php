@@ -16,11 +16,23 @@ class Response extends Model
     protected $table = 'responses';
     protected $guarded = false;
 
+    // Legacy constants - kept for backward compatibility during migration
     const STATUS_PENDING = 'pending';
     const STATUS_ACCEPTED = 'accepted';
     const STATUS_REJECTED = 'rejected';
     const STATUS_WAITING = 'waiting';
     const STATUS_RESPONDED = 'responded';
+
+    // New dual acceptance statuses
+    const DUAL_STATUS_PENDING = 'pending';
+    const DUAL_STATUS_ACCEPTED = 'accepted';
+    const DUAL_STATUS_REJECTED = 'rejected';
+
+    // Overall status values
+    const OVERALL_STATUS_PENDING = 'pending';
+    const OVERALL_STATUS_PARTIAL = 'partial';
+    const OVERALL_STATUS_ACCEPTED = 'accepted';
+    const OVERALL_STATUS_REJECTED = 'rejected';
 
     const TYPE_MATCHING = 'matching';
     const TYPE_MANUAL = 'manual';
@@ -70,17 +82,17 @@ class Response extends Model
 
     public function scopePending($query)
     {
-        return $query->where('status', self::STATUS_PENDING);
+        return $query->where('overall_status', self::OVERALL_STATUS_PENDING);
     }
 
     public function scopeAccepted($query)
     {
-        return $query->where('status', self::STATUS_ACCEPTED);
+        return $query->where('overall_status', self::OVERALL_STATUS_ACCEPTED);
     }
 
-    public function scopeResponded($query)
+    public function scopePartial($query)
     {
-        return $query->where('status', self::STATUS_RESPONDED);
+        return $query->where('overall_status', self::OVERALL_STATUS_PARTIAL);
     }
 
     public function scopeForUser($query, $userId)
@@ -96,6 +108,163 @@ class Response extends Model
     // ✅ ADD: Helper to check if response has an active chat
     public function hasActiveChat(): bool
     {
-        return $this->chat && in_array($this->chat->status, ['active']);
+        return $this->chat && $this->chat->status === 'active';
+    }
+
+    // NEW: Helper methods for dual acceptance system
+
+    /**
+     * Get the deliverer user for this response
+     */
+    public function getDelivererUser()
+    {
+        // For matching responses, deliverer is always the user (receives notification)
+        // For manual responses, logic may differ but currently we use this for matching
+        if ($this->response_type === 'matching') {
+            return $this->user;
+        }
+        
+        // Legacy manual response logic
+        if ($this->offer_type === 'delivery') {
+            // DeliveryRequest is being offered, so responder owns the delivery request
+            return $this->responder;
+        }
+
+        // SendRequest is being offered, so user owns the delivery request
+        return $this->user;
+    }
+
+    /**
+     * Get the sender user for this response
+     */
+    public function getSenderUser()
+    {
+        // For matching responses, sender is always the responder (owns the send request)
+        // For manual responses, logic may differ but currently we use this for matching
+        if ($this->response_type === 'matching') {
+            return $this->responder;
+        }
+        
+        // Legacy manual response logic
+        if ($this->offer_type === 'send') {
+            // SendRequest is being offered, so responder owns the send request
+            return $this->responder;
+        }
+
+        // DeliveryRequest is being offered, so user owns the send request
+        return $this->user;
+    }
+
+    /**
+     * Get the user's role in this response (sender or deliverer)
+     */
+    public function getUserRole($userId): string
+    {
+        $delivererUser = $this->getDelivererUser();
+        $senderUser = $this->getSenderUser();
+
+        if ($delivererUser && $delivererUser->id == $userId) {
+            return 'deliverer';
+        } elseif ($senderUser && $senderUser->id == $userId) {
+            return 'sender';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Update status for a specific user
+     */
+    public function updateUserStatus($userId, $status): bool
+    {
+        $role = $this->getUserRole($userId);
+
+        if ($role === 'deliverer') {
+            $this->deliverer_status = $status;
+        } elseif ($role === 'sender') {
+            $this->sender_status = $status;
+        } else {
+            return false;
+        }
+
+        // Update overall status based on individual statuses
+        $this->updateOverallStatus();
+
+        return $this->save();
+    }
+
+    /**
+     * Update overall status based on individual user statuses
+     */
+    private function updateOverallStatus(): void
+    {
+        if ($this->deliverer_status === self::DUAL_STATUS_REJECTED ||
+            $this->sender_status === self::DUAL_STATUS_REJECTED) {
+            $this->overall_status = self::OVERALL_STATUS_REJECTED;
+        } elseif ($this->deliverer_status === self::DUAL_STATUS_ACCEPTED &&
+                  $this->sender_status === self::DUAL_STATUS_ACCEPTED) {
+            $this->overall_status = self::OVERALL_STATUS_ACCEPTED;
+        } elseif ($this->deliverer_status === self::DUAL_STATUS_ACCEPTED ||
+                  $this->sender_status === self::DUAL_STATUS_ACCEPTED) {
+            $this->overall_status = self::OVERALL_STATUS_PARTIAL;
+        } else {
+            $this->overall_status = self::OVERALL_STATUS_PENDING;
+        }
+    }
+
+    /**
+     * Check if user can take action on this response
+     */
+    public function canUserTakeAction($userId): bool
+    {
+        $role = $this->getUserRole($userId);
+
+        if ($role === 'deliverer') {
+            return $this->deliverer_status === self::DUAL_STATUS_PENDING;
+        } elseif ($role === 'sender') {
+            return $this->sender_status === self::DUAL_STATUS_PENDING;
+        }
+
+        return false;
+    }
+
+    /**
+     * Get user's current status for this response
+     */
+    public function getUserStatus($userId): string
+    {
+        $role = $this->getUserRole($userId);
+
+        if ($role === 'deliverer') {
+            return $this->deliverer_status;
+        } elseif ($role === 'sender') {
+            return $this->sender_status;
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * Check if response is fully accepted by both users
+     */
+    public function isFullyAccepted(): bool
+    {
+        return $this->overall_status === self::OVERALL_STATUS_ACCEPTED;
+    }
+
+    /**
+     * Check if response is rejected by either user
+     */
+    public function isRejected(): bool
+    {
+        return $this->overall_status === self::OVERALL_STATUS_REJECTED;
+    }
+
+    /**
+     * Check if response has partial acceptance (one user accepted)
+     */
+    public function isPartiallyAccepted(): bool
+    {
+        return $this->overall_status === self::OVERALL_STATUS_PARTIAL;
     }
 }

@@ -56,6 +56,6 @@ class Chat extends Model
     public function response(): HasOne
     {
         return $this->hasOne(Response::class, 'chat_id', 'id')
-            ->whereIn('status', ['accepted', 'waiting']);
+            ->whereIn('overall_status', ['accepted', 'partial']);
     }
 }

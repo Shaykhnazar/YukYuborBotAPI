@@ -4,6 +4,8 @@
 
 This document provides comprehensive guidance for integrating Google Sheets functionality from the PostLink Telegram bot into a Laravel API + Nuxt.js web application. The integration allows seamless data synchronization between your web app and Google Sheets for users, requests, and analytics.
 
+**🚀 NEW in v2.0**: Single response system with dual acceptance that eliminates duplicate Google Sheets updates and ensures correct sequential tracking.
+
 ## Current Implementation Analysis
 
 ### Telegram Bot Implementation (Python)
@@ -31,10 +33,12 @@ The bot currently uses the following Google Sheets integration:
    - Columns: [ID, Name, Phone, City, Created_At, Telegram_Username, Telegram_ID]
 
 2. **Deliver Requests Worksheet:**
-   - Columns: [ID, User_Info, From_Location, To_Location, From_Date, To_Date, Size_Type, Description, Status, Created_At, Updated_At]
+   - Columns: [ID, User_Info, From_Location, To_Location, From_Date, To_Date, Size_Type, Description, Status, Created_At, Updated_At, **Response_Received, Response_Count, First_Response_Time, First_Response_Wait, Response_Accepted, Acceptance_Time, Acceptance_Wait**]
 
 3. **Send Requests Worksheet:**
-   - Columns: [ID, User_Info, From_Location, To_Location, From_Date, To_Date, Size_Type, Description, Status, Created_At, Updated_At]
+   - Columns: [ID, User_Info, From_Location, To_Location, From_Date, To_Date, Size_Type, Description, Status, Created_At, Updated_At, **Response_Received, Response_Count, First_Response_Time, First_Response_Wait, Response_Accepted, Acceptance_Time, Acceptance_Wait**]
+
+**🆕 Enhanced Tracking**: New columns (L-R) provide comprehensive response and acceptance analytics with proper sequential updates.
 
 ## Laravel API Integration
 
@@ -1035,3 +1039,68 @@ npm install axios
 ```
 
 This integration maintains all the functionality from the Python Telegram bot while providing a web-based interface for managing and viewing Google Sheets data through your Laravel API and Nuxt.js frontend.
+
+## 🚀 NEW: Single Response System Implementation
+
+### Database Changes Required
+
+Add these columns to your responses table:
+
+```sql
+-- Add new status columns
+ALTER TABLE responses ADD COLUMN deliverer_status VARCHAR(20) DEFAULT 'pending';
+ALTER TABLE responses ADD COLUMN sender_status VARCHAR(20) DEFAULT 'pending'; 
+ALTER TABLE responses ADD COLUMN overall_status VARCHAR(20) DEFAULT 'pending';
+
+-- Add indexes for optimal performance
+CREATE INDEX idx_responses_deliverer_status ON responses (deliverer_status);
+CREATE INDEX idx_responses_sender_status ON responses (sender_status);  
+CREATE INDEX idx_responses_overall_status ON responses (overall_status);
+CREATE INDEX idx_responses_overall_status_type ON responses (overall_status, response_type);
+CREATE INDEX idx_responses_user_overall_status ON responses (user_id, overall_status);
+CREATE INDEX idx_responses_responder_overall_status ON responses (responder_id, overall_status);
+```
+
+**📁 Complete SQL Script**: A comprehensive SQL script is available at `database/sql/add_dual_acceptance_status_columns.sql` with data migration, verification queries, and rollback options.
+
+### Key Improvements
+
+1. **✅ Eliminates Duplicate Responses**: One response record instead of two per match
+2. **✅ Fixes Google Sheets Order**: Deliverer gets update first, then sender
+3. **✅ Sequential Acceptance**: Clean user experience with proper status tracking
+4. **✅ 50% Database Reduction**: Significantly fewer response records
+5. **✅ Backward Compatible**: Works with existing legacy data
+
+### Usage Example
+
+```php
+// Create single response for a match
+$response = Response::create([
+    'user_id' => $receiver_user_id,
+    'responder_id' => $offering_user_id,
+    'offer_type' => 'send', // or 'delivery'
+    'offer_id' => $offering_request_id,
+    'request_id' => $receiving_request_id,
+    'response_type' => 'matching',
+    'deliverer_status' => 'pending',
+    'sender_status' => 'pending',
+    'overall_status' => 'pending'
+]);
+
+// User accepts
+$response->updateUserStatus($user_id, 'accepted');
+// Result: deliverer_status='accepted', overall_status='partial'
+
+// Other user accepts
+$response->updateUserStatus($other_user_id, 'accepted');  
+// Result: sender_status='accepted', overall_status='accepted'
+```
+
+### Google Sheets Benefits
+
+- **Correct order**: Deliverer acceptance tracked first, then sender
+- **No duplicates**: Single response = single tracking workflow  
+- **Clean analytics**: Proper sequential timing data
+- **Simplified maintenance**: Less complex tracking logic
+
+This integration maintains all the functionality from the Python Telegram bot while providing a web-based interface for managing and viewing Google Sheets data through your Laravel API and Nuxt.js frontend, **now with significantly improved response tracking accuracy**.
