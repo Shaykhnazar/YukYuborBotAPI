@@ -103,7 +103,12 @@ class UserRequestQueryService
             }
 
             // Merge both matching responses and manual responses
-            $allResponses = $request->responses->merge($request->manualResponses ?? collect());
+            // For send requests, also check offerResponses (when send request is offered to delivery requests)
+            $responsesList = $request->responses ?? collect();
+            $manualResponsesList = $request->manualResponses ?? collect();
+            $offerResponsesList = $request->offerResponses ?? collect();
+            
+            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList);
 
             // Filter responses where current user is involved
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
@@ -145,12 +150,20 @@ class UserRequestQueryService
         $request->user_role = $response->getUserRole($currentUser->id);
         $request->user_status = $response->getUserStatus($currentUser->id);
 
-        // Set responder user with their request counts
-        if ($response->responder) {
-            $responder = $response->responder;
-            $responder->closed_send_requests_count = $responder->sendRequests()->where('status', 'closed')->count();
-            $responder->closed_delivery_requests_count = $responder->deliveryRequests()->where('status', 'closed')->count();
-            $request->responder_user = $responder;
+        // Set responder user as the "other party" from current user's perspective
+        $otherUser = null;
+        if ($response->user_id === $currentUser->id) {
+            // Current user is the user (deliverer), other party is responder (sender)
+            $otherUser = $response->responder;
+        } elseif ($response->responder_id === $currentUser->id) {
+            // Current user is the responder (sender), other party is user (deliverer)
+            $otherUser = $response->user;
+        }
+        
+        if ($otherUser) {
+            $otherUser->closed_send_requests_count = $otherUser->sendRequests()->where('status', 'closed')->count();
+            $otherUser->closed_delivery_requests_count = $otherUser->deliveryRequests()->where('status', 'closed')->count();
+            $request->responder_user = $otherUser;
         } else {
             $request->responder_user = null;
         }

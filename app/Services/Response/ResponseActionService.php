@@ -142,7 +142,7 @@ class ResponseActionService
             throw new \Exception('Invalid response ID');
         }
 
-        $offerType = $parts[0]; // 'send' or 'delivery' 
+        $offerType = $parts[0]; // 'send' or 'delivery'
         $offerId = (int)$parts[1];
         $requestType = $parts[2]; // 'delivery' or 'send'
         $requestId = (int)$parts[3];
@@ -153,7 +153,7 @@ class ResponseActionService
             // Send request offered to delivery request: send_X_delivery_Y
             $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
         } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y  
+            // Delivery request offered to send request: delivery_X_send_Y
             $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
         }
 
@@ -193,7 +193,7 @@ class ResponseActionService
             throw new \Exception('Invalid response ID');
         }
 
-        $offerType = $parts[0]; // 'send' or 'delivery' 
+        $offerType = $parts[0]; // 'send' or 'delivery'
         $offerId = (int)$parts[1];
         $requestType = $parts[2]; // 'delivery' or 'send'
         $requestId = (int)$parts[3];
@@ -204,7 +204,7 @@ class ResponseActionService
             // Send request offered to delivery request: send_X_delivery_Y
             $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
         } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y  
+            // Delivery request offered to send request: delivery_X_send_Y
             $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
         }
 
@@ -227,7 +227,7 @@ class ResponseActionService
         } elseif ($userRole === 'sender') {
             // Current user is the sender
             if ($offerType === 'send') {
-                // Sender rejecting after deliverer accepted: send_X_delivery_Y  
+                // Sender rejecting after deliverer accepted: send_X_delivery_Y
                 return $this->handleSenderRejection($user, $offerId, $requestId);
             } else {
                 // Sender rejecting delivery offer: delivery_X_send_Y
@@ -251,7 +251,7 @@ class ResponseActionService
             throw new \Exception('Invalid response ID');
         }
 
-        $offerType = $parts[0]; // 'send' or 'delivery' 
+        $offerType = $parts[0]; // 'send' or 'delivery'
         $offerId = (int)$parts[1];
         $requestType = $parts[2]; // 'delivery' or 'send'
         $requestId = (int)$parts[3];
@@ -262,7 +262,7 @@ class ResponseActionService
             // Send request offered to delivery request: send_X_delivery_Y
             $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
         } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y  
+            // Delivery request offered to send request: delivery_X_send_Y
             $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
         }
 
@@ -285,7 +285,7 @@ class ResponseActionService
         } elseif ($userRole === 'sender') {
             // Current user is the sender
             if ($offerType === 'send') {
-                // Sender accepting after deliverer accepted: send_X_delivery_Y  
+                // Sender accepting after deliverer accepted: send_X_delivery_Y
                 return $this->handleSenderAcceptance($user, $offerId, $requestId);
             } else {
                 // Sender accepting delivery offer: delivery_X_send_Y
@@ -371,7 +371,7 @@ class ResponseActionService
             if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
                 $this->sendRequestRepository->updateStatus($sendRequestId, RequestStatus::MATCHED->value);
                 $this->deliveryRequestRepository->updateStatus($deliveryRequestId, RequestStatus::MATCHED->value);
-                $sender->decrement('links_balance', 1);
+//                $sender->decrement('links_balance', 1);
 
                 DB::commit();
 
@@ -472,7 +472,7 @@ class ResponseActionService
             'offer_type' => $offerType,
             'response_type' => ResponseType::MANUAL->value
         ]);
-        
+
         $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
 
         // Update status based on remaining responses
