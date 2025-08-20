@@ -263,12 +263,17 @@ v-else-if="response.response_type === 'manual' && response.status === 'pending'"
 
 #### Matching Responses (Dual Tracking)
 ```php
+// Google Sheets Flow for Matching Responses:
+// 1. Response Creation → updateRequestResponseReceived() (columns L, M, N, O)
+// 2. Deliverer Accepts → NO ACTION (already marked as received)  
+// 3. Sender Accepts → updateRequestResponseAccepted() (columns P, Q, R)
+
 // UpdateGoogleSheetsAcceptanceTracking.php
 if ($userRole === 'deliverer') {
-    // First acceptance → mark as "received" 
-    $googleSheetsService->updateRequestResponseReceived();
+    // Deliverer acceptance → DO NOTHING (received already set at creation)
+    Log::info('Deliverer accepted - skipping update');
 } elseif ($userRole === 'sender') {
-    // Second acceptance → mark as "accepted"
+    // Sender acceptance → mark as "accepted"
     $googleSheetsService->updateRequestResponseAccepted();
 }
 ```

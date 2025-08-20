@@ -54,9 +54,6 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
             // NEW SYSTEM: Use individual status columns for proper sequential tracking
             if ($response->deliverer_status || $response->sender_status) {
                 $this->handleNewSystemTracking($response, $googleSheetsService, $this->acceptanceType);
-            } else {
-                // LEGACY SYSTEM: Fallback for old responses
-                $this->handleLegacySystemTracking($response, $googleSheetsService);
             }
 
         } catch (\Exception $e) {
@@ -84,8 +81,20 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 
         // Use acceptance type from observer if provided (more accurate)
         if ($acceptanceType) {
+            if ($acceptanceType === 'manual') {
+                // For manual responses, handle directly without user role logic
+                Log::info('Processing manual response acceptance', [
+                    'response_id' => $response->id
+                ]);
+                $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+                return;
+            }
             $userRole = $acceptanceType;
             $shouldUpdate = true;
+            Log::info('Using provided acceptance type', [
+                'response_id' => $response->id,
+                'acceptance_type' => $acceptanceType
+            ]);
         } else {
             // Fallback: determine which user just accepted based on status change
             if ($response->deliverer_status === 'accepted' && $response->sender_status !== 'accepted') {
@@ -118,24 +127,32 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         Log::info('Tracking acceptance for role in new system', [
             'response_id' => $response->id,
             'user_role' => $userRole,
-            'overall_status' => $response->overall_status
+            'overall_status' => $response->overall_status,
+            'offer_type' => $response->offer_type,
+            'request_id' => $response->request_id,
+            'offer_id' => $response->offer_id,
+            'response_type' => $response->response_type
         ]);
 
-        // For manual responses that are fully accepted, also update the single target request
-        if ($response->response_type === Response::TYPE_MANUAL && $response->overall_status === 'accepted') {
-            $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
-        }
-
-        // Update the appropriate request based on user role for timing tracking:
-        // - When deliverer accepts → update deliverer's own delivery request (for timing)
-        // - When sender accepts → update sender's own send request (for timing)
-        if ($userRole === 'deliverer') {
-            // Deliverer accepted → update as "received" (first step)
-            $this->updateDelivererRequestInNewSystem($response, $googleSheetsService, $response->created_at->toISOString(), 'received');
-        } elseif ($userRole === 'sender') {
-            // Sender accepted → update as "accepted" (final step)
-            $delivererAcceptanceTime = $this->getDelivererAcceptanceTime($response);
-            $this->updateSenderRequestInNewSystem($response, $googleSheetsService, $delivererAcceptanceTime, 'accepted');
+        // Handle manual vs matching responses separately
+        if ($response->response_type === Response::TYPE_MANUAL) {
+            // For manual responses, only track final acceptance (single acceptance system)
+            if ($response->overall_status === 'accepted') {
+                $this->updateSingleRequestForManualResponse($response, $googleSheetsService);
+            }
+        } else {
+            // For matching responses, use dual acceptance tracking
+            // Update the appropriate request based on user role for timing tracking:
+            // - When deliverer accepts → update deliverer's own delivery request (for timing)
+            // - When sender accepts → update sender's own send request (for timing)
+            if ($userRole === 'deliverer') {
+                // Deliverer accepted → update as "received" (first step)
+                $this->updateDelivererRequestInNewSystem($response, $googleSheetsService, $response->created_at->toISOString(), 'received');
+            } elseif ($userRole === 'sender') {
+                // Sender accepted → update as "accepted" (final step)
+                $delivererAcceptanceTime = $this->getDelivererAcceptanceTime($response);
+                $this->updateSenderRequestInNewSystem($response, $googleSheetsService, $delivererAcceptanceTime, 'accepted');
+            }
         }
 
 

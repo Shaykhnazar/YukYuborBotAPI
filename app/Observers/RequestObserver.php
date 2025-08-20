@@ -25,7 +25,7 @@ class RequestObserver
 
         // Handle Google Sheets integration for new requests
         $this->handleGoogleSheetsCreation($request, $requestType);
-        
+
         $this->invalidateRequestCountsCache($request, 'created');
     }
 
@@ -105,7 +105,7 @@ class RequestObserver
     {
         try {
             $deletedRequestId = $deletedRequest->id;
-            
+
             Log::info('RequestObserver: Starting deletion cleanup', [
                 'request_type' => $requestType,
                 'request_id' => $deletedRequestId
@@ -135,7 +135,7 @@ class RequestObserver
             // Delete the responses
             if ($responsesToDelete->isNotEmpty()) {
                 \App\Models\Response::whereIn('id', $responsesToDelete->pluck('id'))->delete();
-                
+
                 Log::info('RequestObserver: Deleted responses', [
                     'deleted_request_id' => $deletedRequestId,
                     'deleted_response_count' => $responsesToDelete->count()
@@ -165,7 +165,7 @@ class RequestObserver
             $otherRequestId = $response->request_id;
             $otherRequestType = $response->offer_type === 'send' ? 'delivery' : 'send';
         } elseif ($response->request_id == $deletedRequestId) {
-            // Deleted request was the receiving request → cleanup offering request  
+            // Deleted request was the receiving request → cleanup offering request
             $otherRequestId = $response->offer_id;
             $otherRequestType = $response->offer_type;
         }
@@ -198,13 +198,13 @@ class RequestObserver
 
         // If no remaining responses, update status back to 'open'
         if ($remainingResponsesCount === 0) {
-            $otherRequestModel = $otherRequestType === 'send' 
+            $otherRequestModel = $otherRequestType === 'send'
                 ? \App\Models\SendRequest::find($otherRequestId)
                 : \App\Models\DeliveryRequest::find($otherRequestId);
 
             if ($otherRequestModel && $otherRequestModel->status === 'has_responses') {
                 $otherRequestModel->update(['status' => 'open']);
-                
+
                 Log::info('RequestObserver: Updated other request status back to open', [
                     'other_request_type' => $otherRequestType,
                     'other_request_id' => $otherRequestId,
@@ -248,7 +248,7 @@ class RequestObserver
                 RecordSendRequestToGoogleSheets::dispatch($request->id)
                     ->delay(now()->addSeconds(2))
                     ->onQueue('gsheets');
-                    
+
                 Log::info('RequestObserver: Dispatched RecordSendRequestToGoogleSheets job', [
                     'request_type' => $requestType,
                     'request_id' => $request->id
@@ -257,7 +257,7 @@ class RequestObserver
                 RecordDeliveryRequestToGoogleSheets::dispatch($request->id)
                     ->delay(now()->addSeconds(2))
                     ->onQueue('gsheets');
-                    
+
                 Log::info('RequestObserver: Dispatched RecordDeliveryRequestToGoogleSheets job', [
                     'request_type' => $requestType,
                     'request_id' => $request->id
@@ -280,22 +280,22 @@ class RequestObserver
         try {
             $oldStatus = $request->getOriginal('status');
             $newStatus = $request->status;
-            
+
             Log::info('RequestObserver: Status change detected', [
                 'request_type' => $requestType,
                 'request_id' => $request->id,
                 'old_status' => $oldStatus,
                 'new_status' => $newStatus
             ]);
-            
+
             // Only update Google Sheets for meaningful status changes that affect the request itself
-            // Note: 'has_responses' changes are triggered by response creation, but we want to update 
+            // Note: 'has_responses' changes are triggered by response creation, but we want to update
             // the request status in sheets to show it has responses available
-            if (in_array($newStatus, ['has_responses', 'matched', 'matched_manually', 'closed', 'completed'])) {
+            if (in_array($newStatus, [/*'has_responses', 'matched',*/ 'matched_manually', 'closed', 'completed'])) {
                 UpdateRequestInGoogleSheets::dispatch($requestType, $request->id)
                     ->delay(now()->addSeconds(3))
                     ->onQueue('gsheets');
-                    
+
                 Log::info('RequestObserver: Dispatched UpdateRequestInGoogleSheets job', [
                     'request_type' => $requestType,
                     'request_id' => $request->id,

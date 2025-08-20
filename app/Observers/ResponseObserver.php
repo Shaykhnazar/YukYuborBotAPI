@@ -50,29 +50,60 @@ class ResponseObserver
                 'offer_type' => $response->offer_type
             ]);
 
-            // Trigger Google Sheets tracking when someone accepts (moves from pending to accepted)
-            $delivererJustAccepted = ($previousDelivererStatus === 'pending' && $currentDelivererStatus === 'accepted');
-            $senderJustAccepted = ($previousSenderStatus === 'pending' && $currentSenderStatus === 'accepted');
-            
-            if ($delivererJustAccepted || $senderJustAccepted) {
-                $acceptanceType = $delivererJustAccepted ? 'deliverer' : 'sender';
+            // Handle different response types differently
+            if ($response->response_type === 'manual') {
+                // For manual responses, only track overall_status change to 'accepted'
+                $manualJustAccepted = ($previousOverallStatus === 'pending' && $currentOverallStatus === 'accepted');
                 
-                Log::info('ResponseObserver: Acceptance detected in new system', [
-                    'response_id' => $response->id,
-                    'acceptance_type' => $acceptanceType,
-                    'overall_status' => $currentOverallStatus,
-                    'deliverer_accepted' => $delivererJustAccepted,
-                    'sender_accepted' => $senderJustAccepted
-                ]);
+                if ($manualJustAccepted) {
+                    Log::info('ResponseObserver: Manual response acceptance detected', [
+                        'response_id' => $response->id,
+                        'overall_status' => $currentOverallStatus
+                    ]);
 
-                UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id, $acceptanceType)
-                    ->delay(now()->addSeconds(3))
-                    ->onQueue('gsheets');
+                    UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id, 'manual')
+                        ->delay(now()->addSeconds(3))
+                        ->onQueue('gsheets');
 
-                Log::info('ResponseObserver: Dispatched Google Sheets job for new system', [
-                    'response_id' => $response->id,
-                    'acceptance_type' => $acceptanceType
-                ]);
+                    Log::info('ResponseObserver: Dispatched Google Sheets job for manual response', [
+                        'response_id' => $response->id
+                    ]);
+                }
+            } else {
+                // For matching responses, track individual user acceptances
+                $delivererJustAccepted = ($previousDelivererStatus === 'pending' && $currentDelivererStatus === 'accepted');
+                $senderJustAccepted = ($previousSenderStatus === 'pending' && $currentSenderStatus === 'accepted');
+                
+                if ($delivererJustAccepted || $senderJustAccepted) {
+                    // Prioritize the actual change - if both changed simultaneously, something's wrong
+                    if ($delivererJustAccepted && $senderJustAccepted) {
+                        Log::warning('Both deliverer and sender accepted simultaneously in matching response', [
+                            'response_id' => $response->id,
+                            'this_should_not_happen' => 'matching responses should have sequential acceptance'
+                        ]);
+                        // Default to deliverer for safety
+                        $acceptanceType = 'deliverer';
+                    } else {
+                        $acceptanceType = $delivererJustAccepted ? 'deliverer' : 'sender';
+                    }
+                    
+                    Log::info('ResponseObserver: Matching response acceptance detected', [
+                        'response_id' => $response->id,
+                        'acceptance_type' => $acceptanceType,
+                        'overall_status' => $currentOverallStatus,
+                        'deliverer_accepted' => $delivererJustAccepted,
+                        'sender_accepted' => $senderJustAccepted
+                    ]);
+
+                    UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id, $acceptanceType)
+                        ->delay(now()->addSeconds(3))
+                        ->onQueue('gsheets');
+
+                    Log::info('ResponseObserver: Dispatched Google Sheets job for matching response', [
+                        'response_id' => $response->id,
+                        'acceptance_type' => $acceptanceType
+                    ]);
+                }
             }
         }
     }
