@@ -3,8 +3,10 @@
 namespace App\Observers;
 
 use App\Models\Response;
-use App\Jobs\UpdateGoogleSheetsResponseTracking;
-use App\Jobs\UpdateGoogleSheetsAcceptanceTracking;
+use App\Jobs\UpdateDeliveryRequestReceived;
+use App\Jobs\UpdateDeliveryRequestAccepted;
+use App\Jobs\UpdateSendRequestReceived;
+use App\Jobs\UpdateSendRequestAccepted;
 use Illuminate\Support\Facades\Log;
 
 class ResponseObserver
@@ -15,14 +17,40 @@ class ResponseObserver
      */
     public function created(Response $response): void
     {
-        // Dispatch queued job to update Google Sheets tracking with a short delay
-        UpdateGoogleSheetsResponseTracking::dispatch($response->id, true)
-            ->delay(now()->addSeconds(3))
-            ->onQueue('gsheets');
+        // For matching responses, mark the DeliveryRequest as "received"
+        if ($response->response_type === 'matching') {
+            UpdateDeliveryRequestReceived::dispatch($response->request_id)
+                ->delay(now()->addSeconds(3))
+                ->onQueue('gsheets');
 
-        Log::info('ResponseObserver: Dispatched UpdateGoogleSheetsResponseTracking job', [
-            'response_id' => $response->id
-        ]);
+            Log::info('ResponseObserver: Dispatched UpdateDeliveryRequestReceived job', [
+                'response_id' => $response->id,
+                'delivery_request_id' => $response->request_id
+            ]);
+        } else {
+            // For manual responses, mark the target request as "received"
+            if ($response->offer_type === 'send') {
+                // Someone responded to a send request
+                UpdateSendRequestReceived::dispatch($response->offer_id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
+
+                Log::info('ResponseObserver: Dispatched UpdateSendRequestReceived for manual response', [
+                    'response_id' => $response->id,
+                    'send_request_id' => $response->offer_id
+                ]);
+            } else {
+                // Someone responded to a delivery request
+                UpdateDeliveryRequestReceived::dispatch($response->offer_id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
+
+                Log::info('ResponseObserver: Dispatched UpdateDeliveryRequestReceived for manual response', [
+                    'response_id' => $response->id,
+                    'delivery_request_id' => $response->offer_id
+                ]);
+            }
+        }
     }
 
     /**
@@ -32,7 +60,7 @@ class ResponseObserver
     {
         // Check for changes in the new dual acceptance status columns
         $statusFieldsChanged = $response->wasChanged(['deliverer_status', 'sender_status', 'overall_status']);
-        
+
         if ($statusFieldsChanged) {
             $previousDelivererStatus = $response->getOriginal('deliverer_status');
             $currentDelivererStatus = $response->deliverer_status;
@@ -44,7 +72,7 @@ class ResponseObserver
             Log::info('ResponseObserver: Response status changed (simplified ID system)', [
                 'response_id' => $response->id,
                 'deliverer_status' => "$previousDelivererStatus → $currentDelivererStatus",
-                'sender_status' => "$previousSenderStatus → $currentSenderStatus", 
+                'sender_status' => "$previousSenderStatus → $currentSenderStatus",
                 'overall_status' => "$previousOverallStatus → $currentOverallStatus",
                 'response_type' => $response->response_type,
                 'offer_type' => $response->offer_type
@@ -54,54 +82,78 @@ class ResponseObserver
             if ($response->response_type === 'manual') {
                 // For manual responses, only track overall_status change to 'accepted'
                 $manualJustAccepted = ($previousOverallStatus === 'pending' && $currentOverallStatus === 'accepted');
-                
+
                 if ($manualJustAccepted) {
                     Log::info('ResponseObserver: Manual response acceptance detected', [
                         'response_id' => $response->id,
-                        'overall_status' => $currentOverallStatus
+                        'overall_status' => $currentOverallStatus,
+                        'offer_type' => $response->offer_type,
+                        'offer_id' => $response->offer_id
                     ]);
 
-                    UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id, 'manual')
-                        ->delay(now()->addSeconds(3))
-                        ->onQueue('gsheets');
+                    // Mark the target request as "accepted"
+                    if ($response->offer_type === 'send') {
+                        // Request owner accepted a response to their send request
+                        UpdateSendRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
 
-                    Log::info('ResponseObserver: Dispatched Google Sheets job for manual response', [
-                        'response_id' => $response->id
-                    ]);
+                        Log::info('ResponseObserver: Dispatched UpdateSendRequestAccepted for manual response', [
+                            'response_id' => $response->id,
+                            'send_request_id' => $response->offer_id
+                        ]);
+                    } else {
+                        // Request owner accepted a response to their delivery request
+                        UpdateDeliveryRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
+
+                        Log::info('ResponseObserver: Dispatched UpdateDeliveryRequestAccepted for manual response', [
+                            'response_id' => $response->id,
+                            'delivery_request_id' => $response->offer_id
+                        ]);
+                    }
                 }
             } else {
-                // For matching responses, track individual user acceptances
+                // For matching responses, use focused jobs for each step
                 $delivererJustAccepted = ($previousDelivererStatus === 'pending' && $currentDelivererStatus === 'accepted');
                 $senderJustAccepted = ($previousSenderStatus === 'pending' && $currentSenderStatus === 'accepted');
-                
-                if ($delivererJustAccepted || $senderJustAccepted) {
-                    // Prioritize the actual change - if both changed simultaneously, something's wrong
-                    if ($delivererJustAccepted && $senderJustAccepted) {
-                        Log::warning('Both deliverer and sender accepted simultaneously in matching response', [
-                            'response_id' => $response->id,
-                            'this_should_not_happen' => 'matching responses should have sequential acceptance'
-                        ]);
-                        // Default to deliverer for safety
-                        $acceptanceType = 'deliverer';
-                    } else {
-                        $acceptanceType = $delivererJustAccepted ? 'deliverer' : 'sender';
-                    }
-                    
-                    Log::info('ResponseObserver: Matching response acceptance detected', [
+
+                if ($delivererJustAccepted) {
+                    // Deliverer accepted → DeliveryRequest marked as "accepted" + SendRequest marked as "received"
+                    Log::info('ResponseObserver: Deliverer acceptance detected', [
                         'response_id' => $response->id,
-                        'acceptance_type' => $acceptanceType,
-                        'overall_status' => $currentOverallStatus,
-                        'deliverer_accepted' => $delivererJustAccepted,
-                        'sender_accepted' => $senderJustAccepted
+                        'delivery_request_id' => $response->request_id,
+                        'send_request_id' => $response->offer_id
                     ]);
 
-                    UpdateGoogleSheetsAcceptanceTracking::dispatch($response->id, $acceptanceType)
+                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, now()->toISOString())
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
-                    Log::info('ResponseObserver: Dispatched Google Sheets job for matching response', [
+                    UpdateSendRequestReceived::dispatch($response->offer_id)
+                        ->delay(now()->addSeconds(4))
+                        ->onQueue('gsheets');
+
+                    Log::info('ResponseObserver: Dispatched DeliveryRequestAccepted and SendRequestReceived jobs', [
                         'response_id' => $response->id,
-                        'acceptance_type' => $acceptanceType
+                        'delivery_request_id' => $response->request_id,
+                        'send_request_id' => $response->offer_id
+                    ]);
+                } elseif ($senderJustAccepted) {
+                    // Sender accepted → SendRequest marked as "accepted"
+                    Log::info('ResponseObserver: Sender acceptance detected', [
+                        'response_id' => $response->id,
+                        'send_request_id' => $response->offer_id
+                    ]);
+
+                    UpdateSendRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                        ->delay(now()->addSeconds(3))
+                        ->onQueue('gsheets');
+
+                    Log::info('ResponseObserver: Dispatched SendRequestAccepted job', [
+                        'response_id' => $response->id,
+                        'send_request_id' => $response->offer_id
                     ]);
                 }
             }
