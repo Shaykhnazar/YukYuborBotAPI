@@ -13,7 +13,7 @@ class NotificationService
         $this->sendTelegramNotification(
             $userId,
             $senderName,
-            "Отлично! Ваш отклик принят. Теперь вы можете общаться в чате."
+            "✅ *Отклик принят*\n Отлично! Теперь вы можете обсудить детали доставки напрямую в чате.💬 Перейдите в раздел _входящие_ в приложении, чтобы начать👇🏻"
         );
     }
 
@@ -22,20 +22,13 @@ class NotificationService
         $this->sendTelegramNotification(
             $userId,
             $senderName,
-            "К сожалению, ваш отклик был отклонен."
+            "❌ *Отклик отклонён*\n Мы продолжим искать совпадения для вас и уведомим о _новом отклике_⏳"
         );
     }
 
     public function sendResponseNotification(int $userId, string $responderName, string $message, ?int $amount = null, ?string $currency = null): void
     {
-        $notificationMessage = "Пользователь откликнулся на вашу заявку!\n\n";
-        $notificationMessage .= "💬 Сообщение: {$message}\n";
-
-        if ($amount && $currency) {
-            $notificationMessage .= "💰 Предложенная цена: {$amount} {$currency}\n";
-        }
-
-        $notificationMessage .= "\n📱 Проверьте отклики в приложении для ответа.";
+        $notificationMessage = "🎉 *У вас новый отклик!*\nВаша заявка получила отклик. Откройте раздел _входящие_ в приложении, чтобы посмотреть детали и решить — принять или отклонить👇🏻";
 
         $this->sendTelegramNotification($userId, $responderName, $notificationMessage);
     }
@@ -55,6 +48,7 @@ class NotificationService
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $notificationText,
+            'parse_mode' => 'Markdown',
         ]);
 
         if ($response->failed()) {
