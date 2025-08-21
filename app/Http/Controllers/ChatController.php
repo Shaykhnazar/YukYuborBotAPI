@@ -608,12 +608,13 @@ class ChatController extends BaseController
         }
 
         $telegramId = $user->telegramUser->telegram;
-        $notificationText = "💬 Новое сообщение от {$senderName}:\n\n{$message}";
+        $notificationText = "🛎 *Новое сообщение от {$senderName}*\nОткройте приложение, чтобы ответить 👇🏻";
 
         $token = config('auth.guards.tgwebapp.token');
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $notificationText,
+            'parse_mode' => 'Markdown',
         ]);
 
         if ($response->failed()) {
