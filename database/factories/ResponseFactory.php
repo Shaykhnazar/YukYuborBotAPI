@@ -38,6 +38,7 @@ class ResponseFactory extends Factory
             'deliverer_status' => $this->faker->randomElement(['pending', 'accepted', 'rejected']),
             'sender_status' => $this->faker->randomElement(['pending', 'accepted', 'rejected']),
             'overall_status' => 'pending',
+            'response_type' => Response::TYPE_MATCHING,
             'chat_id' => null,
             'message' => $this->faker->optional(0.3)->sentence(),
             'created_at' => $this->faker->dateTimeBetween('-7 days', 'now'),
@@ -179,6 +180,26 @@ class ResponseFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'message' => $message,
+        ]);
+    }
+
+    /**
+     * Manual response type
+     */
+    public function manual(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'response_type' => Response::TYPE_MANUAL,
+        ]);
+    }
+
+    /**
+     * Matching response type
+     */
+    public function matching(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'response_type' => Response::TYPE_MATCHING,
         ]);
     }
 

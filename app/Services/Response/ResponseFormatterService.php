@@ -139,34 +139,34 @@ class ResponseFormatterService
     private function calculateRequestsCount(User $user, bool $isReceiver, string $responseType): int
     {
         if ($responseType === 'manual') {
-            return $isReceiver 
+            return $isReceiver
                 ? $user->deliveryRequests()->where('status', 'closed')->count()
                 : $user->sendRequests()->where('status', 'closed')->count();
         }
 
-        return $isReceiver 
+        return $isReceiver
             ? $user->sendRequests()->where('status', 'closed')->count()
             : $user->deliveryRequests()->where('status', 'closed')->count();
     }
 
     private function getPrice(Response $response, $request): ?int
     {
-        return ($response->response_type === 'manual' && $response->amount) 
-            ? $response->amount 
+        return ($response->response_type === 'manual' && $response->amount)
+            ? $response->amount
             : $request->price;
     }
 
     private function getCurrency(Response $response, $request): ?string
     {
-        return ($response->response_type === 'manual' && $response->currency) 
-            ? $response->currency 
+        return ($response->response_type === 'manual' && $response->currency)
+            ? $response->currency
             : $request->currency;
     }
 
-    private function getDescription(Response $response, $request): string
+    private function getDescription(Response $response, $request): ?string
     {
-        return $response->response_type === 'manual' 
-            ? $response->message 
+        return $response->response_type === 'manual'
+            ? $response->message
             : $request->description;
     }
 
