@@ -92,7 +92,7 @@ class ResponseController extends Controller
         }
     }
 
-    public function accept(Request $request, string $responseId): JsonResponse
+    public function accept(Request $request, int $responseId): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
@@ -101,8 +101,13 @@ class ResponseController extends Controller
         }
 
         try {
-            if (is_numeric($responseId)) {
-                $result = $this->actionService->acceptManualResponse($user, (int)$responseId);
+            $response = $this->responseRepository->find($responseId);
+            if (!$response) {
+                return response()->json(['error' => 'Response not found'], 404);
+            }
+
+            if ($response->response_type === ResponseType::MANUAL->value) {
+                $result = $this->actionService->acceptManualResponse($user, $responseId);
             } else {
                 $result = $this->actionService->acceptMatchingResponse($user, $responseId);
             }
@@ -119,13 +124,18 @@ class ResponseController extends Controller
         }
     }
 
-    public function reject(Request $request, string $responseId): JsonResponse
+    public function reject(Request $request, int $responseId): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
         try {
-            if (is_numeric($responseId)) {
-                $result = $this->actionService->rejectManualResponse($user, (int)$responseId);
+            $response = $this->responseRepository->find($responseId);
+            if (!$response) {
+                return response()->json(['error' => 'Response not found'], 404);
+            }
+
+            if ($response->response_type === ResponseType::MANUAL->value) {
+                $result = $this->actionService->rejectManualResponse($user, $responseId);
             } else {
                 $result = $this->actionService->rejectMatchingResponse($user, $responseId);
             }
@@ -142,14 +152,18 @@ class ResponseController extends Controller
         }
     }
 
-    public function cancel(Request $request, string $responseId): JsonResponse
+    public function cancel(Request $request, int $responseId): JsonResponse
     {
         $user = $this->tgService->getUserByTelegramId($request);
 
         try {
-            // Handle manual responses (simple response ID)
-            if (is_numeric($responseId)) {
-                $result = $this->actionService->cancelManualResponse($user, (int)$responseId);
+            $response = $this->responseRepository->find($responseId);
+            if (!$response) {
+                return response()->json(['error' => 'Response not found'], 404);
+            }
+
+            if ($response->response_type === ResponseType::MANUAL->value) {
+                $result = $this->actionService->cancelManualResponse($user, $responseId);
             } else {
                 $result = $this->actionService->cancelMatchingResponse($user, $responseId);
             }

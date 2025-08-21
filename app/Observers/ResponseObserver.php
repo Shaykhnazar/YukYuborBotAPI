@@ -41,7 +41,7 @@ class ResponseObserver
             $previousOverallStatus = $response->getOriginal('overall_status');
             $currentOverallStatus = $response->overall_status;
 
-            Log::info('ResponseObserver: Response status changed (new system)', [
+            Log::info('ResponseObserver: Response status changed (simplified ID system)', [
                 'response_id' => $response->id,
                 'deliverer_status' => "$previousDelivererStatus → $currentDelivererStatus",
                 'sender_status' => "$previousSenderStatus → $currentSenderStatus", 

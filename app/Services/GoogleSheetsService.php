@@ -716,48 +716,26 @@ class GoogleSheetsService
      */
     public function getTargetRequest(Response $response): \App\Models\SendRequest|\App\Models\DeliveryRequest|null
     {
-        // NEW SYSTEM: For matching responses, determine target based on offer_type and structure
+        // NEW SYSTEM: For matching responses, all use offer_type 'send'
+        // SendRequest is offered → DeliveryRequest receives it (target is delivery request)
         if ($response->response_type === Response::TYPE_MATCHING) {
-            if ($response->offer_type === 'send') {
-                // SendRequest is offered → DeliveryRequest receives it (target is delivery request)
-                $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-                
-                Log::info('Searching for target delivery request (new system)', [
+            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
+            
+            Log::info('Searching for target delivery request (new system)', [
+                'response_id' => $response->id,
+                'searching_delivery_id' => $response->request_id,
+                'found' => !!$deliveryRequest,
+                'offer_type' => $response->offer_type
+            ]);
+            
+            if ($deliveryRequest) {
+                Log::info('Found target delivery request for matching response (new system)', [
                     'response_id' => $response->id,
-                    'searching_delivery_id' => $response->request_id,
-                    'found' => !!$deliveryRequest,
+                    'target_request_type' => 'delivery',
+                    'target_request_id' => $deliveryRequest->id,
                     'offer_type' => $response->offer_type
                 ]);
-                
-                if ($deliveryRequest) {
-                    Log::info('Found target delivery request for matching response (new system)', [
-                        'response_id' => $response->id,
-                        'target_request_type' => 'delivery',
-                        'target_request_id' => $deliveryRequest->id,
-                        'offer_type' => $response->offer_type
-                    ]);
-                    return $deliveryRequest;
-                }
-            } else { // offer_type === 'delivery'
-                // DeliveryRequest is offered → SendRequest receives it (target is send request)
-                $sendRequest = \App\Models\SendRequest::find($response->request_id);
-                
-                Log::info('Searching for target send request (new system)', [
-                    'response_id' => $response->id,
-                    'searching_send_id' => $response->request_id,
-                    'found' => !!$sendRequest,
-                    'offer_type' => $response->offer_type
-                ]);
-                
-                if ($sendRequest) {
-                    Log::info('Found target send request for matching response (new system)', [
-                        'response_id' => $response->id,
-                        'target_request_type' => 'send', 
-                        'target_request_id' => $sendRequest->id,
-                        'offer_type' => $response->offer_type
-                    ]);
-                    return $sendRequest;
-                }
+                return $deliveryRequest;
             }
         }
         

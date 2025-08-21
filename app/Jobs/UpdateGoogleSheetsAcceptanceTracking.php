@@ -143,13 +143,14 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
         } else {
             // For matching responses, use dual acceptance tracking
             // Update the appropriate request based on user role for timing tracking:
-            // - When deliverer accepts → update deliverer's own delivery request (for timing)
-            // - When sender accepts → update sender's own send request (for timing)
+            // - When deliverer accepts → update deliverer's delivery request as "accepted" + sender's send request as "received"
+            // - When sender accepts → update sender's send request as "accepted" only
             if ($userRole === 'deliverer') {
-                // Deliverer accepted → update as "received" (first step)
-                $this->updateDelivererRequestInNewSystem($response, $googleSheetsService, $response->created_at->toISOString(), 'received');
+                // Deliverer accepted → mark deliverer's request as "accepted" and sender's request as "received"
+                $this->updateDelivererRequestInNewSystem($response, $googleSheetsService, now()->toISOString(), 'accepted');
+                $this->updateSenderRequestInNewSystem($response, $googleSheetsService, now()->toISOString(), 'received');
             } elseif ($userRole === 'sender') {
-                // Sender accepted → update as "accepted" (final step)
+                // Sender accepted → mark sender's request as "accepted" only
                 $delivererAcceptanceTime = $this->getDelivererAcceptanceTime($response);
                 $this->updateSenderRequestInNewSystem($response, $googleSheetsService, $delivererAcceptanceTime, 'accepted');
             }
@@ -193,15 +194,8 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 
         // For matching responses, deliverer is always user_id (receives notification)
         // Find the delivery request owned by the deliverer
-        $deliveryRequest = null;
-
-        if ($response->offer_type === 'send') {
-            // Send request offered to deliverer, find deliverer's delivery request
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-        } elseif ($response->offer_type === 'delivery') {
-            // Delivery request offered by deliverer
-            $deliveryRequest = \App\Models\DeliveryRequest::find($response->offer_id);
-        }
+        // NEW SYSTEM: All matching responses use offer_type 'send', so deliverer's request is always request_id
+        $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
 
         // Verify this delivery request actually belongs to the deliverer
         if ($deliveryRequest && $deliveryRequest->user_id === $delivererUser->id) {
@@ -245,15 +239,8 @@ class UpdateGoogleSheetsAcceptanceTracking implements ShouldQueue
 
         // For matching responses, sender is always responder_id (owns the send request)
         // Find the send request owned by the sender
-        $sendRequest = null;
-
-        if ($response->offer_type === 'send') {
-            // Send request offered by sender
-            $sendRequest = \App\Models\SendRequest::find($response->offer_id);
-        } elseif ($response->offer_type === 'delivery') {
-            // Delivery request offered, sender receives the offer
-            $sendRequest = \App\Models\SendRequest::find($response->request_id);
-        }
+        // NEW SYSTEM: All matching responses use offer_type 'send', so sender's request is always offer_id
+        $sendRequest = \App\Models\SendRequest::find($response->offer_id);
 
         // Verify this send request actually belongs to the sender
         if ($sendRequest && $sendRequest->user_id === $senderUser->id) {

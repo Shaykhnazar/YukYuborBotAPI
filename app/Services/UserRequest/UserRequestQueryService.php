@@ -107,9 +107,8 @@ class UserRequestQueryService
             $responsesList = $request->responses ?? collect();
             $manualResponsesList = $request->manualResponses ?? collect();
             $offerResponsesList = $request->offerResponses ?? collect();
-            
-            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList)
-                ->unique('id'); // Remove duplicates by ID
+
+            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList); // Remove duplicates by ID
 
             // Filter responses where current user is involved
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
@@ -160,7 +159,7 @@ class UserRequestQueryService
             // Current user is the responder (sender), other party is user (deliverer)
             $otherUser = $response->user;
         }
-        
+
         if ($otherUser) {
             $otherUser->closed_send_requests_count = $otherUser->sendRequests()->where('status', 'closed')->count();
             $otherUser->closed_delivery_requests_count = $otherUser->deliveryRequests()->where('status', 'closed')->count();
@@ -178,17 +177,18 @@ class UserRequestQueryService
 
     private function determineRequestStatus($request, $response): string
     {
+        // For closed/completed requests, keep the original status
         if (in_array($request->status, ['closed', 'completed'])) {
             return $request->status;
         }
 
         $overallStatus = $response->overall_status;
 
+        // Only override status for final states
         return match ($overallStatus) {
             'accepted' => 'matched',
-            'partial', 'pending' => 'has_responses',
             'closed' => 'closed',
-            default => $request->status,
+            default => $request->status, // Respect the actual database status
         };
     }
 

@@ -289,9 +289,9 @@ class RequestObserver
             ]);
 
             // Only update Google Sheets for meaningful status changes that affect the request itself
-            // Note: 'has_responses' changes are triggered by response creation, but we want to update
-            // the request status in sheets to show it has responses available
-            if (in_array($newStatus, [/*'has_responses', 'matched',*/ 'matched_manually', 'closed', 'completed'])) {
+            // Note: Response-related statuses ('matched', 'matched_manually') are handled by ResponseObserver
+            // to avoid duplicate tracking and ensure single source of truth for acceptance events
+            if (in_array($newStatus, ['closed', 'completed'])) {
                 UpdateRequestInGoogleSheets::dispatch($requestType, $request->id)
                     ->delay(now()->addSeconds(3))
                     ->onQueue('gsheets');
