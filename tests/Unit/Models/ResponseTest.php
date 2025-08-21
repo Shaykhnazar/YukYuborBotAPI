@@ -243,6 +243,154 @@ class ResponseTest extends TestCase
         $this->assertEquals('Test message', $response->message);
     }
 
+    public function test_can_check_if_user_can_take_action_for_manual_response()
+    {
+        $response = Response::factory()->create([
+            'user_id' => $this->user->id,
+            'responder_id' => $this->responder->id,
+            'response_type' => Response::TYPE_MANUAL,
+            'overall_status' => Response::OVERALL_STATUS_PENDING
+        ]);
+
+        $this->assertTrue($response->canUserTakeAction($this->user->id));
+        $this->assertFalse($response->canUserTakeAction($this->responder->id));
+    }
+
+    public function test_can_check_if_user_can_take_action_for_matching_response()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING
+        ]);
+
+        $this->assertTrue($response->canUserTakeAction($delivererUser->id));
+        $this->assertTrue($response->canUserTakeAction($senderUser->id));
+    }
+
+    public function test_update_user_status_for_deliverer()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING
+        ]);
+
+        $result = $response->updateUserStatus($delivererUser->id, Response::DUAL_STATUS_ACCEPTED);
+
+        $this->assertTrue($result);
+        $this->assertEquals(Response::DUAL_STATUS_ACCEPTED, $response->deliverer_status);
+        $this->assertEquals(Response::OVERALL_STATUS_PARTIAL, $response->overall_status);
+    }
+
+    public function test_update_user_status_for_sender()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING
+        ]);
+
+        $result = $response->updateUserStatus($senderUser->id, Response::DUAL_STATUS_ACCEPTED);
+
+        $this->assertTrue($result);
+        $this->assertEquals(Response::DUAL_STATUS_ACCEPTED, $response->sender_status);
+        $this->assertEquals(Response::OVERALL_STATUS_PARTIAL, $response->overall_status);
+    }
+
+    public function test_overall_status_becomes_accepted_when_both_users_accept()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING,
+            'deliverer_status' => Response::DUAL_STATUS_ACCEPTED,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PARTIAL
+        ]);
+
+        $response->updateUserStatus($senderUser->id, Response::DUAL_STATUS_ACCEPTED);
+
+        $this->assertEquals(Response::OVERALL_STATUS_ACCEPTED, $response->overall_status);
+    }
+
+    public function test_overall_status_becomes_rejected_when_either_user_rejects()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING,
+            'deliverer_status' => Response::DUAL_STATUS_PENDING,
+            'sender_status' => Response::DUAL_STATUS_PENDING,
+            'overall_status' => Response::OVERALL_STATUS_PENDING
+        ]);
+
+        $response->updateUserStatus($delivererUser->id, Response::DUAL_STATUS_REJECTED);
+
+        $this->assertEquals(Response::OVERALL_STATUS_REJECTED, $response->overall_status);
+    }
+
+    public function test_get_user_role_returns_correct_roles()
+    {
+        $delivererUser = User::factory()->create();
+        $senderUser = User::factory()->create();
+
+        $response = Response::factory()->create([
+            'user_id' => $delivererUser->id,
+            'responder_id' => $senderUser->id,
+            'response_type' => Response::TYPE_MATCHING
+        ]);
+
+        $this->assertEquals('deliverer', $response->getUserRole($delivererUser->id));
+        $this->assertEquals('sender', $response->getUserRole($senderUser->id));
+        $this->assertEquals('unknown', $response->getUserRole(999));
+    }
+
+    public function test_status_check_methods()
+    {
+        $response = Response::factory()->create([
+            'overall_status' => Response::OVERALL_STATUS_ACCEPTED
+        ]);
+
+        $this->assertTrue($response->isFullyAccepted());
+        $this->assertFalse($response->isRejected());
+        $this->assertFalse($response->isPartiallyAccepted());
+
+        $response->overall_status = Response::OVERALL_STATUS_REJECTED;
+        $this->assertFalse($response->isFullyAccepted());
+        $this->assertTrue($response->isRejected());
+        $this->assertFalse($response->isPartiallyAccepted());
+
+        $response->overall_status = Response::OVERALL_STATUS_PARTIAL;
+        $this->assertFalse($response->isFullyAccepted());
+        $this->assertFalse($response->isRejected());
+        $this->assertTrue($response->isPartiallyAccepted());
+    }
+
     public function test_table_name_is_set_correctly()
     {
         $this->assertEquals('responses', $this->response->getTable());

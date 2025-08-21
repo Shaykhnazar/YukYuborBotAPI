@@ -6,12 +6,13 @@ use App\Http\Controllers\DeliveryController;
 use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use App\Models\DeliveryRequest;
 use App\Models\Location;
-use App\Models\SendRequest;
-use App\Models\TelegramUser;
 use App\Models\User;
-use App\Services\Matcher;
+use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
+use App\Services\RequestService;
 use App\Services\TelegramUserService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Tests\TestCase;
 
@@ -20,27 +21,29 @@ class DeliveryControllerTest extends TestCase
     use RefreshDatabase;
 
     protected DeliveryController $controller;
-    protected TelegramUserService $userService;
-    protected Matcher $matcher;
+    protected TelegramUserService $telegramUserService;
+    protected RequestService $requestService;
+    protected DeliveryRequestRepositoryInterface $deliveryRequestRepository;
     protected User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->userService = Mockery::mock(TelegramUserService::class);
-        $this->matcher = Mockery::mock(Matcher::class);
-        $this->controller = new DeliveryController($this->userService, $this->matcher);
+        $this->telegramUserService = Mockery::mock(TelegramUserService::class);
+        $this->requestService = Mockery::mock(RequestService::class);
+        $this->deliveryRequestRepository = Mockery::mock(DeliveryRequestRepositoryInterface::class);
 
-        $this->user = User::factory()->create([
-            'name' => 'Test User',
-            'links_balance' => 5
-        ]);
+        $this->controller = new DeliveryController(
+            $this->telegramUserService,
+            $this->requestService,
+            $this->deliveryRequestRepository
+        );
 
-        TelegramUser::factory()->create([
-            'user_id' => $this->user->id,
-            'telegram' => '123456789'
-        ]);
+        $this->user = User::factory()->make(['id' => 1, 'name' => 'Test User']);
+        
+        Log::swap(Mockery::mock('Psr\Log\LoggerInterface'));
+        Queue::fake();
     }
 
     protected function tearDown(): void
@@ -49,475 +52,349 @@ class DeliveryControllerTest extends TestCase
         parent::tearDown();
     }
 
-    private function createMockRequest(array $requestData, bool $expectsDTO = true): CreateDeliveryRequest
+    private function createMockRequest(array $requestData): CreateDeliveryRequest
     {
         $mockRequest = Mockery::mock(CreateDeliveryRequest::class);
 
-        if ($expectsDTO) {
-            $mockRequest->shouldReceive('getDTO')
-                ->once()
-                ->andReturn(new \App\Http\DTO\DeliveryRequest\CreateDeliveryRequestDTO(
-                    $requestData['from_location_id'],
-                    $requestData['to_location_id'],
-                    $requestData['description'] ?? null,
-                    \Carbon\CarbonImmutable::parse($requestData['from_date']),
-                    \Carbon\CarbonImmutable::parse($requestData['to_date']),
-                    $requestData['price'] ?? null,
-                    $requestData['currency'] ?? null
-                ));
-        } else {
-            $mockRequest->shouldReceive('getDTO')->never();
-        }
+        $mockRequest->shouldReceive('getDTO')
+            ->once()
+            ->andReturn(new \App\Http\DTO\DeliveryRequest\CreateDeliveryRequestDTO(
+                $requestData['from_location_id'],
+                $requestData['to_location_id'],
+                $requestData['description'] ?? null,
+                \Carbon\CarbonImmutable::parse($requestData['from_date']),
+                \Carbon\CarbonImmutable::parse($requestData['to_date']),
+                $requestData['price'] ?? null,
+                $requestData['currency'] ?? null
+            ));
 
         return $mockRequest;
     }
 
-    public function test_create_enforces_active_requests_limit()
-    {
-        // Create 2 active delivery requests
-        DeliveryRequest::factory()->count(2)->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        // Create 1 active send request
-        SendRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Delivery service',
-            'price' => 200,
-            'currency' => 'USD'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData, false);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        $this->assertEquals(422, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-
-        $this->assertArrayHasKey('error', $data);
-        $this->assertArrayHasKey('errorTitle', $data);
-        $this->assertStringContainsString('Превышен лимит заявок', $data['errorTitle']);
-    }
-
-    public function test_create_allows_request_when_under_limit()
-    {
-        // Create only 1 active request (under the limit of 3)
-        DeliveryRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Delivery service'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        // Should not get a 422 status (limit exceeded)
-        $this->assertNotEquals(422, $response->getStatusCode());
-    }
-
-    public function test_create_counts_both_send_and_delivery_requests_for_limit()
-    {
-        // Create 2 send requests and 1 delivery request (total 3 = at limit)
-        SendRequest::factory()->count(2)->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        DeliveryRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Delivery service'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData, false);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        $this->assertEquals(422, $response->getStatusCode());
-    }
-
-    public function test_create_ignores_closed_requests_in_limit_calculation()
-    {
-        // Create 3 closed requests (should not count toward limit)
-        DeliveryRequest::factory()->count(2)->create([
-            'user_id' => $this->user->id,
-            'status' => 'closed'
-        ]);
-
-        SendRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'status' => 'closed'
-        ]);
-
-        // Create 1 open request (under limit)
-        DeliveryRequest::factory()->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Delivery service'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        // Should be allowed since closed requests don't count
-        $this->assertNotEquals(422, $response->getStatusCode());
-    }
-
-    public function test_create_calls_matcher_service()
+    public function test_create_calls_request_service_to_check_limit()
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
 
         $requestData = [
-            'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Delivery service',
-            'price' => 150,
-            'currency' => 'EUR'
+            'description' => 'Test delivery'
         ];
 
-        $createDeliveryRequest = $this->createMockRequest($requestData);
+        $mockRequest = $this->createMockRequest($requestData);
 
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
             ->once()
+            ->with($mockRequest)
             ->andReturn($this->user);
 
-        $this->matcher->shouldReceive('matchDeliveryRequest')
+        $this->requestService
+            ->shouldReceive('checkActiveRequestsLimit')
             ->once()
-            ->with(Mockery::type(DeliveryRequest::class));
+            ->with($this->user);
 
-        $response = $this->controller->create($createDeliveryRequest);
+        $deliveryRequest = DeliveryRequest::factory()->make(['id' => 1]);
 
-        // Verify successful response
+        $this->deliveryRequestRepository
+            ->shouldReceive('create')
+            ->once()
+            ->andReturn($deliveryRequest);
+
+        Queue::shouldReceive('push')->once();
+        
+        $response = $this->controller->create($mockRequest);
+
         $this->assertEquals(200, $response->getStatusCode());
     }
 
-    public function test_create_saves_delivery_request_to_database()
+    public function test_create_handles_limit_exceeded_exception()
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
 
         $requestData = [
-            'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Professional delivery service',
-            'price' => 250,
-            'currency' => 'GBP'
         ];
 
-        $createDeliveryRequest = $this->createMockRequest($requestData);
+        $mockRequest = $this->createMockRequest($requestData);
 
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
             ->once()
+            ->with($mockRequest)
             ->andReturn($this->user);
 
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
+        $this->requestService
+            ->shouldReceive('checkActiveRequestsLimit')
+            ->once()
+            ->with($this->user)
+            ->andThrow(new \Exception('Request limit exceeded'));
 
-        $response = $this->controller->create($createDeliveryRequest);
+        Log::shouldReceive('error')->once();
 
-        // Verify delivery request was saved to database
-        $this->assertDatabaseHas('delivery_requests', [
-            'user_id' => $this->user->id,
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'description' => 'Professional delivery service',
-            'price' => 250,
-            'currency' => 'GBP',
-            'status' => 'open'
-        ]);
+        $response = $this->controller->create($mockRequest);
+
+        $this->assertEquals(422, $response->getStatusCode());
+        
+        $data = json_decode($response->getContent(), true);
+        $this->assertArrayHasKey('error', $data);
+        $this->assertEquals('Request limit exceeded', $data['error']);
     }
 
-    public function test_create_handles_request_without_price()
+    public function test_create_saves_delivery_request_with_correct_data()
     {
         $fromLocation = Location::factory()->create();
         $toLocation = Location::factory()->create();
 
         $requestData = [
-            'telegram_id' => '123456789',
             'from_location_id' => $fromLocation->id,
             'to_location_id' => $toLocation->id,
             'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
             'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Free delivery service'
+            'description' => 'Professional delivery service',
+            'price' => 250,
+            'currency' => 'USD'
         ];
 
-        $createDeliveryRequest = $this->createMockRequest($requestData);
+        $mockRequest = $this->createMockRequest($requestData);
 
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
+            ->once()
+            ->with($mockRequest)
+            ->andReturn($this->user);
+
+        $this->requestService
+            ->shouldReceive('checkActiveRequestsLimit')
+            ->once()
+            ->with($this->user);
+
+        $deliveryRequest = DeliveryRequest::factory()->make(['id' => 1]);
+
+        $this->deliveryRequestRepository
+            ->shouldReceive('create')
+            ->once()
+            ->with([
+                'from_location_id' => $fromLocation->id,
+                'to_location_id' => $toLocation->id,
+                'description' => 'Professional delivery service',
+                'from_date' => now()->addDays(1)->toDateString(),
+                'to_date' => now()->addDays(7)->toDateString(),
+                'price' => 250,
+                'currency' => 'USD',
+                'user_id' => 1,
+                'status' => 'open',
+            ])
+            ->andReturn($deliveryRequest);
+
+        Queue::shouldReceive('push')->once();
+
+        $response = $this->controller->create($mockRequest);
+
+        $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    public function test_create_dispatches_matching_job()
+    {
+        $fromLocation = Location::factory()->create();
+        $toLocation = Location::factory()->create();
+
+        $requestData = [
+            'from_location_id' => $fromLocation->id,
+            'to_location_id' => $toLocation->id,
+            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
+            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
+        ];
+
+        $mockRequest = $this->createMockRequest($requestData);
+
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
             ->once()
             ->andReturn($this->user);
 
-        $this->matcher->shouldReceive('matchDeliveryRequest')
+        $this->requestService
+            ->shouldReceive('checkActiveRequestsLimit')
             ->once();
 
-        $response = $this->controller->create($createDeliveryRequest);
+        $deliveryRequest = DeliveryRequest::factory()->make(['id' => 123]);
 
-        $this->assertDatabaseHas('delivery_requests', [
-            'user_id' => $this->user->id,
-            'description' => 'Free delivery service',
+        $this->deliveryRequestRepository
+            ->shouldReceive('create')
+            ->once()
+            ->andReturn($deliveryRequest);
+
+        Queue::shouldReceive('push')
+            ->once()
+            ->with(Mockery::type('App\Jobs\MatchRequestsJob'));
+
+        $response = $this->controller->create($mockRequest);
+
+        $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    public function test_delete_successfully_deletes_request()
+    {
+        $deliveryRequest = DeliveryRequest::factory()->make(['id' => 1]);
+
+        $mockRequest = Mockery::mock(\Illuminate\Http\Request::class);
+
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
+            ->once()
+            ->with($mockRequest)
+            ->andReturn($this->user);
+
+        $this->deliveryRequestRepository
+            ->shouldReceive('findByUserAndId')
+            ->once()
+            ->with($this->user, 1)
+            ->andReturn($deliveryRequest);
+
+        $this->requestService
+            ->shouldReceive('deleteRequest')
+            ->once()
+            ->with($deliveryRequest);
+
+        $response = $this->controller->delete($mockRequest, 1);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        
+        $data = json_decode($response->getContent(), true);
+        $this->assertEquals('Request deleted successfully', $data['message']);
+    }
+
+    public function test_delete_returns_404_when_request_not_found()
+    {
+        $mockRequest = Mockery::mock(\Illuminate\Http\Request::class);
+
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
+            ->once()
+            ->with($mockRequest)
+            ->andReturn($this->user);
+
+        $this->deliveryRequestRepository
+            ->shouldReceive('findByUserAndId')
+            ->once()
+            ->with($this->user, 999)
+            ->andReturn(null);
+
+        $response = $this->controller->delete($mockRequest, 999);
+
+        $this->assertEquals(404, $response->getStatusCode());
+        
+        $data = json_decode($response->getContent(), true);
+        $this->assertEquals('Request not found', $data['error']);
+    }
+
+    public function test_close_successfully_closes_request()
+    {
+        $deliveryRequest = DeliveryRequest::factory()->make(['id' => 1]);
+
+        $mockRequest = Mockery::mock(\Illuminate\Http\Request::class);
+
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
+            ->once()
+            ->with($mockRequest)
+            ->andReturn($this->user);
+
+        $this->deliveryRequestRepository
+            ->shouldReceive('findByUserAndId')
+            ->once()
+            ->with($this->user, 1)
+            ->andReturn($deliveryRequest);
+
+        $this->requestService
+            ->shouldReceive('closeRequest')
+            ->once()
+            ->with($deliveryRequest);
+
+        $response = $this->controller->close($mockRequest, 1);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        
+        $data = json_decode($response->getContent(), true);
+        $this->assertEquals('Delivery request closed successfully', $data['message']);
+    }
+
+    public function test_index_returns_user_delivery_requests()
+    {
+        $deliveryRequests = collect([
+            DeliveryRequest::factory()->make(['id' => 1]),
+            DeliveryRequest::factory()->make(['id' => 2])
+        ]);
+
+        $mockRequest = Mockery::mock(\Illuminate\Http\Request::class);
+
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
+            ->once()
+            ->with($mockRequest)
+            ->andReturn($this->user);
+
+        $this->deliveryRequestRepository
+            ->shouldReceive('findActiveByUser')
+            ->once()
+            ->with($this->user)
+            ->andReturn($deliveryRequests);
+
+        $response = $this->controller->index($mockRequest);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        
+        $data = json_decode($response->getContent(), true);
+        $this->assertCount(2, $data);
+    }
+
+    public function test_create_handles_null_optional_fields()
+    {
+        $fromLocation = Location::factory()->create();
+        $toLocation = Location::factory()->create();
+
+        $requestData = [
+            'from_location_id' => $fromLocation->id,
+            'to_location_id' => $toLocation->id,
+            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
+            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
+            'description' => null,
             'price' => null,
             'currency' => null
-        ]);
-    }
-
-    public function test_create_sets_correct_default_status()
-    {
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Test status delivery'
         ];
 
-        $createDeliveryRequest = $this->createMockRequest($requestData);
+        $mockRequest = $this->createMockRequest($requestData);
 
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
+        $this->telegramUserService
+            ->shouldReceive('getUserByTelegramId')
             ->once()
             ->andReturn($this->user);
 
-        $this->matcher->shouldReceive('matchDeliveryRequest')
+        $this->requestService
+            ->shouldReceive('checkActiveRequestsLimit')
             ->once();
 
-        $response = $this->controller->create($createDeliveryRequest);
-
-        $this->assertDatabaseHas('delivery_requests', [
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-    }
-
-    public function test_create_requires_both_from_date_and_to_date()
-    {
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'description' => 'Test delivery with dates'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
+        $this->deliveryRequestRepository
+            ->shouldReceive('create')
             ->once()
-            ->andReturn($this->user);
+            ->with(Mockery::on(function ($data) {
+                return $data['description'] === null && 
+                       $data['price'] === null && 
+                       $data['currency'] === null;
+            }))
+            ->andReturn(DeliveryRequest::factory()->make(['id' => 1]));
 
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
+        Queue::shouldReceive('push')->once();
 
-        $response = $this->controller->create($createDeliveryRequest);
+        $response = $this->controller->create($mockRequest);
 
-        // Should succeed with both dates provided
-        $this->assertNotEquals(422, $response->getStatusCode());
-    }
-
-    public function test_controller_constructor_dependencies()
-    {
-        // Test that constructor dependencies are properly injected
-        $reflection = new \ReflectionClass($this->controller);
-
-        $userServiceProperty = $reflection->getProperty('userService');
-        $userServiceProperty->setAccessible(true);
-        $this->assertInstanceOf(TelegramUserService::class, $userServiceProperty->getValue($this->controller));
-
-        $matcherProperty = $reflection->getProperty('matcher');
-        $matcherProperty->setAccessible(true);
-        $this->assertInstanceOf(Matcher::class, $matcherProperty->getValue($this->controller));
-    }
-
-    public function test_max_active_requests_limit_is_three()
-    {
-        // This test verifies that the hardcoded limit is 3
-        // Create exactly 3 active requests (at the limit)
-        DeliveryRequest::factory()->count(3)->create([
-            'user_id' => $this->user->id,
-            'status' => 'open'
-        ]);
-
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData, false);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        // Should be blocked at 3 requests
-        $this->assertEquals(422, $response->getStatusCode());
-    }
-
-    public function test_create_with_minimal_required_data()
-    {
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        // Test with only required fields
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(1)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        // Should succeed with minimal data
-        $this->assertNotEquals(422, $response->getStatusCode());
-
-        $this->assertDatabaseHas('delivery_requests', [
-            'user_id' => $this->user->id,
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id
-        ]);
-    }
-
-    public function test_create_handles_date_range_validation()
-    {
-        $fromLocation = Location::factory()->create();
-        $toLocation = Location::factory()->create();
-
-        // Test with from_date after to_date (should still be handled by the controller)
-        $requestData = [
-            'telegram_id' => '123456789',
-            'from_location_id' => $fromLocation->id,
-            'to_location_id' => $toLocation->id,
-            'from_date' => now()->addDays(7)->format('Y-m-d H:i:s'),
-            'to_date' => now()->addDays(1)->format('Y-m-d H:i:s'), // Earlier than from_date
-            'description' => 'Date range test'
-        ];
-
-        $createDeliveryRequest = $this->createMockRequest($requestData);
-
-        $this->userService->shouldReceive('getUserByTelegramId')
-            ->with($createDeliveryRequest)
-            ->once()
-            ->andReturn($this->user);
-
-        $this->matcher->shouldReceive('matchDeliveryRequest')
-            ->once();
-
-        $response = $this->controller->create($createDeliveryRequest);
-
-        // The controller itself may accept this - validation would typically be handled by form request
-        $this->assertNotEquals(500, $response->getStatusCode()); // Should not crash
+        $this->assertEquals(200, $response->getStatusCode());
     }
 }
