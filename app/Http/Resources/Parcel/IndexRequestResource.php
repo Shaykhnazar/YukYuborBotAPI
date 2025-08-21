@@ -18,7 +18,7 @@ class IndexRequestResource extends JsonResource
         // For open/pending requests, show the request owner
         $displayUser = null;
         $isResponder = isset($this->responder_user);
-        
+
         if ($isResponder && in_array($this->status, ['matched', 'matched_manually', 'closed', 'completed'])) {
             // Closed/matched request with responder - show the other party
             $displayUser = $this->responder_user;
@@ -43,7 +43,7 @@ class IndexRequestResource extends JsonResource
             'status' => $this->status,
             'response_status' => $this->response_status ?? null,
             'response_type' => $this->response_type ?? null,
-            'has_responses' => $this->status === 'has_responses' || in_array($this->status, ['matched', 'matched_manually']) || ($this->response_id !== null),
+            'has_responses' => $this->status === 'has_responses' || in_array($this->status, ['matched', 'matched_manually']) || ($this->response_id !== null && $this->response_type === 'manual'),
             'has_reviewed' => $this->has_reviewed ?? false,
             'chat_id' => $this->chat_id ?? null,
             'response_id' => $this->response_id ?? null,
@@ -69,8 +69,8 @@ class IndexRequestResource extends JsonResource
                 'image' => $this->responder_user->telegramUser->image ?? null,
                 'send_requests_count' => $this->responder_user->closed_send_requests_count ?? 0,
                 'delivery_requests_count' => $this->responder_user->closed_delivery_requests_count ?? 0,
-                'requests_count' => $this->type === 'delivery' 
-                    ? ($this->responder_user->closed_delivery_requests_count ?? 0) 
+                'requests_count' => $this->type === 'delivery'
+                    ? ($this->responder_user->closed_delivery_requests_count ?? 0)
                     : ($this->responder_user->closed_send_requests_count ?? 0),
             ] : null,
             'is_responder' => $isResponder,
