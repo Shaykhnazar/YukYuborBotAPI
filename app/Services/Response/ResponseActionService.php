@@ -135,29 +135,14 @@ class ResponseActionService
      * @return string[]
      * @throws \Exception
      */
-    public function cancelMatchingResponse(User $user, string $responseId): array
+    public function cancelMatchingResponse(User $user, int $responseId): array
     {
-        $parts = explode('_', $responseId);
-        if (count($parts) !== 4) {
-            throw new \Exception('Invalid response ID');
-        }
+        $response = $this->responseRepository->findWhere([
+            'id' => $responseId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
-        $offerType = $parts[0]; // 'send' or 'delivery'
-        $offerId = (int)$parts[1];
-        $requestType = $parts[2]; // 'delivery' or 'send'
-        $requestId = (int)$parts[3];
-
-        // Find the actual response to verify user's permission
-        $response = null;
-        if ($offerType === 'send' && $requestType === 'delivery') {
-            // Send request offered to delivery request: send_X_delivery_Y
-            $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
-        } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y
-            $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
-        }
-
-        if (!$response || !in_array($response->overall_status, ['waiting', 'accepted', 'pending', 'responded', 'partial'])) {
+        if (!$response) {
             throw new \Exception('Response not found or cannot be cancelled');
         }
 
@@ -186,30 +171,15 @@ class ResponseActionService
      * @return string[]
      * @throws \Exception
      */
-    public function rejectMatchingResponse(User $user, string $responseId): array
+    public function rejectMatchingResponse(User $user, int $responseId): array
     {
-        $parts = explode('_', $responseId);
-        if (count($parts) !== 4) {
-            throw new \Exception('Invalid response ID');
-        }
+        $response = $this->responseRepository->findWhere([
+            'id' => $responseId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
-        $offerType = $parts[0]; // 'send' or 'delivery'
-        $offerId = (int)$parts[1];
-        $requestType = $parts[2]; // 'delivery' or 'send'
-        $requestId = (int)$parts[3];
-
-        // Find the actual response to determine user's role
-        $response = null;
-        if ($offerType === 'send' && $requestType === 'delivery') {
-            // Send request offered to delivery request: send_X_delivery_Y
-            $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
-        } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y
-            $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
-        }
-
-        if (!$response) {
-            throw new \Exception('Response not found');
+        if (!$response || !$response->canUserTakeAction($user->id)) {
+            throw new \Exception('Response not found or cannot be rejected');
         }
 
         // Determine user's role in this response
@@ -217,22 +187,10 @@ class ResponseActionService
 
         if ($userRole === 'deliverer') {
             // Current user is the deliverer
-            if ($offerType === 'send') {
-                // Deliverer rejecting send request: send_X_delivery_Y
-                return $this->handleDelivererRejection($user, $offerId, $requestId);
-            } else {
-                // Deliverer rejecting delivery offer: delivery_X_send_Y (less common)
-                return $this->handleDelivererRejection($user, $requestId, $offerId);
-            }
+            return $this->handleDelivererRejection($user, $response->offer_id, $response->request_id);
         } elseif ($userRole === 'sender') {
             // Current user is the sender
-            if ($offerType === 'send') {
-                // Sender rejecting after deliverer accepted: send_X_delivery_Y
-                return $this->handleSenderRejection($user, $offerId, $requestId);
-            } else {
-                // Sender rejecting delivery offer: delivery_X_send_Y
-                return $this->handleSenderRejection($user, $requestId, $offerId);
-            }
+            return $this->handleSenderRejection($user, $response->offer_id, $response->request_id);
         }
 
         throw new \Exception('Invalid user role for response rejection');
@@ -244,27 +202,12 @@ class ResponseActionService
      * @return array|string[]
      * @throws \Exception
      */
-    public function acceptMatchingResponse(User $user, string $responseId): array
+    public function acceptMatchingResponse(User $user, int $responseId): array
     {
-        $parts = explode('_', $responseId);
-        if (count($parts) !== 4) {
-            throw new \Exception('Invalid response ID');
-        }
-
-        $offerType = $parts[0]; // 'send' or 'delivery'
-        $offerId = (int)$parts[1];
-        $requestType = $parts[2]; // 'delivery' or 'send'
-        $requestId = (int)$parts[3];
-
-        // Find the actual response to determine user's role
-        $response = null;
-        if ($offerType === 'send' && $requestType === 'delivery') {
-            // Send request offered to delivery request: send_X_delivery_Y
-            $response = $this->responseRepository->findMatchingResponse($offerId, $requestId);
-        } elseif ($offerType === 'delivery' && $requestType === 'send') {
-            // Delivery request offered to send request: delivery_X_send_Y
-            $response = $this->responseRepository->findMatchingResponse($requestId, $offerId);
-        }
+        $response = $this->responseRepository->findWhere([
+            'id' => $responseId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response || !$response->canUserTakeAction($user->id)) {
             throw new \Exception('Response not found or cannot be accepted');
@@ -275,22 +218,10 @@ class ResponseActionService
 
         if ($userRole === 'deliverer') {
             // Current user is the deliverer
-            if ($offerType === 'send') {
-                // Deliverer accepting send request: send_X_delivery_Y
-                return $this->handleDelivererAcceptance($user, $offerId, $requestId);
-            } else {
-                // Deliverer accepting delivery offer: delivery_X_send_Y (less common)
-                return $this->handleDelivererAcceptance($user, $requestId, $offerId);
-            }
+            return $this->handleDelivererAcceptance($user, $response->offer_id, $response->request_id);
         } elseif ($userRole === 'sender') {
             // Current user is the sender
-            if ($offerType === 'send') {
-                // Sender accepting after deliverer accepted: send_X_delivery_Y
-                return $this->handleSenderAcceptance($user, $offerId, $requestId);
-            } else {
-                // Sender accepting delivery offer: delivery_X_send_Y
-                return $this->handleSenderAcceptance($user, $requestId, $offerId);
-            }
+            return $this->handleSenderAcceptance($user, $response->offer_id, $response->request_id);
         }
 
         throw new \Exception('Invalid user role for response acceptance');

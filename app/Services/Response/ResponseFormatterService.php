@@ -47,9 +47,7 @@ class ResponseFormatterService
             }
         }
 
-        $responseId = $response->response_type === 'manual' 
-            ? $response->id 
-            : 'send_' . $response->offer_id . '_delivery_' . $response->request_id;
+        $responseId = $response->id;
 
         return [
             'id' => $responseId,
@@ -98,9 +96,7 @@ class ResponseFormatterService
             }
         }
 
-        $responseId = $response->response_type === 'manual' 
-            ? $response->id 
-            : 'delivery_' . $response->offer_id . '_send_' . $response->request_id;
+        $responseId = $response->id;
 
         return [
             'id' => $responseId,
