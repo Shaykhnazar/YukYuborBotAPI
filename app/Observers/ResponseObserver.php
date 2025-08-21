@@ -94,7 +94,7 @@ class ResponseObserver
                     // Mark the target request as "accepted"
                     if ($response->offer_type === 'send') {
                         // Request owner accepted a response to their send request
-                        UpdateSendRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                        UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
                             ->delay(now()->addSeconds(3))
                             ->onQueue('gsheets');
 
@@ -104,7 +104,7 @@ class ResponseObserver
                         ]);
                     } else {
                         // Request owner accepted a response to their delivery request
-                        UpdateDeliveryRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                        UpdateDeliveryRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
                             ->delay(now()->addSeconds(3))
                             ->onQueue('gsheets');
 
@@ -127,7 +127,7 @@ class ResponseObserver
                         'send_request_id' => $response->offer_id
                     ]);
 
-                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, now()->toISOString())
+                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, $response->created_at->toISOString())
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
@@ -147,7 +147,7 @@ class ResponseObserver
                         'send_request_id' => $response->offer_id
                     ]);
 
-                    UpdateSendRequestAccepted::dispatch($response->offer_id, now()->toISOString())
+                    UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
