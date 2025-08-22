@@ -34,14 +34,14 @@ class ResponseController extends Controller
     {
         $user = $this->tgService->getUserByTelegramId($request);
         $responses = $this->queryService->getUserResponses($user);
-        
+
         $formattedResponses = [];
-        
+
         foreach ($responses as $response) {
             if (!$this->queryService->canUserSeeResponse($response, $user->id)) {
                 continue;
             }
-            
+
             $formatted = $this->formatterService->formatResponse($response, $user);
             if ($formatted) {
                 $formattedResponses[] = $formatted;
@@ -58,7 +58,7 @@ class ResponseController extends Controller
             $validated = $request->validated();
 
             $targetRequest = $this->getTargetRequest($validated['offer_type'], $validated['request_id']);
-            
+
             if (!$targetRequest || $targetRequest->user_id === $user->id) {
                 return response()->json(['error' => 'Invalid request or cannot respond to own request'], 400);
             }
@@ -71,10 +71,6 @@ class ResponseController extends Controller
 
             $this->notificationService->sendResponseNotification(
                 $targetRequest->user_id,
-                $user->name,
-                $validated['message'],
-                $validated['amount'] ?? null,
-                $validated['currency'] ?? null
             );
 
             return response()->json([
