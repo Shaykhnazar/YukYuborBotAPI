@@ -8,32 +8,30 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
-    public function sendAcceptanceNotification(int $userId, string $senderName): void
+    public function sendAcceptanceNotification(int $userId): void
     {
         $this->sendTelegramNotification(
             $userId,
-            $senderName,
             "✅ *Отклик принят*\n Отлично! Теперь вы можете обсудить детали доставки напрямую в чате.💬 Перейдите в раздел _входящие_ в приложении, чтобы начать👇🏻"
         );
     }
 
-    public function sendRejectionNotification(int $userId, string $senderName): void
+    public function sendRejectionNotification(int $userId): void
     {
         $this->sendTelegramNotification(
             $userId,
-            $senderName,
             "❌ *Отклик отклонён*\n Мы продолжим искать совпадения для вас и уведомим о _новом отклике_⏳"
         );
     }
 
-    public function sendResponseNotification(int $userId, string $responderName, string $message, ?int $amount = null, ?string $currency = null): void
+    public function sendResponseNotification(int $userId): void
     {
         $notificationMessage = "🎉 *У вас новый отклик!*\nВаша заявка получила отклик. Откройте раздел _входящие_ в приложении, чтобы посмотреть детали и решить — принять или отклонить👇🏻";
 
-        $this->sendTelegramNotification($userId, $responderName, $notificationMessage);
+        $this->sendTelegramNotification($userId, $notificationMessage);
     }
 
-    private function sendTelegramNotification(int $userId, string $senderName, string $message): void
+    private function sendTelegramNotification(int $userId, string $message): void
     {
         $user = User::with('telegramUser')->find($userId);
 

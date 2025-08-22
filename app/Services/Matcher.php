@@ -14,6 +14,7 @@ class Matcher
 {
     public function __construct(
         protected TelegramNotificationService $telegramService,
+        protected NotificationService $notificationService,
         protected RequestMatchingService $matchingService,
         protected ResponseCreationService $creationService,
         protected ResponseStatusService $statusService
@@ -102,24 +103,7 @@ class Matcher
             return;
         }
 
-        $text = $this->buildNewSendNotificationText($sendRequest, $delivery);
-        $keyboard = $this->telegramService->buildDeliveryResponseKeyboard(
-            $sendRequest->id,
-            $delivery->id,
-            $sendRequest->user_id,
-            $delivery->user_id
-        );
-
-        if ($keyboard) {
-            $this->telegramService->sendMessageWithKeyboard(
-                $user->telegramUser->telegram,
-                $text,
-                $keyboard
-            );
-        } else {
-            $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
-            $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
-        }
+        $this->notificationService->sendResponseNotification($user->id);
     }
 
     private function notifyDeliveryUserAboutExistingSend(SendRequest $sendRequest, DeliveryRequest $delivery): void
@@ -130,67 +114,6 @@ class Matcher
             return;
         }
 
-        $text = $this->buildExistingSendNotificationText($sendRequest, $delivery);
-        $keyboard = $this->telegramService->buildDeliveryResponseKeyboard(
-            $sendRequest->id,
-            $delivery->id,
-            $sendRequest->user_id,
-            $delivery->user_id
-        );
-
-        if ($keyboard) {
-            $this->telegramService->sendMessageWithKeyboard(
-                $user->telegramUser->telegram,
-                $text,
-                $keyboard
-            );
-        } else {
-            $text .= "\n\nПроверьте раздел 'Отклики' в приложении для ответа.";
-            $this->telegramService->sendMessage($user->telegramUser->telegram, $text);
-        }
+        $this->notificationService->sendResponseNotification($user->id);
     }
-
-    private function buildNewSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
-    {
-        $text = "🎉 Поздравляем, по Вашей <b>заявке №{$delivery->id}</b> найден заказ!\n\n";
-        $text .= "<b>Вот данные от отправителя посылки:</b>\n";
-        $text .= "<b>🛫 Город отправления:</b> {$sendRequest->fromLocation->fullRouteName}\n";
-        $text .= "<b>🛬 Город назначения:</b> {$sendRequest->toLocation->fullRouteName}\n";
-        $text .= "<b>🗓 Даты:</b> {$sendRequest->from_date} - {$sendRequest->to_date}\n";
-        $text .= "<b>📊 Категория посылки:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n\n";
-
-        if ($sendRequest->description && $sendRequest->description !== 'Пропустить') {
-            $text .= "<b>📜 Дополнительные примечания:</b> {$sendRequest->description}\n\n";
-        } else {
-            $text .= "<b>📜 Дополнительные примечания:</b> Не указаны\n\n";
-        }
-
-        if ($sendRequest->price) {
-            $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n\n";
-        }
-
-        $text .= "Хотите взяться за эту доставку?";
-
-        return $text;
-    }
-
-    private function buildExistingSendNotificationText(SendRequest $sendRequest, DeliveryRequest $delivery): string
-    {
-        $text = "🎉 Найдены посылки для доставки по Вашей заявке!\n\n";
-        $text .= "По вашей заявке на доставку найдена посылка:\n";
-        $text .= "<b>🛫 Откуда:</b> {$sendRequest->fromLocation->fullRouteName}\n";
-        $text .= "<b>🛬 Куда:</b> {$sendRequest->toLocation->fullRouteName}\n";
-        $text .= "<b>🗓 Нужно доставить до:</b> {$sendRequest->to_date}\n";
-        $text .= "<b>📊 Категория:</b> " . ($sendRequest->size_type ?: 'Не указана') . "\n";
-        $text .= "<b>📦 Что везти:</b> {$sendRequest->description}\n";
-
-        if ($sendRequest->price) {
-            $text .= "<b>💰 Оплата:</b> {$sendRequest->price} {$sendRequest->currency}\n";
-        }
-
-        $text .= "\nХотите взяться за эту доставку?";
-
-        return $text;
-    }
-
 }

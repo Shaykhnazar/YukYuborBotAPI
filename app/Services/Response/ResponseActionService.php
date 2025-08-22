@@ -65,7 +65,7 @@ class ResponseActionService
 
         $this->updateTargetRequestStatus($targetRequest, RequestStatus::MATCHED_MANUALLY->value);
 
-        $this->notificationService->sendAcceptanceNotification($responder->id, $user->name);
+        $this->notificationService->sendAcceptanceNotification($responder->id);
 
         return ['chat_id' => $chat->id, 'message' => 'Manual response accepted successfully'];
     }
@@ -93,7 +93,7 @@ class ResponseActionService
             'overall_status' => ResponseStatus::REJECTED->value,
         ]);
 
-        $this->notificationService->sendRejectionNotification($response->responder_id, $user->name);
+        $this->notificationService->sendRejectionNotification($response->responder_id);
 
         return ['message' => 'Manual response rejected successfully'];
     }
@@ -507,8 +507,6 @@ class ResponseActionService
         // Optional: Notify sender that deliverer rejected
         $this->notificationService->sendRejectionNotification(
             $response->responder_id,
-            $deliverer->name,
-            'deliverer_rejected_send'
         );
 
         return ['message' => 'Send request rejected successfully'];
@@ -547,8 +545,6 @@ class ResponseActionService
         if ($delivererUser) {
             $this->notificationService->sendRejectionNotification(
                 $delivererUser->id,
-                $sender->name,
-                'sender_rejected_delivery'
             );
         }
 
