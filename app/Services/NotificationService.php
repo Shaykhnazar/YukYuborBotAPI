@@ -40,12 +40,11 @@ class NotificationService
         }
 
         $telegramId = $user->telegramUser->telegram;
-        $notificationText = "📬 {$message}";
 
         $token = config('auth.guards.tgwebapp.token');
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
-            'text' => $notificationText,
+            'text' => $message,
             'parse_mode' => 'Markdown',
         ]);
 
