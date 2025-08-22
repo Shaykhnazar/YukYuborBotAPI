@@ -7,10 +7,14 @@ use App\Jobs\UpdateDeliveryRequestReceived;
 use App\Jobs\UpdateDeliveryRequestAccepted;
 use App\Jobs\UpdateSendRequestReceived;
 use App\Jobs\UpdateSendRequestAccepted;
+use App\Services\NotificationService;
 use Illuminate\Support\Facades\Log;
 
 class ResponseObserver
 {
+    public function __construct(
+        private NotificationService $notificationService
+    ) {}
 
     /**
      * Handle the Response "created" event.
@@ -140,6 +144,16 @@ class ResponseObserver
                         'delivery_request_id' => $response->request_id,
                         'send_request_id' => $response->offer_id
                     ]);
+
+                    // Send notification to sender about deliverer acceptance
+                    $senderUser = $response->getSenderUser();
+                    if ($senderUser) {
+                        $this->notificationService->sendResponseNotification($senderUser->id);
+                        Log::info('ResponseObserver: Sent notification to sender about deliverer acceptance', [
+                            'response_id' => $response->id,
+                            'sender_user_id' => $senderUser->id
+                        ]);
+                    }
                 } elseif ($senderJustAccepted) {
                     // Sender accepted → SendRequest marked as "accepted"
                     Log::info('ResponseObserver: Sender acceptance detected', [
@@ -155,6 +169,16 @@ class ResponseObserver
                         'response_id' => $response->id,
                         'send_request_id' => $response->offer_id
                     ]);
+
+                    // Send acceptance notification to deliverer
+                    $delivererUser = $response->getDelivererUser();
+                    if ($delivererUser) {
+                        $this->notificationService->sendAcceptanceNotification($delivererUser->id);
+                        Log::info('ResponseObserver: Sent acceptance notification to deliverer', [
+                            'response_id' => $response->id,
+                            'deliverer_user_id' => $delivererUser->id
+                        ]);
+                    }
                 }
             }
         }
