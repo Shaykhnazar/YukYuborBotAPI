@@ -374,28 +374,12 @@ class GoogleSheetsService
             if ($responseReceivedTime) {
                 // Use the specific response received time passed from the calling code
                 $acceptanceWaitingTime = $this->calculateWaitingTime($responseReceivedTime, $currentTime);
-            } else {
-                // Fallback: try to use the first response time if available
-                $firstResponseTime = isset($allData[$rowNumber - 1][13]) ? $allData[$rowNumber - 1][13] : ''; // Column N (index 13)
-
-                if (!empty($firstResponseTime)) {
-                    // Calculate from first response time to acceptance time
-                    $acceptanceWaitingTime = $this->calculateWaitingTime($firstResponseTime, $currentTime);
-                } else {
-                    // Last fallback: calculate from created_at
-                    $createdAt = isset($allData[$rowNumber - 1][9]) ? $allData[$rowNumber - 1][9] : ''; // Column J (index 9)
-                    if ($createdAt) {
-                        $acceptanceWaitingTime = $this->calculateWaitingTime($createdAt, $currentTime);
-                    } else {
-                        $acceptanceWaitingTime = 'Нет данных о времени ответа';
-                    }
-                }
             }
 
             Sheets::spreadsheet($this->spreadsheetId)
                 ->sheet($worksheetName)
                 ->range("R{$rowNumber}")
-                ->update([[$acceptanceWaitingTime]]);
+                ->update([[$acceptanceWaitingTime ?? '']]);
 
             // Update status column to "matched" when response is accepted
             Sheets::spreadsheet($this->spreadsheetId)
@@ -720,14 +704,14 @@ class GoogleSheetsService
         // SendRequest is offered → DeliveryRequest receives it (target is delivery request)
         if ($response->response_type === Response::TYPE_MATCHING) {
             $deliveryRequest = \App\Models\DeliveryRequest::find($response->request_id);
-            
+
             Log::info('Searching for target delivery request (new system)', [
                 'response_id' => $response->id,
                 'searching_delivery_id' => $response->request_id,
                 'found' => !!$deliveryRequest,
                 'offer_type' => $response->offer_type
             ]);
-            
+
             if ($deliveryRequest) {
                 Log::info('Found target delivery request for matching response (new system)', [
                     'response_id' => $response->id,
@@ -738,7 +722,7 @@ class GoogleSheetsService
                 return $deliveryRequest;
             }
         }
-        
+
         // For manual responses: Find the request being responded to
         elseif ($response->response_type === Response::TYPE_MANUAL) {
             if ($response->offer_type === 'send') {

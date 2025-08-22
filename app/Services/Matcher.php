@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Log;
 class Matcher
 {
     public function __construct(
-        protected TelegramNotificationService $telegramService,
         protected NotificationService $notificationService,
         protected RequestMatchingService $matchingService,
         protected ResponseCreationService $creationService,

@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Services\Matcher;
-use App\Services\TelegramNotificationService;
 use App\Services\GoogleSheetsService;
+use App\Services\Matching\RequestMatchingService;
+use App\Services\Matching\ResponseCreationService;
+use App\Services\Matching\ResponseStatusService;
+use App\Services\NotificationService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,18 +22,18 @@ class AppServiceProvider extends ServiceProvider
             return new GoogleSheetsService();
         });
 
-        // Bind TelegramNotificationService as singleton
-        $this->app->singleton(TelegramNotificationService::class, function ($app) {
-            return new TelegramNotificationService();
+        // Bind NotificationService as singleton
+        $this->app->singleton(NotificationService::class, function ($app) {
+            return new NotificationService();
         });
 
         // Bind Matcher with dependency injection
         $this->app->bind(Matcher::class, function ($app) {
             return new Matcher(
-                $app->make(TelegramNotificationService::class),
-                $app->make(\App\Services\Matching\RequestMatchingService::class),
-                $app->make(\App\Services\Matching\ResponseCreationService::class),
-                $app->make(\App\Services\Matching\ResponseStatusService::class)
+                $app->make(NotificationService::class),
+                $app->make(RequestMatchingService::class),
+                $app->make(ResponseCreationService::class),
+                $app->make(ResponseStatusService::class)
             );
         });
     }

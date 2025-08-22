@@ -12,7 +12,7 @@ use App\Services\Matcher;
 use App\Services\Matching\RequestMatchingService;
 use App\Services\Matching\ResponseCreationService;
 use App\Services\Matching\ResponseStatusService;
-use App\Services\TelegramNotificationService;
+use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,7 +25,6 @@ class MatcherTest extends TestCase
     use RefreshDatabase;
 
     protected Matcher $matcher;
-    protected TelegramNotificationService $telegramService;
     protected RequestMatchingService $matchingService;
     protected ResponseCreationService $creationService;
     protected ResponseStatusService $statusService;
@@ -38,11 +37,11 @@ class MatcherTest extends TestCase
     {
         parent::setUp();
 
-        $this->telegramService = Mockery::mock(TelegramNotificationService::class);
+        $this->telegramService = Mockery::mock(NotificationService::class);
         $this->matchingService = Mockery::mock(RequestMatchingService::class);
         $this->creationService = Mockery::mock(ResponseCreationService::class);
         $this->statusService = Mockery::mock(ResponseStatusService::class);
-        
+
         $this->matcher = new Matcher(
             $this->telegramService,
             $this->matchingService,
@@ -54,7 +53,7 @@ class MatcherTest extends TestCase
         $this->delivererUser = User::factory()->create();
         $this->fromLocation = Location::factory()->create();
         $this->toLocation = Location::factory()->create();
-        
+
         Log::swap(Mockery::mock('Psr\Log\LoggerInterface'));
     }
 
@@ -317,7 +316,7 @@ class MatcherTest extends TestCase
 
         // Mock user without telegram
         $this->delivererUser->load('user'); // This should load null
-        
+
         Log::shouldReceive('warning')->once();
         Log::shouldReceive('info')->once();
 
