@@ -257,7 +257,7 @@ class UserRequestService
 class Matcher
 {
     public function __construct(
-        protected TelegramNotificationService $telegramService,
+        protected NotificationService $telegramService,
         protected RequestMatchingService $matchingService,
         protected ResponseCreationService $creationService,
         protected ResponseStatusService $statusService
