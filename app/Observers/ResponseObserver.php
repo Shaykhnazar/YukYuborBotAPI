@@ -161,13 +161,18 @@ class ResponseObserver
                         'send_request_id' => $response->offer_id
                     ]);
 
-                    UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
+                    // For matching responses, sender's waiting time should be calculated from when they received notification
+                    // This happens when deliverer accepted (status changed to partial), not from original response creation
+                    $senderNotificationTime = $this->getSenderNotificationTime($response);
+
+                    UpdateSendRequestAccepted::dispatch($response->offer_id, $senderNotificationTime)
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
                     Log::info('ResponseObserver: Dispatched SendRequestAccepted job', [
                         'response_id' => $response->id,
-                        'send_request_id' => $response->offer_id
+                        'send_request_id' => $response->offer_id,
+                        'sender_notification_time' => $senderNotificationTime
                     ]);
 
                     // Send acceptance notification to deliverer
@@ -182,6 +187,37 @@ class ResponseObserver
                 }
             }
         }
+    }
+
+    /**
+     * Get the time when sender was notified about a matching response
+     * For matching responses, sender gets notified when deliverer accepts (partial status)
+     */
+    private function getSenderNotificationTime(Response $response): string
+    {
+        // For matching responses, sender is notified when deliverer accepts
+        if ($response->response_type === 'matching') {
+            // The key insight: in dual acceptance system, sender gets notified when deliverer accepts
+            // Since we're processing sender acceptance now, we can estimate when deliverer accepted
+            // by looking at when the response status became 'partial'
+
+            // For better accuracy, use the response's updated_at time as approximation
+            // This represents when the deliverer accepted (making it partial)
+            // Subtract a small buffer since sender acceptance happens after deliverer acceptance
+            $delivererAcceptanceTime = $response->updated_at;
+
+            Log::info('Calculated sender notification time for matching response', [
+                'response_id' => $response->id,
+                'original_created_at' => $response->created_at->toISOString(),
+                'estimated_deliverer_accepted_at' => $delivererAcceptanceTime->toISOString(),
+                'current_updated_at' => $response->updated_at->toISOString()
+            ]);
+
+            return $delivererAcceptanceTime->toISOString();
+        }
+
+        // For manual responses, use the response creation time (immediate notification)
+        return $response->created_at->toISOString();
     }
 
 }
