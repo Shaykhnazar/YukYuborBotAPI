@@ -69,7 +69,7 @@ class ResponseFormatterService
             'user_status' => $userStatus,
             'user_role' => $userRole,
             'created_at' => $response->created_at,
-            'response_type' => $response->response_type === 'manual' ? 'manual' : 'can_deliver',
+            'response_type' => $response->response_type === 'manual' ? 'manual' : 'matching',
             'direction' => $isReceiver ? 'received' : 'sent',
             'original_request' => $this->formatOriginalRequest($sendRequest)
         ];
@@ -118,7 +118,7 @@ class ResponseFormatterService
             'user_status' => $userStatus,
             'user_role' => $userRole,
             'created_at' => $response->created_at,
-            'response_type' => $response->response_type === 'manual' ? 'manual' : 'deliverer_responded',
+            'response_type' => $response->response_type === 'manual' ? 'manual' : 'matching',
             'direction' => $isReceiver ? 'received' : 'sent',
             'original_request' => $sendRequest ? $this->formatOriginalRequest($sendRequest) : null
         ];
