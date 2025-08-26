@@ -20,8 +20,7 @@ class UpdateDeliveryRequestAccepted implements ShouldQueue
 
     public function __construct(
         private readonly int $deliveryRequestId,
-        private readonly string $responseCreatedTime,
-        private readonly string $responseReceivedTime
+        private readonly string $responseAcceptedTime
     ) {}
 
     public function handle(GoogleSheetsService $googleSheetsService): void
@@ -39,10 +38,10 @@ class UpdateDeliveryRequestAccepted implements ShouldQueue
             Log::info('Updating DeliveryRequest as accepted in Google Sheets', [
                 'delivery_request_id' => $deliveryRequest->id,
                 'user_id' => $deliveryRequest->user_id,
-                'response_received_time' => $this->responseReceivedTime
+                'response_received_time' => $this->responseAcceptedTime
             ]);
 
-            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id, $this->responseCreatedTime, $this->responseReceivedTime);
+            $googleSheetsService->updateRequestResponseAccepted('delivery', $deliveryRequest->id, $this->responseAcceptedTime);
 
             Log::info('Successfully updated DeliveryRequest as accepted in Google Sheets', [
                 'delivery_request_id' => $deliveryRequest->id

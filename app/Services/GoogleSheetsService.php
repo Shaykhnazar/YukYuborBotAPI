@@ -315,14 +315,14 @@ class GoogleSheetsService
      * Update response tracking columns when response is accepted
      * @throws Exception
      */
-    public function updateRequestResponseAccepted($requestType, $requestId, $responseCreatedTime = null, $responseAcceptedTime = null): bool
+    public function updateRequestResponseAccepted($requestType, $requestId, $responseAcceptedTime = null): bool
     {
         if (is_null($this->spreadsheetId)) {
             Log::warning('Google Sheets spreadsheet ID not configured, skipping updateRequestResponseAccepted');
             return true;
         }
 
-        return $this->withLock(function() use ($responseCreatedTime, $requestType, $requestId, $responseAcceptedTime) {
+        return $this->withLock(function() use ($requestType, $requestId, $responseAcceptedTime) {
             try {
                 $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
@@ -337,55 +337,56 @@ class GoogleSheetsService
                     ->sheet($worksheetName)
                     ->all();
 
-            if (empty($allData)) {
-                Log::warning("Worksheet is empty", ['worksheet' => $worksheetName]);
-                return true;
-            }
-
-            // Find the row with matching request ID
-            $rowNumber = null;
-            foreach ($allData as $index => $row) {
-                if (isset($row[0]) && $row[0] == $requestId) {
-                    $rowNumber = $index + 1; // Sheets are 1-indexed
-                    break;
+                if (empty($allData)) {
+                    Log::warning("Worksheet is empty", ['worksheet' => $worksheetName]);
+                    return true;
                 }
-            }
 
-            if (!$rowNumber) {
-                Log::warning("Request ID {$requestId} not found in {$worksheetName} - skipping acceptance tracking update");
-                return true;
-            }
+                // Find the row with matching request ID
+                $rowNumber = null;
+                foreach ($allData as $index => $row) {
+                    if (isset($row[0]) && $row[0] == $requestId) {
+                        $rowNumber = $index + 1; // Sheets are 1-indexed
+                        break;
+                    }
+                }
 
-            $currentTime = Carbon::now()->toISOString();
+                if (!$rowNumber) {
+                    Log::warning("Request ID {$requestId} not found in {$worksheetName} - skipping acceptance tracking update");
+                    return true;
+                }
 
-            // Update Column P: Response accepted (принят)
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->range("P{$rowNumber}")
-                ->update([["принят"]]);
+                $currentTime = Carbon::now()->toISOString();
 
-            // Update Column Q: Time response accepted
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->range("Q{$rowNumber}")
-                ->update([[$responseAcceptedTime ?? $currentTime]]);
+                // Update Column P: Response accepted (принят)
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("P{$rowNumber}")
+                    ->update([["принят"]]);
 
-            // Update Column R: Waiting time for acceptance (calculated from when user received the specific response to acceptance time)
-            if ($responseCreatedTime && $responseAcceptedTime) {
-                // Use the specific response received time passed from the calling code
-                $acceptanceWaitingTime = $this->calculateWaitingTime($responseCreatedTime, $responseAcceptedTime);
-            }
+                // Update Column Q: Time response accepted
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("Q{$rowNumber}")
+                    ->update([[$responseAcceptedTime ?? $currentTime]]);
 
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->range("R{$rowNumber}")
-                ->update([[$acceptanceWaitingTime ?? '']]);
+                // Update Column R: Waiting time for acceptance (calculated from when user received the specific response to acceptance time)
+                $responseReceivedTime = $allData[$rowNumber - 1][13] ?? ''; // Column N (index 13) - Timestamp when first response was received (if this is the first response)
+                if ($responseReceivedTime && $responseAcceptedTime) {
+                    // Use the specific response received time passed from the calling code
+                    $acceptanceWaitingTime = $this->calculateWaitingTime($responseReceivedTime, $responseAcceptedTime);
+                }
 
-            // Update status column to "matched" when response is accepted
-            Sheets::spreadsheet($this->spreadsheetId)
-                ->sheet($worksheetName)
-                ->range("I{$rowNumber}")
-                ->update([["matched"]]);
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("R{$rowNumber}")
+                    ->update([[$acceptanceWaitingTime ?? '']]);
+
+                // Update status column to "matched" when response is accepted
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("I{$rowNumber}")
+                    ->update([["matched"]]);
 
                 return true;
             } catch (Exception $e) {
