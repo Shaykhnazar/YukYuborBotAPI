@@ -19,7 +19,7 @@ class IndexRequestResource extends JsonResource
         $displayUser = null;
         $isResponder = isset($this->responder_user);
 
-        if ($isResponder && in_array($this->status, ['matched', 'matched_manually', 'closed', 'completed'])) {
+        if ($isResponder && in_array($this->status, ['closed', 'completed'])) {
             // Closed/matched request with responder - show the other party
             $displayUser = $this->responder_user;
             $telegram = $displayUser->telegramUser ?? null;
