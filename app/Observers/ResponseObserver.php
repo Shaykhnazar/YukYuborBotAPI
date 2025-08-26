@@ -98,7 +98,7 @@ class ResponseObserver
                     // Mark the target request as "accepted"
                     if ($response->offer_type === 'send') {
                         // Request owner accepted a response to their send request
-                        UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
+                        UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString(), $response->updated_at->toISOString())
                             ->delay(now()->addSeconds(3))
                             ->onQueue('gsheets');
 
@@ -108,7 +108,7 @@ class ResponseObserver
                         ]);
                     } else {
                         // Request owner accepted a response to their delivery request
-                        UpdateDeliveryRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString())
+                        UpdateDeliveryRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString(), $response->updated_at->toISOString())
                             ->delay(now()->addSeconds(3))
                             ->onQueue('gsheets');
 
@@ -131,7 +131,8 @@ class ResponseObserver
                         'send_request_id' => $response->offer_id
                     ]);
 
-                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, $response->created_at->toISOString())
+                    $acceptedNotificationTime = $this->getAcceptedNotificationTime($response);
+                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, $response->created_at->toISOString(), $acceptedNotificationTime)
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
@@ -151,7 +152,8 @@ class ResponseObserver
                         $this->notificationService->sendResponseNotification($senderUser->id);
                         Log::info('ResponseObserver: Sent notification to sender about deliverer acceptance', [
                             'response_id' => $response->id,
-                            'sender_user_id' => $senderUser->id
+                            'sender_user_id' => $senderUser->id,
+                            'deliverer_notification_time' => $acceptedNotificationTime
                         ]);
                     }
                 } elseif ($senderJustAccepted) {
@@ -163,16 +165,16 @@ class ResponseObserver
 
                     // For matching responses, sender's waiting time should be calculated from when they received notification
                     // This happens when deliverer accepted (status changed to partial), not from original response creation
-                    $senderNotificationTime = $this->getSenderNotificationTime($response);
+                    $acceptedNotificationTime = $this->getAcceptedNotificationTime($response);
 
-                    UpdateSendRequestAccepted::dispatch($response->offer_id, $senderNotificationTime)
+                    UpdateSendRequestAccepted::dispatch($response->offer_id, $response->created_at->toISOString(), $acceptedNotificationTime)
                         ->delay(now()->addSeconds(3))
                         ->onQueue('gsheets');
 
                     Log::info('ResponseObserver: Dispatched SendRequestAccepted job', [
                         'response_id' => $response->id,
                         'send_request_id' => $response->offer_id,
-                        'sender_notification_time' => $senderNotificationTime
+                        'sender_notification_time' => $acceptedNotificationTime
                     ]);
 
                     // Send acceptance notification to deliverer
@@ -193,7 +195,7 @@ class ResponseObserver
      * Get the time when sender was notified about a matching response
      * For matching responses, sender gets notified when deliverer accepts (partial status)
      */
-    private function getSenderNotificationTime(Response $response): string
+    private function getAcceptedNotificationTime(Response $response): string
     {
         // For matching responses, sender is notified when deliverer accepts
         if ($response->response_type === 'matching') {
