@@ -315,14 +315,14 @@ class GoogleSheetsService
      * Update response tracking columns when response is accepted
      * @throws Exception
      */
-    public function updateRequestResponseAccepted($requestType, $requestId, $responseReceivedTime = null): bool
+    public function updateRequestResponseAccepted($requestType, $requestId, $responseCreatedTime = null, $responseAcceptedTime = null): bool
     {
         if (is_null($this->spreadsheetId)) {
             Log::warning('Google Sheets spreadsheet ID not configured, skipping updateRequestResponseAccepted');
             return true;
         }
 
-        return $this->withLock(function() use ($requestType, $requestId, $responseReceivedTime) {
+        return $this->withLock(function() use ($responseCreatedTime, $requestType, $requestId, $responseAcceptedTime) {
             try {
                 $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
 
@@ -368,12 +368,12 @@ class GoogleSheetsService
             Sheets::spreadsheet($this->spreadsheetId)
                 ->sheet($worksheetName)
                 ->range("Q{$rowNumber}")
-                ->update([[$currentTime]]);
+                ->update([[$responseAcceptedTime ?? $currentTime]]);
 
             // Update Column R: Waiting time for acceptance (calculated from when user received the specific response to acceptance time)
-            if ($responseReceivedTime) {
+            if ($responseCreatedTime && $responseAcceptedTime) {
                 // Use the specific response received time passed from the calling code
-                $acceptanceWaitingTime = $this->calculateWaitingTime($responseReceivedTime, $currentTime);
+                $acceptanceWaitingTime = $this->calculateWaitingTime($responseCreatedTime, $responseAcceptedTime);
             }
 
             Sheets::spreadsheet($this->spreadsheetId)
@@ -386,12 +386,6 @@ class GoogleSheetsService
                 ->sheet($worksheetName)
                 ->range("I{$rowNumber}")
                 ->update([["matched"]]);
-
-//            Log::info("Request acceptance tracking updated in Google Sheets", [
-//                'worksheet' => $worksheetName,
-//                'request_id' => $requestId,
-//                'row_number' => $rowNumber
-//            ]);
 
                 return true;
             } catch (Exception $e) {
