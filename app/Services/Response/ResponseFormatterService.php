@@ -49,6 +49,32 @@ class ResponseFormatterService
 
         $responseId = $response->id;
 
+        $details = [];
+        if ($userRole === 'sender') {
+            $details = [
+                'from_location' => $deliveryRequest->fromLocation->fullRouteName,
+                'to_location' => $deliveryRequest->toLocation->fullRouteName,
+                'from_date' => $deliveryRequest->from_date,
+                'to_date' => $deliveryRequest->to_date,
+                'price' => $this->getPrice($response, $deliveryRequest),
+                'currency' => $this->getCurrency($response, $deliveryRequest),
+                'size_type' => $deliveryRequest->size_type,
+                'description' => $this->getDescription($response, $deliveryRequest),
+            ];
+        } else {
+            $details = [
+                'from_location' => $sendRequest->fromLocation->fullRouteName,
+                'to_location' => $sendRequest->toLocation->fullRouteName,
+                'from_date' => $sendRequest->from_date,
+                'to_date' => $sendRequest->to_date,
+                'price' => $this->getPrice($response, $sendRequest),
+                'currency' => $this->getCurrency($response, $sendRequest),
+                'size_type' => $sendRequest->size_type,
+                'description' => $this->getDescription($response, $sendRequest),
+            ];
+        }
+
+
         return [
             'id' => $responseId,
             'type' => 'send',
@@ -57,19 +83,12 @@ class ResponseFormatterService
             'chat_id' => $response->chat_id,
             'can_act_on' => $canAct,
             'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type),
-            'from_location' => $sendRequest->fromLocation->fullRouteName,
-            'to_location' => $sendRequest->toLocation->fullRouteName,
-            'from_date' => $sendRequest->from_date,
-            'to_date' => $sendRequest->to_date,
-            'price' => $this->getPrice($response, $sendRequest),
-            'currency' => $this->getCurrency($response, $sendRequest),
-            'size_type' => $sendRequest->size_type,
-            'description' => $this->getDescription($response, $sendRequest),
+            ...$details,
             'status' => $response->overall_status,
             'user_status' => $userStatus,
             'user_role' => $userRole,
             'created_at' => $response->created_at,
-            'response_type' => $response->response_type === 'manual' ? 'manual' : 'matching',
+            'response_type' => $response->response_type,
             'direction' => $isReceiver ? 'received' : 'sent',
             'original_request' => $this->formatOriginalRequest($sendRequest)
         ];
@@ -106,21 +125,21 @@ class ResponseFormatterService
             'chat_id' => $response->chat_id,
             'can_act_on' => $canAct,
             'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type),
-            'from_location' => $deliveryRequest->fromLocation->fullRouteName,
-            'to_location' => $deliveryRequest->toLocation->fullRouteName,
-            'from_date' => $deliveryRequest->from_date,
-            'to_date' => $deliveryRequest->to_date,
-            'price' => $this->getPrice($response, $deliveryRequest),
-            'currency' => $this->getCurrency($response, $deliveryRequest),
-            'size_type' => $deliveryRequest->size_type,
-            'description' => $this->getDescription($response, $deliveryRequest),
+            'from_location' => $sendRequest->fromLocation->fullRouteName,
+            'to_location' => $sendRequest->toLocation->fullRouteName,
+            'from_date' => $sendRequest->from_date,
+            'to_date' => $sendRequest->to_date,
+            'price' => $this->getPrice($response, $sendRequest),
+            'currency' => $this->getCurrency($response, $sendRequest),
+            'size_type' => $sendRequest->size_type,
+            'description' => $this->getDescription($response, $sendRequest),
             'status' => $response->overall_status,
             'user_status' => $userStatus,
             'user_role' => $userRole,
             'created_at' => $response->created_at,
-            'response_type' => $response->response_type === 'manual' ? 'manual' : 'matching',
+            'response_type' => $response->response_type,
             'direction' => $isReceiver ? 'received' : 'sent',
-            'original_request' => $sendRequest ? $this->formatOriginalRequest($sendRequest) : null
+            'original_request' => $this->formatOriginalRequest($deliveryRequest)
         ];
     }
 
