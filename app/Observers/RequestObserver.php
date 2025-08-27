@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Models\Response;
 use App\Models\SendRequest;
 use App\Models\DeliveryRequest;
 use App\Services\RouteCacheService;
@@ -112,15 +113,47 @@ class RequestObserver
             ]);
 
             // Find all responses where this request was involved
-            $responsesToDelete = \App\Models\Response::where(function($query) use ($deletedRequestId, $requestType) {
-                // Cases where deleted request was the offering request
-                $query->where('offer_id', $deletedRequestId)
-                      ->where('offer_type', $requestType);
-            })
-            ->orWhere(function($query) use ($deletedRequestId) {
-                // Cases where deleted request was the receiving request
-                $query->where('request_id', $deletedRequestId);
-            })->get();
+//            $responsesToDelete = Response::where(function($query) use ($deletedRequestId, $requestType) {
+//                // Cases where deleted request was the offering request
+//                $query->where('offer_id', $deletedRequestId)
+//                      ->where('offer_type', $requestType);
+//            })
+//            ->orWhere(function($query) use ($deletedRequestId) {
+//                // Cases where deleted request was the receiving request
+//                $query->where('request_id', $deletedRequestId);
+//            })->get();
+
+            if ($requestType === 'delivery') {
+                // Delete all related responses where this delivery request appears
+                // as either the main request or as an offer
+                $responsesToDelete = Response::where(function ($query) use ($deletedRequestId) {
+                    $query->where(function ($subQuery) use ($deletedRequestId) {
+                        // Responses where this delivery request is the main request
+                        $subQuery->where('offer_type', 'delivery')
+                            ->where('request_id', $deletedRequestId);
+                    })->orWhere(function ($subQuery) use ($deletedRequestId) {
+                        // Responses where this delivery request appears as an offer
+                        $subQuery->where('offer_type', 'send')
+                            ->where('offer_id', $deletedRequestId);
+                    });
+                })->get();
+            } else {
+                // Delete all related responses where this send request appears
+                // as either the main request or as an offer
+                $responsesToDelete = Response::where(function($query) use ($deletedRequestId) {
+                    $query->where(function($subQuery) use ($deletedRequestId) {
+                        // Responses where this send request is the main request
+                        $subQuery->where('offer_type', 'send')
+                            ->where('request_id', $deletedRequestId);
+                    })->orWhere(function($subQuery) use ($deletedRequestId) {
+                        // Responses where this send request appears as an offer
+                        $subQuery->where('offer_type', 'delivery')
+                            ->where('offer_id', $deletedRequestId);
+                    });
+                })->get();
+
+            }
+
 
             Log::info('RequestObserver: Found responses to clean up', [
                 'request_id' => $deletedRequestId,
@@ -134,7 +167,7 @@ class RequestObserver
 
             // Delete the responses
             if ($responsesToDelete->isNotEmpty()) {
-                \App\Models\Response::whereIn('id', $responsesToDelete->pluck('id'))->delete();
+                Response::whereIn('id', $responsesToDelete->pluck('id'))->delete();
 
                 Log::info('RequestObserver: Deleted responses', [
                     'deleted_request_id' => $deletedRequestId,
@@ -154,7 +187,7 @@ class RequestObserver
     /**
      * Update the status of the other matched request if it has no more responses
      */
-    private function cleanupMatchedRequestStatus(\App\Models\Response $response, int $deletedRequestId, string $deletedRequestType): void
+    private function cleanupMatchedRequestStatus(Response $response, int $deletedRequestId, string $deletedRequestType): void
     {
         // Determine which request needs status cleanup (the one that wasn't deleted)
         $otherRequestId = null;
@@ -179,7 +212,7 @@ class RequestObserver
         }
 
         // Check if the other request will have any remaining responses after this cleanup
-        $remainingResponsesCount = \App\Models\Response::where('id', '!=', $response->id)
+        $remainingResponsesCount = Response::where('id', '!=', $response->id)
             ->where(function($query) use ($otherRequestId, $otherRequestType) {
                 // Responses where other request is receiving
                 $query->where('request_id', $otherRequestId)
