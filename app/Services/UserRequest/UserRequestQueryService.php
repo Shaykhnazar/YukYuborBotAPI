@@ -29,7 +29,7 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($user->deliveryRequests, $user, 'delivery');
         }
 
-        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
+        $requests = $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
 
         // Apply additional filters
         if ($filters['status']) {
@@ -58,7 +58,7 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($user->deliveryRequests->where('id', $id), $user, 'delivery');
         }
 
-        return $delivery->concat($send)->sortByDesc('created_at')->values();
+        return $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
     }
 
     public function getOtherUserRequests(User $targetUser, User $currentUser, array $filters = []): Collection
@@ -76,7 +76,7 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($targetUser->deliveryRequests, $currentUser, 'delivery');
         }
 
-        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
+        $requests = $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
 
         // Apply filters
         if ($filters['status']) {
