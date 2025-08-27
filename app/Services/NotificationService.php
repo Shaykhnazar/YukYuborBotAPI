@@ -42,10 +42,22 @@ class NotificationService
         $telegramId = $user->telegramUser->telegram;
 
         $token = config('auth.guards.tgwebapp.token');
+
+        $webAppUrl = config('app.frontend_app_url');
+
+        $keyboard = [
+            'inline_keyboard' => [
+                [
+                    ['text' => 'Открыть PostLink', 'web_app' => ['url' => $webAppUrl]],
+                ],
+            ],
+        ];
+
         $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
             'chat_id' => $telegramId,
             'text' => $message,
             'parse_mode' => 'Markdown',
+            'reply_markup' => json_encode($keyboard),
         ]);
 
         if ($response->failed()) {
