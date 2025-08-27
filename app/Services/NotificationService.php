@@ -31,7 +31,7 @@ class NotificationService
         $this->sendTelegramNotification($userId, $notificationMessage);
     }
 
-    private function sendTelegramNotification(int $userId, string $message): void
+    public function sendTelegramNotification(int $userId, string $message): void
     {
         $user = User::with('telegramUser')->find($userId);
 
