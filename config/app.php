@@ -59,6 +59,9 @@ return [
 
     'asset_url' => env('ASSET_URL'),
 
+    'frontend_app_url' => env('FRONTEND_APP_URL', 'http://localhost:3000'),
+
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
