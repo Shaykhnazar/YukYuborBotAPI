@@ -82,7 +82,7 @@ class ResponseFormatterService
             'offer_id' => $response->offer_id,
             'chat_id' => $response->chat_id,
             'can_act_on' => $canAct,
-            'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type),
+            'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type, $userRole),
             ...$details,
             'status' => $response->overall_status,
             'user_status' => $userStatus,
@@ -117,6 +117,32 @@ class ResponseFormatterService
 
         $responseId = $response->id;
 
+        $details = [];
+        if ($response->response_type === 'manual') {
+            $details = [
+                'from_location' => $deliveryRequest->fromLocation->fullRouteName,
+                'to_location' => $deliveryRequest->toLocation->fullRouteName,
+                'from_date' => $deliveryRequest->from_date,
+                'to_date' => $deliveryRequest->to_date,
+                'price' => $this->getPrice($response, $deliveryRequest),
+                'currency' => $this->getCurrency($response, $deliveryRequest),
+                'size_type' => $deliveryRequest->size_type,
+                'description' => $this->getDescription($response, $deliveryRequest),
+            ];
+        } else {
+            $details = [
+                'from_location' => $sendRequest->fromLocation->fullRouteName,
+                'to_location' => $sendRequest->toLocation->fullRouteName,
+                'from_date' => $sendRequest->from_date,
+                'to_date' => $sendRequest->to_date,
+                'price' => $this->getPrice($response, $sendRequest),
+                'currency' => $this->getCurrency($response, $sendRequest),
+                'size_type' => $sendRequest->size_type,
+                'description' => $this->getDescription($response, $sendRequest),
+            ];
+        }
+
+
         return [
             'id' => $responseId,
             'type' => 'delivery',
@@ -124,15 +150,8 @@ class ResponseFormatterService
             'offer_id' => $response->offer_id,
             'chat_id' => $response->chat_id,
             'can_act_on' => $canAct,
-            'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type),
-            'from_location' => $sendRequest->fromLocation->fullRouteName,
-            'to_location' => $sendRequest->toLocation->fullRouteName,
-            'from_date' => $sendRequest->from_date,
-            'to_date' => $sendRequest->to_date,
-            'price' => $this->getPrice($response, $sendRequest),
-            'currency' => $this->getCurrency($response, $sendRequest),
-            'size_type' => $sendRequest->size_type,
-            'description' => $this->getDescription($response, $sendRequest),
+            'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type, $userRole),
+            ...$details,
             'status' => $response->overall_status,
             'user_status' => $userStatus,
             'user_role' => $userRole,
@@ -143,9 +162,9 @@ class ResponseFormatterService
         ];
     }
 
-    private function formatUser(User $user, bool $isReceiver, string $responseType): array
+    private function formatUser(User $user, bool $isReceiver, string $responseType, string $userRole): array
     {
-        $requestsCount = $this->calculateRequestsCount($user, $isReceiver, $responseType);
+        $requestsCount = $this->calculateRequestsCount($user, $isReceiver, $responseType, $userRole);
 
         return [
             'id' => $user->id,
@@ -155,7 +174,7 @@ class ResponseFormatterService
         ];
     }
 
-    private function calculateRequestsCount(User $user, bool $isReceiver, string $responseType): int
+    private function calculateRequestsCount(User $user, bool $isReceiver, string $responseType, string $userRole): int
     {
         if ($responseType === 'manual') {
             return $isReceiver
@@ -163,7 +182,7 @@ class ResponseFormatterService
                 : $user->sendRequests()->where('status', 'closed')->count();
         }
 
-        return $isReceiver
+        return $userRole === 'sender'
             ? $user->sendRequests()->where('status', 'closed')->count()
             : $user->deliveryRequests()->where('status', 'closed')->count();
     }
