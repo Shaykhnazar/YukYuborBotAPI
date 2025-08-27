@@ -72,7 +72,7 @@ class UserRepository extends BaseRepository implements UserRepositoryInterface
     private function getRequestRelationships(array $constraints = []): array
     {
         $user = $constraints['user'] ?? null;
-        
+
         return [
             // Load the main user relationship for each request
             'sendRequests.user.telegramUser',
@@ -126,7 +126,14 @@ class UserRepository extends BaseRepository implements UserRepositoryInterface
             'deliveryRequests.responses.user.telegramUser',
             'deliveryRequests.manualResponses.chat',
             'deliveryRequests.manualResponses.responder.telegramUser',
-            'deliveryRequests.manualResponses.user.telegramUser'
+            'deliveryRequests.manualResponses.user.telegramUser',
+            // Matched requests
+            'deliveryRequests.matchedSend',
+            'deliveryRequests.matchedSend.fromLocation',
+            'deliveryRequests.matchedSend.toLocation',
+            'sendRequests.matchedDelivery',
+            'sendRequests.matchedDelivery.fromLocation',
+            'sendRequests.matchedDelivery.toLocation',
         ];
     }
 }

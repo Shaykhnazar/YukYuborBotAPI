@@ -23,6 +23,8 @@ interface DeliveryRequestRepositoryInterface extends BaseRepositoryInterface
 
     public function updateStatus(int $id, string $status): bool;
 
+    public function updateMatchingRequestStatusOnClose(int|null $matchedDeliveryId): bool;
+
     public function countActiveByUser(User $user): int;
 
     public function findByStatus(string $status): Collection;

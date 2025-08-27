@@ -23,6 +23,8 @@ interface SendRequestRepositoryInterface extends BaseRepositoryInterface
 
     public function updateStatus(int $id, string $status): bool;
 
+    public function updateMatchingRequestStatusOnClose(int|null $matchedSendId): bool;
+
     public function countActiveByUser(User $user): int;
 
     public function findByStatus(string $status): Collection;

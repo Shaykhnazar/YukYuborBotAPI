@@ -18,15 +18,66 @@ class IndexRequestResource extends JsonResource
         // For open/pending requests, show the request owner
         $displayUser = null;
         $isResponder = isset($this->responder_user);
+        $details = [];
 
         if ($isResponder && in_array($this->status, ['closed', 'completed'])) {
             // Closed/matched request with responder - show the other party
             $displayUser = $this->responder_user;
             $telegram = $displayUser->telegramUser ?? null;
+
+            if ($this->type === 'delivery' && isset($this->matchedSend)) {
+                // For delivery request matched with send request use the send request details
+                $details = [
+                    'from_location' => $this->matchedSend->fromLocation->fullRouteName,
+                    'to_location' => $this->matchedSend->toLocation->fullRouteName,
+                    'from_date' => $this->matchedSend->from_date,
+                    'to_date' => $this->matchedSend->to_date,
+                    'size_type' => $this->matchedSend->size_type,
+                    'description' => $this->matchedSend->description,
+                    'price' => $this->matchedSend->price,
+                    'currency' => $this->matchedSend->currency,
+                ];
+            } else if ($this->type === 'send' && isset($this->matchedDelivery)) {
+                // For send request matched with delivery request use the delivery request details
+                $details = [
+                    'from_location' => $this->matchedDelivery->fromLocation->fullRouteName,
+                    'to_location' => $this->matchedDelivery->toLocation->fullRouteName,
+                    'from_date' => $this->matchedDelivery->from_date,
+                    'to_date' => $this->matchedDelivery->to_date,
+                    'size_type' => $this->matchedDelivery->size_type,
+                    'description' => $this->matchedDelivery->description,
+                    'price' => $this->matchedDelivery->price,
+                    'currency' => $this->matchedDelivery->currency,
+                ];
+            } else {
+                // For manual matched requests use the current request details
+                $details = [
+                    'from_location' => $this->fromLocation->fullRouteName,
+                    'to_location' => $this->toLocation->fullRouteName,
+                    'from_date' => $this->from_date,
+                    'to_date' => $this->to_date,
+                    'size_type' => $this->size_type,
+                    'description' => $this->description,
+                    'price' => $this->price,
+                    'currency' => $this->currency,
+                ];
+            }
+
         } else {
             // Open/pending request or no responder - show the request owner
             $displayUser = $this->user;
             $telegram = $displayUser->telegramUser;
+
+            $details = [
+                'from_location' => $this->fromLocation->fullRouteName,
+                'to_location' => $this->toLocation->fullRouteName,
+                'from_date' => $this->from_date,
+                'to_date' => $this->to_date,
+                'size_type' => $this->size_type,
+                'description' => $this->description,
+                'price' => $this->price,
+                'currency' => $this->currency,
+            ];
         }
 
         // Calculate type-specific request counts (only closed/completed requests)
@@ -47,14 +98,7 @@ class IndexRequestResource extends JsonResource
             'has_reviewed' => $this->has_reviewed ?? false,
             'chat_id' => $this->chat_id ?? null,
             'response_id' => $this->response_id ?? null,
-            'from_location' => $this->fromLocation->fullRouteName,
-            'to_location' => $this->toLocation->fullRouteName,
-            'from_date' => $this->from_date,
-            'to_date' => $this->to_date,
-            'size_type' => $this->size_type,
-            'description' => $this->description,
-            'price' => $this->price,
-            'currency' => $this->currency,
+            ...$details,
             'user' => [
                 'id' => $displayUser->id,
                 'name' => $displayUser->name,

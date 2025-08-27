@@ -100,4 +100,13 @@ class SendRequestRepository extends BaseRepository implements SendRequestReposit
             })
             ->get();
     }
+
+    public function updateMatchingRequestStatusOnClose(int|null $matchedSendId): bool
+    {
+        return !$matchedSendId
+            ? false
+            : $this->model->where('id', $matchedSendId)
+            ->update(['status' => RequestStatus::CLOSED->value]);
+
+    }
 }
