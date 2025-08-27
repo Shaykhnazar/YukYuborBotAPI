@@ -117,6 +117,32 @@ class ResponseFormatterService
 
         $responseId = $response->id;
 
+        $details = [];
+        if ($response->response_type === 'manual') {
+            $details = [
+                'from_location' => $deliveryRequest->fromLocation->fullRouteName,
+                'to_location' => $deliveryRequest->toLocation->fullRouteName,
+                'from_date' => $deliveryRequest->from_date,
+                'to_date' => $deliveryRequest->to_date,
+                'price' => $this->getPrice($response, $deliveryRequest),
+                'currency' => $this->getCurrency($response, $deliveryRequest),
+                'size_type' => $deliveryRequest->size_type,
+                'description' => $this->getDescription($response, $deliveryRequest),
+            ];
+        } else {
+            $details = [
+                'from_location' => $sendRequest->fromLocation->fullRouteName,
+                'to_location' => $sendRequest->toLocation->fullRouteName,
+                'from_date' => $sendRequest->from_date,
+                'to_date' => $sendRequest->to_date,
+                'price' => $this->getPrice($response, $sendRequest),
+                'currency' => $this->getCurrency($response, $sendRequest),
+                'size_type' => $sendRequest->size_type,
+                'description' => $this->getDescription($response, $sendRequest),
+            ];
+        }
+
+
         return [
             'id' => $responseId,
             'type' => 'delivery',
@@ -125,14 +151,7 @@ class ResponseFormatterService
             'chat_id' => $response->chat_id,
             'can_act_on' => $canAct,
             'user' => $this->formatUser($otherUser, $isReceiver, $response->response_type, $userRole),
-            'from_location' => $sendRequest->fromLocation->fullRouteName,
-            'to_location' => $sendRequest->toLocation->fullRouteName,
-            'from_date' => $sendRequest->from_date,
-            'to_date' => $sendRequest->to_date,
-            'price' => $this->getPrice($response, $sendRequest),
-            'currency' => $this->getCurrency($response, $sendRequest),
-            'size_type' => $sendRequest->size_type,
-            'description' => $this->getDescription($response, $sendRequest),
+            ...$details,
             'status' => $response->overall_status,
             'user_status' => $userStatus,
             'user_role' => $userRole,
