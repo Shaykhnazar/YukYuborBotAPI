@@ -11,6 +11,7 @@ use App\Http\Requests\SendMessageRequest;
 use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\TelegramUserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,6 +22,7 @@ class ChatController extends BaseController
 {
     public function __construct(
         protected TelegramUserService $tgService,
+        protected NotificationService $notificationService
     ) {}
 
     /**
@@ -215,7 +217,10 @@ class ChatController extends BaseController
 
         // Send notification to the other user via Telegram bot
         $receiverId = $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
-        $this->sendTelegramNotification($receiverId, $user->name, $request->message);
+        $this->notificationService->sendTelegramNotification(
+            $receiverId,
+            "🛎 *Новое сообщение от {$user->name}*\nОткройте приложение, чтобы ответить 👇🏻"
+        );
 
         // Broadcast the event - this triggers real-time updates
         broadcast(new MessageSent($user, $message, $chat->id));
@@ -475,9 +480,8 @@ class ChatController extends BaseController
 
         // Send notification to other user
         $otherUserId = $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
-        $this->sendTelegramNotification(
+        $this->notificationService->sendTelegramNotification(
             $otherUserId,
-            'PostLink',
             "Заявка завершена пользователем {$user->name}. Спасибо за использование PostLink!"
         );
 
@@ -596,33 +600,4 @@ class ChatController extends BaseController
         return [];
     }
 
-    /**
-     * Send Telegram notification to user
-     */
-    private function sendTelegramNotification(int $userId, string $senderName, string $message): void
-    {
-        $user = User::with('telegramUser')->find($userId);
-
-        if (!$user || !$user->telegramUser) {
-            return;
-        }
-
-        $telegramId = $user->telegramUser->telegram;
-        $notificationText = "🛎 *Новое сообщение от {$senderName}*\nОткройте приложение, чтобы ответить 👇🏻";
-
-        $token = config('auth.guards.tgwebapp.token');
-        $response = Http::post("https://api.telegram.org/bot{$token}/sendMessage", [
-            'chat_id' => $telegramId,
-            'text' => $notificationText,
-            'parse_mode' => 'Markdown',
-        ]);
-
-        if ($response->failed()) {
-            Log::error('Failed to send Telegram notification', [
-                'user_id' => $userId,
-                'telegram_id' => $telegramId,
-                'response' => $response->body()
-            ]);
-        }
-    }
 }
