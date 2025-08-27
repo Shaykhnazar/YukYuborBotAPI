@@ -537,8 +537,8 @@ class ResponseActionService
         $response->updateUserStatus($sender->id, DualStatus::REJECTED->value);
 
         // Reset request statuses
-        $this->updateRequestStatusAfterRejection('delivery', $sendRequestId, $response->id);
-        $this->updateRequestStatusAfterRejection('delivery', $deliveryRequestId, $response->id);
+        $this->updateRequestStatusAfterRejectionAsSender('send', $sendRequestId, $response->id);
+        $this->updateRequestStatusAfterRejectionAsSender('delivery', $deliveryRequestId, $response->id);
 
         // Optional: Notify deliverer that sender rejected
         $delivererUser = $response->getDelivererUser();
@@ -583,6 +583,50 @@ class ResponseActionService
 
             $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
             $this->sendRequestRepository->updateStatus($requestId, $newStatus);
+        }
+    }
+
+    /**
+     * Here we update both request status after rejection as sender
+     * First we need to check if there are any other responses for the send request
+     * If there are no other responses, we update the request status to open
+     * If there are other responses, we update the request status to has responses
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $rejectedResponseId
+     * @return void
+     */
+    private function updateRequestStatusAfterRejectionAsSender(string $offerType, int $requestId, int $rejectedResponseId): void
+    {
+        // $offerType send or delivery
+        // $requestId always send request id or delivery request id
+        // $rejectedResponseId always response id
+
+        if ($offerType === 'send') {
+            // Check if delivery request has other active responses
+            $responses = $this->responseRepository->findWhere([
+                'offer_id' => $requestId,
+                'offer_type' => 'send'
+            ]);
+            $hasOtherResponses = $responses->where('id', '!=', $rejectedResponseId)
+              ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->isNotEmpty();
+
+            $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
+            $this->sendRequestRepository->updateStatus($requestId, $newStatus);
+        } else {
+            // Check if send request has other active responses
+            $responses = $this->responseRepository->findWhere([
+                'request_id' => $requestId,
+                'offer_type' => 'send' // Here we use always send because on matching type of responses we can get the right request
+            ]);
+            $hasOtherResponses = $responses->where('id', '!=', $rejectedResponseId)
+              ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->isNotEmpty();
+
+            $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
+            $this->deliveryRequestRepository->updateStatus($requestId, $newStatus);
         }
     }
 }
