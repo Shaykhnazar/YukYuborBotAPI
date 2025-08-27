@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\RequestStatus;
+use App\Models\DeliveryRequest;
+use App\Models\SendRequest;
 use App\Models\User;
 use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
 use App\Repositories\Contracts\ResponseRepositoryInterface;
@@ -54,15 +56,15 @@ class RequestService
         DB::beginTransaction();
 
         try {
-            $requestType = $request instanceof \App\Models\SendRequest ? 'send' : 'delivery';
+            $requestType = $request instanceof SendRequest ? 'send' : 'delivery';
             $this->responseRepository->deleteByRequestId($request->id, $requestType);
-            
+
             if ($requestType === 'send') {
                 $this->sendRequestRepository->delete($request->id);
             } else {
                 $this->deliveryRequestRepository->delete($request->id);
             }
-            
+
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -70,7 +72,7 @@ class RequestService
         }
     }
 
-    public function closeRequest($request): void
+    public function closeRequest(DeliveryRequest|SendRequest $request): void
     {
         if (!$this->canCloseRequest($request)) {
             throw new \Exception('Can only close matched requests');
@@ -79,16 +81,18 @@ class RequestService
         DB::beginTransaction();
 
         try {
-            $requestType = $request instanceof \App\Models\SendRequest ? 'send' : 'delivery';
-            
+            $requestType = $request instanceof SendRequest ? 'send' : 'delivery';
+
             if ($requestType === 'send') {
                 $this->sendRequestRepository->updateStatus($request->id, RequestStatus::CLOSED->value);
+                $this->deliveryRequestRepository->updateMatchingRequestStatusOnClose($request->matched_delivery_id);
             } else {
                 $this->deliveryRequestRepository->updateStatus($request->id, RequestStatus::CLOSED->value);
+                $this->sendRequestRepository->updateMatchingRequestStatusOnClose($request->matched_send_id);
             }
-            
+
             $this->responseRepository->closeByRequestId($request->id);
-            
+
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();

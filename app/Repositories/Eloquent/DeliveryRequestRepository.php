@@ -100,4 +100,12 @@ class DeliveryRequestRepository extends BaseRepository implements DeliveryReques
             })
             ->get();
     }
+
+    public function updateMatchingRequestStatusOnClose(int|null $matchedDeliveryId): bool
+    {
+        return !$matchedDeliveryId
+            ? false
+            : $this->model->where('id', $matchedDeliveryId)
+            ->update(['status' => RequestStatus::CLOSED->value]);
+    }
 }

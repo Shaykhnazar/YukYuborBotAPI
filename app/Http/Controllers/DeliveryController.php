@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\RequestStatus;
 use App\Http\Requests\Delivery\CreateDeliveryRequest;
 use App\Jobs\MatchRequestsJob;
+use App\Models\DeliveryRequest;
 use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
 use App\Services\RequestService;
 use App\Services\TelegramUserService;
@@ -23,11 +24,11 @@ class DeliveryController extends Controller
     {
         try {
             $user = $this->userService->getUserByTelegramId($request);
-            
+
             $this->requestService->checkActiveRequestsLimit($user);
 
             $dto = $request->getDTO();
-            
+
             $deliveryRequest = $this->deliveryRequestRepository->create([
                 'from_location_id' => $dto->fromLocId,
                 'to_location_id' => $dto->toLocId,
