@@ -44,19 +44,19 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found');
+            throw new \Exception('Ручной отклик не найден');
         }
 
         $targetRequest = $this->getTargetRequest($response);
         $responder = User::find($response->responder_id);
 
         if (!$targetRequest || !$responder) {
-            throw new \Exception('Target request or responder not found');
+            throw new \Exception('Заявка или пользователь не найдены');
         }
 
         // CRITICAL: Check if request already has an accepted response
         if ($this->hasAcceptedResponse($response->offer_type, $response->offer_id)) {
-            throw new \Exception('This request has already been matched with another response');
+            throw new \Exception('Эта заявка уже сопоставлена с другим откликом');
         }
 
         $chat = $this->createOrFindChat($user, $responder, $response);
@@ -94,7 +94,7 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found');
+            throw new \Exception('Ручной отклик не найден');
         }
 
         $this->responseRepository->update($response->id, [
@@ -121,7 +121,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found or cannot be cancelled');
+            throw new \Exception('Ручной отклик не найден или не может быть отменен');
         }
 
         // Store details before deletion
@@ -151,12 +151,12 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response) {
-            throw new \Exception('Response not found or cannot be cancelled');
+            throw new \Exception('Отклик не найден или не может быть отменен');
         }
 
         // Verify user has permission to cancel this response
         if (!($response->user_id == $user->id || $response->responder_id == $user->id)) {
-            throw new \Exception('User does not have permission to cancel this response');
+            throw new \Exception('У пользователя нет прав на отмену этого отклика');
         }
 
         // Store response details before deletion
@@ -187,7 +187,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response || !$response->canUserTakeAction($user->id)) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Determine user's role in this response
@@ -201,7 +201,7 @@ class ResponseActionService
             return $this->handleSenderRejection($user, $response->offer_id, $response->request_id);
         }
 
-        throw new \Exception('Invalid user role for response rejection');
+        throw new \Exception('Неверная роль пользователя для отклонения отклика');
     }
 
     /**
@@ -218,7 +218,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response || !$response->canUserTakeAction($user->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         // Determine user's role in this response
@@ -232,7 +232,7 @@ class ResponseActionService
             return $this->handleSenderAcceptance($user, $response->offer_id, $response->request_id);
         }
 
-        throw new \Exception('Invalid user role for response acceptance');
+        throw new \Exception('Неверная роль пользователя для принятия отклика');
     }
 
     /**
@@ -250,30 +250,30 @@ class ResponseActionService
         $deliveryRequest = $this->deliveryRequestRepository->find($deliveryRequestId);
 
         if (!$sendRequest || !$deliveryRequest) {
-            throw new \Exception('Request not found');
+            throw new \Exception('Заявка не найдена');
         }
 
         // CRITICAL: Check if either request already has an accepted response
         if ($this->hasAcceptedResponse('send', $sendRequestId) || 
             $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
-            throw new \Exception('One of these requests has already been matched with another response');
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
 
         // CRITICAL: For deliverer, check if they already have a partial response pending
         if ($this->hasPartialResponseForDeliverer($deliveryRequestId, $deliverer->id)) {
-            throw new \Exception('Please wait for sender\'s response to your first acceptance before accepting other responses');
+            throw new \Exception('Пожалуйста, дождитесь ответа отправителя на ваш первый отклик перед принятием других откликов');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($deliverer->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         $result = $this->matcher->handleUserResponse($response->id, $deliverer->id, 'accept');
 
         if (!$result) {
-            throw new \Exception('Failed to process acceptance');
+            throw new \Exception('Не удалось обработать принятие');
         }
 
         $response = $this->responseRepository->find($response->id);
@@ -305,19 +305,19 @@ class ResponseActionService
         $deliveryRequest = $this->deliveryRequestRepository->find($deliveryRequestId);
 
         if (!$sendRequest || !$deliveryRequest) {
-            throw new \Exception('Request not found');
+            throw new \Exception('Заявка не найдена');
         }
 
         // CRITICAL: Check if either request already has an accepted response
         if ($this->hasAcceptedResponse('send', $sendRequestId) || 
             $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
-            throw new \Exception('One of these requests has already been matched with another response');
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($sender->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         DB::beginTransaction();
@@ -326,7 +326,7 @@ class ResponseActionService
             $result = $this->matcher->handleUserResponse($response->id, $sender->id, 'accept');
 
             if (!$result) {
-                throw new \Exception('Failed to process acceptance');
+                throw new \Exception('Не удалось обработать принятие');
             }
 
             $response = $this->responseRepository->find($response->id);
@@ -531,7 +531,7 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Update the response to rejected
@@ -561,12 +561,12 @@ class ResponseActionService
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || $response->overall_status !== ResponseStatus::PARTIAL->value) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Verify the sender has permission to reject
         if ($response->getUserRole($sender->id) !== 'sender') {
-            throw new \Exception('User does not have permission to reject this response');
+            throw new \Exception('У пользователя нет прав на отклонение этого отклика');
         }
 
         // Update the response to rejected
