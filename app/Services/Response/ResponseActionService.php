@@ -283,6 +283,9 @@ class ResponseActionService
             $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
             $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
             
+            // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
+            $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
+            
             return ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id];
         } else {
             // Deliverer accepted, now in partial state - DO NOT close other responses yet
@@ -339,6 +342,9 @@ class ResponseActionService
                 // CRITICAL: Close all other pending responses for both requests
                 $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
                 $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+                
+                // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
+                $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
 
                 DB::commit();
 
@@ -752,6 +758,40 @@ class ResponseActionService
                 if ($senderUser) {
                     $this->notificationService->sendRejectionNotification($senderUser->id);
                 }
+            }
+        }
+    }
+
+    /**
+     * Close ALL responses to a deliverer's request from other senders
+     * This ensures deliverer can only work with one matched sender
+     * 
+     * @param int $deliveryRequestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closeAllResponsesForDelivererRequest(int $deliveryRequestId, int $acceptedResponseId): void
+    {
+        // Find all responses where this delivery request is the target (request_id)
+        // These are responses from various senders offering their send requests to this deliverer
+        $allResponsesToDeliverer = $this->responseRepository->findWhere([
+            'request_id' => $deliveryRequestId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+          ->where('id', '!=', $acceptedResponseId);
+
+        foreach ($allResponsesToDeliverer as $response) {
+            $this->responseRepository->update($response->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+            
+            // Notify the sender that their offer is no longer available
+            $senderUser = $response->getSenderUser();
+            if ($senderUser) {
+                $this->notificationService->sendRejectionNotification($senderUser->id);
             }
         }
     }
