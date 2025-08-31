@@ -54,6 +54,11 @@ class ResponseActionService
             throw new \Exception('Target request or responder not found');
         }
 
+        // CRITICAL: Check if request already has an accepted response
+        if ($this->hasAcceptedResponse($response->offer_type, $response->offer_id)) {
+            throw new \Exception('This request has already been matched with another response');
+        }
+
         $chat = $this->createOrFindChat($user, $responder, $response);
 
         $this->responseRepository->update($response->id, [
@@ -64,6 +69,9 @@ class ResponseActionService
         ]);
 
         $this->updateTargetRequestStatus($targetRequest, RequestStatus::MATCHED_MANUALLY->value);
+
+        // CRITICAL: Close all other pending responses for this request
+        $this->closePendingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
 
         $this->notificationService->sendAcceptanceNotification($responder->id);
 
@@ -245,6 +253,12 @@ class ResponseActionService
             throw new \Exception('Request not found');
         }
 
+        // CRITICAL: Check if either request already has an accepted response
+        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('One of these requests has already been matched with another response');
+        }
+
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($deliverer->id)) {
@@ -259,9 +273,15 @@ class ResponseActionService
 
         $response = $this->responseRepository->find($response->id);
 
-        return $response->overall_status === ResponseStatus::ACCEPTED->value
-            ? ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id]
-            : ['message' => 'Response sent to sender for confirmation', 'status' => 'partial'];
+        if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
+            // CRITICAL: Close all other pending responses for both requests
+            $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
+            $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+            
+            return ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id];
+        } else {
+            return ['message' => 'Response sent to sender for confirmation', 'status' => 'partial'];
+        }
     }
 
     /**
@@ -280,6 +300,12 @@ class ResponseActionService
 
         if (!$sendRequest || !$deliveryRequest) {
             throw new \Exception('Request not found');
+        }
+
+        // CRITICAL: Check if either request already has an accepted response
+        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('One of these requests has already been matched with another response');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
@@ -303,6 +329,10 @@ class ResponseActionService
                 $this->sendRequestRepository->updateStatus($sendRequestId, RequestStatus::MATCHED->value);
                 $this->deliveryRequestRepository->updateStatus($deliveryRequestId, RequestStatus::MATCHED->value);
 //                $sender->decrement('links_balance', 1);
+
+                // CRITICAL: Close all other pending responses for both requests
+                $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
+                $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
 
                 DB::commit();
 
@@ -627,6 +657,67 @@ class ResponseActionService
 
             $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
             $this->deliveryRequestRepository->updateStatus($requestId, $newStatus);
+        }
+    }
+
+    /**
+     * Check if a request already has an accepted response
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @return bool
+     */
+    private function hasAcceptedResponse(string $offerType, int $requestId): bool
+    {
+        $responses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'overall_status' => ResponseStatus::ACCEPTED->value
+        ]);
+
+        return $responses->isNotEmpty();
+    }
+
+    /**
+     * Close all pending responses for a specific request except the accepted one
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closePendingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
+    {
+        $pendingResponses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+          ->where('id', '!=', $acceptedResponseId);
+
+        foreach ($pendingResponses as $pendingResponse) {
+            $this->responseRepository->update($pendingResponse->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+            
+            // Notify users that their response was automatically rejected due to another acceptance
+            if ($pendingResponse->response_type === ResponseType::MANUAL->value) {
+                // For manual responses, notify the responder
+                $this->notificationService->sendRejectionNotification($pendingResponse->responder_id);
+            } else {
+                // For matching responses, notify both users if they haven't been rejected yet
+                $delivererUser = $pendingResponse->getDelivererUser();
+                $senderUser = $pendingResponse->getSenderUser();
+                
+                if ($delivererUser) {
+                    $this->notificationService->sendRejectionNotification($delivererUser->id);
+                }
+                if ($senderUser) {
+                    $this->notificationService->sendRejectionNotification($senderUser->id);
+                }
+            }
         }
     }
 }
