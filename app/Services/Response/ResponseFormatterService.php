@@ -50,18 +50,8 @@ class ResponseFormatterService
         $responseId = $response->id;
 
         $details = [];
-        if ($userRole === 'sender') {
-            $details = [
-                'from_location' => $deliveryRequest->fromLocation->fullRouteName,
-                'to_location' => $deliveryRequest->toLocation->fullRouteName,
-                'from_date' => $deliveryRequest->from_date,
-                'to_date' => $deliveryRequest->to_date,
-                'price' => $this->getPrice($response, $deliveryRequest),
-                'currency' => $this->getCurrency($response, $deliveryRequest),
-                'size_type' => $deliveryRequest->size_type,
-                'description' => $this->getDescription($response, $deliveryRequest),
-            ];
-        } else {
+        if ($response->response_type === 'manual') {
+            // For manual responses, always use the send request (offer_id) for details
             $details = [
                 'from_location' => $sendRequest->fromLocation->fullRouteName,
                 'to_location' => $sendRequest->toLocation->fullRouteName,
@@ -72,6 +62,31 @@ class ResponseFormatterService
                 'size_type' => $sendRequest->size_type,
                 'description' => $this->getDescription($response, $sendRequest),
             ];
+        } else {
+            // For matching responses, use different logic based on user role
+            if ($userRole === 'sender') {
+                $details = [
+                    'from_location' => $deliveryRequest->fromLocation->fullRouteName,
+                    'to_location' => $deliveryRequest->toLocation->fullRouteName,
+                    'from_date' => $deliveryRequest->from_date,
+                    'to_date' => $deliveryRequest->to_date,
+                    'price' => $this->getPrice($response, $deliveryRequest),
+                    'currency' => $this->getCurrency($response, $deliveryRequest),
+                    'size_type' => $deliveryRequest->size_type,
+                    'description' => $this->getDescription($response, $deliveryRequest),
+                ];
+            } else {
+                $details = [
+                    'from_location' => $sendRequest->fromLocation->fullRouteName,
+                    'to_location' => $sendRequest->toLocation->fullRouteName,
+                    'from_date' => $sendRequest->from_date,
+                    'to_date' => $sendRequest->to_date,
+                    'price' => $this->getPrice($response, $sendRequest),
+                    'currency' => $this->getCurrency($response, $sendRequest),
+                    'size_type' => $sendRequest->size_type,
+                    'description' => $this->getDescription($response, $sendRequest),
+                ];
+            }
         }
 
 

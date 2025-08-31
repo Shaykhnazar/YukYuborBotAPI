@@ -84,7 +84,10 @@ class ResponseController extends Controller
                 'user_id' => $user->id ?? null
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка создания отклика'
+            ], 422);
         }
     }
 
@@ -116,7 +119,10 @@ class ResponseController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка принятия отклика'
+            ], 422);
         }
     }
 
@@ -144,7 +150,10 @@ class ResponseController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка отклонения отклика'
+            ], 422);
         }
     }
 
@@ -172,7 +181,10 @@ class ResponseController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => $e->getMessage(),
+                'errorTitle' => 'Ошибка отмены отклика'
+            ], 422);
         }
     }
 

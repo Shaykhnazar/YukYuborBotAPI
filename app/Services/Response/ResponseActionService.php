@@ -44,14 +44,19 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found');
+            throw new \Exception('Ручной отклик не найден');
         }
 
         $targetRequest = $this->getTargetRequest($response);
         $responder = User::find($response->responder_id);
 
         if (!$targetRequest || !$responder) {
-            throw new \Exception('Target request or responder not found');
+            throw new \Exception('Заявка или пользователь не найдены');
+        }
+
+        // CRITICAL: Check if request already has an accepted response
+        if ($this->hasAcceptedResponse($response->offer_type, $response->offer_id)) {
+            throw new \Exception('Эта заявка уже сопоставлена с другим откликом');
         }
 
         $chat = $this->createOrFindChat($user, $responder, $response);
@@ -64,6 +69,9 @@ class ResponseActionService
         ]);
 
         $this->updateTargetRequestStatus($targetRequest, RequestStatus::MATCHED_MANUALLY->value);
+
+        // CRITICAL: Close all other pending responses for this request
+        $this->closePendingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
 
         $this->notificationService->sendAcceptanceNotification($responder->id);
 
@@ -86,7 +94,7 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found');
+            throw new \Exception('Ручной отклик не найден');
         }
 
         $this->responseRepository->update($response->id, [
@@ -113,7 +121,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response) {
-            throw new \Exception('Manual response not found or cannot be cancelled');
+            throw new \Exception('Ручной отклик не найден или не может быть отменен');
         }
 
         // Store details before deletion
@@ -143,12 +151,12 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response) {
-            throw new \Exception('Response not found or cannot be cancelled');
+            throw new \Exception('Отклик не найден или не может быть отменен');
         }
 
         // Verify user has permission to cancel this response
         if (!($response->user_id == $user->id || $response->responder_id == $user->id)) {
-            throw new \Exception('User does not have permission to cancel this response');
+            throw new \Exception('У пользователя нет прав на отмену этого отклика');
         }
 
         // Store response details before deletion
@@ -179,7 +187,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response || !$response->canUserTakeAction($user->id)) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Determine user's role in this response
@@ -193,7 +201,7 @@ class ResponseActionService
             return $this->handleSenderRejection($user, $response->offer_id, $response->request_id);
         }
 
-        throw new \Exception('Invalid user role for response rejection');
+        throw new \Exception('Неверная роль пользователя для отклонения отклика');
     }
 
     /**
@@ -210,7 +218,7 @@ class ResponseActionService
         ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->first();
 
         if (!$response || !$response->canUserTakeAction($user->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         // Determine user's role in this response
@@ -224,7 +232,7 @@ class ResponseActionService
             return $this->handleSenderAcceptance($user, $response->offer_id, $response->request_id);
         }
 
-        throw new \Exception('Invalid user role for response acceptance');
+        throw new \Exception('Неверная роль пользователя для принятия отклика');
     }
 
     /**
@@ -242,26 +250,47 @@ class ResponseActionService
         $deliveryRequest = $this->deliveryRequestRepository->find($deliveryRequestId);
 
         if (!$sendRequest || !$deliveryRequest) {
-            throw new \Exception('Request not found');
+            throw new \Exception('Заявка не найдена');
+        }
+
+        // CRITICAL: Check if either request already has an accepted response
+        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
+        }
+
+        // CRITICAL: For deliverer, check if they already have a partial response pending
+        if ($this->hasPartialResponseForDeliverer($deliveryRequestId, $deliverer->id)) {
+            throw new \Exception('Пожалуйста, дождитесь ответа отправителя на ваш первый отклик перед принятием других откликов');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($deliverer->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         $result = $this->matcher->handleUserResponse($response->id, $deliverer->id, 'accept');
 
         if (!$result) {
-            throw new \Exception('Failed to process acceptance');
+            throw new \Exception('Не удалось обработать принятие');
         }
 
         $response = $this->responseRepository->find($response->id);
 
-        return $response->overall_status === ResponseStatus::ACCEPTED->value
-            ? ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id]
-            : ['message' => 'Response sent to sender for confirmation', 'status' => 'partial'];
+        if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
+            // CRITICAL: Close all other pending responses for both requests (only when fully accepted)
+            $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
+            $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+            
+            // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
+            $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
+            
+            return ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id];
+        } else {
+            // Deliverer accepted, now in partial state - DO NOT close other responses yet
+            return ['message' => 'Response sent to sender for confirmation', 'status' => 'partial'];
+        }
     }
 
     /**
@@ -279,13 +308,19 @@ class ResponseActionService
         $deliveryRequest = $this->deliveryRequestRepository->find($deliveryRequestId);
 
         if (!$sendRequest || !$deliveryRequest) {
-            throw new \Exception('Request not found');
+            throw new \Exception('Заявка не найдена');
+        }
+
+        // CRITICAL: Check if either request already has an accepted response
+        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($sender->id)) {
-            throw new \Exception('Response not found or cannot be accepted');
+            throw new \Exception('Отклик не найден или не может быть принят');
         }
 
         DB::beginTransaction();
@@ -294,7 +329,7 @@ class ResponseActionService
             $result = $this->matcher->handleUserResponse($response->id, $sender->id, 'accept');
 
             if (!$result) {
-                throw new \Exception('Failed to process acceptance');
+                throw new \Exception('Не удалось обработать принятие');
             }
 
             $response = $this->responseRepository->find($response->id);
@@ -303,6 +338,13 @@ class ResponseActionService
                 $this->sendRequestRepository->updateStatus($sendRequestId, RequestStatus::MATCHED->value);
                 $this->deliveryRequestRepository->updateStatus($deliveryRequestId, RequestStatus::MATCHED->value);
 //                $sender->decrement('links_balance', 1);
+
+                // CRITICAL: Close all other pending responses for both requests
+                $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
+                $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+                
+                // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
+                $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
 
                 DB::commit();
 
@@ -495,7 +537,7 @@ class ResponseActionService
         ])->first();
 
         if (!$response) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Update the response to rejected
@@ -525,12 +567,12 @@ class ResponseActionService
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || $response->overall_status !== ResponseStatus::PARTIAL->value) {
-            throw new \Exception('Response not found or cannot be rejected');
+            throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
         // Verify the sender has permission to reject
         if ($response->getUserRole($sender->id) !== 'sender') {
-            throw new \Exception('User does not have permission to reject this response');
+            throw new \Exception('У пользователя нет прав на отклонение этого отклика');
         }
 
         // Update the response to rejected
@@ -539,6 +581,9 @@ class ResponseActionService
         // Reset request statuses
         $this->updateRequestStatusAfterRejectionAsSender('send', $sendRequestId, $response->id);
         $this->updateRequestStatusAfterRejectionAsSender('delivery', $deliveryRequestId, $response->id);
+
+        // IMPORTANT: When sender rejects partial response, deliverer can now accept other responses
+        // No additional logic needed - the rejection clears the partial state
 
         // Optional: Notify deliverer that sender rejected
         $delivererUser = $response->getDelivererUser();
@@ -627,6 +672,127 @@ class ResponseActionService
 
             $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
             $this->deliveryRequestRepository->updateStatus($requestId, $newStatus);
+        }
+    }
+
+    /**
+     * Check if a request already has an accepted response
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @return bool
+     */
+    private function hasAcceptedResponse(string $offerType, int $requestId): bool
+    {
+        $responses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'overall_status' => ResponseStatus::ACCEPTED->value
+        ]);
+
+        return $responses->isNotEmpty();
+    }
+
+    /**
+     * Check if deliverer already has a partial response for their delivery request
+     * This prevents deliverer from accepting multiple responses while waiting for sender
+     *
+     * @param int $deliveryRequestId
+     * @param int $delivererId
+     * @return bool
+     */
+    private function hasPartialResponseForDeliverer(int $deliveryRequestId, int $delivererId): bool
+    {
+        $partialResponses = $this->responseRepository->findWhere([
+            'request_id' => $deliveryRequestId,
+            'overall_status' => ResponseStatus::PARTIAL->value,
+            'response_type' => ResponseType::MATCHING->value
+        ]);
+
+        // Check if any of these partial responses involve this deliverer
+        foreach ($partialResponses as $response) {
+            if ($response->getUserRole($delivererId) === 'deliverer') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Close all pending responses for a specific request except the accepted one
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closePendingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
+    {
+        $pendingResponses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+          ->where('id', '!=', $acceptedResponseId);
+
+        foreach ($pendingResponses as $pendingResponse) {
+            $this->responseRepository->update($pendingResponse->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+            
+            // Notify users that their response was automatically rejected due to another acceptance
+            if ($pendingResponse->response_type === ResponseType::MANUAL->value) {
+                // For manual responses, notify the responder
+                $this->notificationService->sendRejectionNotification($pendingResponse->responder_id);
+            } else {
+                // For matching responses, notify both users if they haven't been rejected yet
+                $delivererUser = $pendingResponse->getDelivererUser();
+                $senderUser = $pendingResponse->getSenderUser();
+                
+                if ($delivererUser) {
+                    $this->notificationService->sendRejectionNotification($delivererUser->id);
+                }
+                if ($senderUser) {
+                    $this->notificationService->sendRejectionNotification($senderUser->id);
+                }
+            }
+        }
+    }
+
+    /**
+     * Close ALL responses to a deliverer's request from other senders
+     * This ensures deliverer can only work with one matched sender
+     * 
+     * @param int $deliveryRequestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closeAllResponsesForDelivererRequest(int $deliveryRequestId, int $acceptedResponseId): void
+    {
+        // Find all responses where this delivery request is the target (request_id)
+        // These are responses from various senders offering their send requests to this deliverer
+        $allResponsesToDeliverer = $this->responseRepository->findWhere([
+            'request_id' => $deliveryRequestId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+          ->where('id', '!=', $acceptedResponseId);
+
+        foreach ($allResponsesToDeliverer as $response) {
+            $this->responseRepository->update($response->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+            
+            // Notify the sender that their offer is no longer available
+            $senderUser = $response->getSenderUser();
+            if ($senderUser) {
+                $this->notificationService->sendRejectionNotification($senderUser->id);
+            }
         }
     }
 }
