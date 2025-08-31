@@ -259,6 +259,11 @@ class ResponseActionService
             throw new \Exception('One of these requests has already been matched with another response');
         }
 
+        // CRITICAL: For deliverer, check if they already have a partial response pending
+        if ($this->hasPartialResponseForDeliverer($deliveryRequestId, $deliverer->id)) {
+            throw new \Exception('Please wait for sender\'s response to your first acceptance before accepting other responses');
+        }
+
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($deliverer->id)) {
@@ -274,12 +279,13 @@ class ResponseActionService
         $response = $this->responseRepository->find($response->id);
 
         if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
-            // CRITICAL: Close all other pending responses for both requests
+            // CRITICAL: Close all other pending responses for both requests (only when fully accepted)
             $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
             $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
             
             return ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id];
         } else {
+            // Deliverer accepted, now in partial state - DO NOT close other responses yet
             return ['message' => 'Response sent to sender for confirmation', 'status' => 'partial'];
         }
     }
@@ -570,6 +576,9 @@ class ResponseActionService
         $this->updateRequestStatusAfterRejectionAsSender('send', $sendRequestId, $response->id);
         $this->updateRequestStatusAfterRejectionAsSender('delivery', $deliveryRequestId, $response->id);
 
+        // IMPORTANT: When sender rejects partial response, deliverer can now accept other responses
+        // No additional logic needed - the rejection clears the partial state
+
         // Optional: Notify deliverer that sender rejected
         $delivererUser = $response->getDelivererUser();
         if ($delivererUser) {
@@ -676,6 +685,32 @@ class ResponseActionService
         ]);
 
         return $responses->isNotEmpty();
+    }
+
+    /**
+     * Check if deliverer already has a partial response for their delivery request
+     * This prevents deliverer from accepting multiple responses while waiting for sender
+     *
+     * @param int $deliveryRequestId
+     * @param int $delivererId
+     * @return bool
+     */
+    private function hasPartialResponseForDeliverer(int $deliveryRequestId, int $delivererId): bool
+    {
+        $partialResponses = $this->responseRepository->findWhere([
+            'request_id' => $deliveryRequestId,
+            'overall_status' => ResponseStatus::PARTIAL->value,
+            'response_type' => ResponseType::MATCHING->value
+        ]);
+
+        // Check if any of these partial responses involve this deliverer
+        foreach ($partialResponses as $response) {
+            if ($response->getUserRole($delivererId) === 'deliverer') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
