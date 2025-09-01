@@ -254,7 +254,7 @@ class ResponseActionService
         }
 
         // CRITICAL: Check if either request already has an accepted response
-        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+        if ($this->hasAcceptedResponse('send', $sendRequestId) ||
             $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
             throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
@@ -282,10 +282,10 @@ class ResponseActionService
             // CRITICAL: Close all other pending responses for both requests (only when fully accepted)
             $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
             $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
-            
+
             // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
             $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
-            
+
             return ['message' => 'Both users accepted - partnership confirmed!', 'chat_id' => $response->chat_id];
         } else {
             // Deliverer accepted, now in partial state - DO NOT close other responses yet
@@ -312,7 +312,7 @@ class ResponseActionService
         }
 
         // CRITICAL: Check if either request already has an accepted response
-        if ($this->hasAcceptedResponse('send', $sendRequestId) || 
+        if ($this->hasAcceptedResponse('send', $sendRequestId) ||
             $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
             throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
@@ -342,7 +342,7 @@ class ResponseActionService
                 // CRITICAL: Close all other pending responses for both requests
                 $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
                 $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
-                
+
                 // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
                 $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
 
@@ -547,9 +547,9 @@ class ResponseActionService
         $this->updateRequestStatusAfterRejection('send', $deliveryRequestId, $response->id);
 
         // Optional: Notify sender that deliverer rejected
-        $this->notificationService->sendRejectionNotification(
-            $response->responder_id,
-        );
+//        $this->notificationService->sendRejectionNotification(
+//            $response->responder_id,
+//        );
 
         return ['message' => 'Send request rejected successfully'];
     }
@@ -742,30 +742,30 @@ class ResponseActionService
                 'sender_status' => DualStatus::REJECTED->value,
                 'updated_at' => now()
             ]);
-            
+
             // Notify users that their response was automatically rejected due to another acceptance
-            if ($pendingResponse->response_type === ResponseType::MANUAL->value) {
-                // For manual responses, notify the responder
-                $this->notificationService->sendRejectionNotification($pendingResponse->responder_id);
-            } else {
-                // For matching responses, notify both users if they haven't been rejected yet
-                $delivererUser = $pendingResponse->getDelivererUser();
-                $senderUser = $pendingResponse->getSenderUser();
-                
-                if ($delivererUser) {
-                    $this->notificationService->sendRejectionNotification($delivererUser->id);
-                }
-                if ($senderUser) {
-                    $this->notificationService->sendRejectionNotification($senderUser->id);
-                }
-            }
+//            if ($pendingResponse->response_type === ResponseType::MANUAL->value) {
+//                // For manual responses, notify the responder
+//                $this->notificationService->sendRejectionNotification($pendingResponse->responder_id);
+//            } else {
+//                // For matching responses, notify both users if they haven't been rejected yet
+//                $delivererUser = $pendingResponse->getDelivererUser();
+//                $senderUser = $pendingResponse->getSenderUser();
+//
+//                if ($delivererUser) {
+//                    $this->notificationService->sendRejectionNotification($delivererUser->id);
+//                }
+//                if ($senderUser) {
+//                    $this->notificationService->sendRejectionNotification($senderUser->id);
+//                }
+//            }
         }
     }
 
     /**
      * Close ALL responses to a deliverer's request from other senders
      * This ensures deliverer can only work with one matched sender
-     * 
+     *
      * @param int $deliveryRequestId
      * @param int $acceptedResponseId
      * @return void
@@ -787,12 +787,12 @@ class ResponseActionService
                 'sender_status' => DualStatus::REJECTED->value,
                 'updated_at' => now()
             ]);
-            
+
             // Notify the sender that their offer is no longer available
-            $senderUser = $response->getSenderUser();
-            if ($senderUser) {
-                $this->notificationService->sendRejectionNotification($senderUser->id);
-            }
+//            $senderUser = $response->getSenderUser();
+//            if ($senderUser) {
+//                $this->notificationService->sendRejectionNotification($senderUser->id);
+//            }
         }
     }
 }
