@@ -135,6 +135,16 @@ Route::get('/place', [PlaceController::class, 'index'])->middleware(['throttle:6
 Route::middleware(['throttle:60,1'])->group(function () {
     // Test users endpoint - only accessible in development with proper headers
     Route::get('/dev/test-users', [TestUsersController::class, 'index']);
+    
+    // Capacity testing endpoints - for debugging and testing the new capacity system
+    Route::prefix('dev/capacity')->group(function () {
+        Route::get('/overview', [\App\Http\Controllers\Dev\CapacityTestController::class, 'capacityOverview']);
+        Route::get('/deliverer/{delivererId}', [\App\Http\Controllers\Dev\CapacityTestController::class, 'delivererCapacity']);
+        Route::post('/create-test-scenario', [\App\Http\Controllers\Dev\CapacityTestController::class, 'createTestScenario']);
+        Route::post('/accept-response', [\App\Http\Controllers\Dev\CapacityTestController::class, 'acceptResponse']);
+        Route::get('/list-responses', [\App\Http\Controllers\Dev\CapacityTestController::class, 'listResponses']);
+        Route::delete('/reset-test-data', [\App\Http\Controllers\Dev\CapacityTestController::class, 'resetTestData']);
+    });
 });
 
 // Health check route (useful for deployment)

@@ -61,7 +61,7 @@ return [
     | Options: 'round_robin', 'least_loaded', 'random'
     |
     */
-    'distribution_strategy' => env('DISTRIBUTION_STRATEGY', 'least_loaded'),
+    'distribution_strategy' => env('DISTRIBUTION_STRATEGY', 'round_robin'),
 
     /*
     |--------------------------------------------------------------------------
