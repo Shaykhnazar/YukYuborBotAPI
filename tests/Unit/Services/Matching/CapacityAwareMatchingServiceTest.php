@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
 use App\Repositories\Contracts\SendRequestRepositoryInterface;
 use App\Services\Matching\CapacityAwareMatchingService;
+use App\Services\Matching\RoundRobinDistributionService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,6 +21,7 @@ class CapacityAwareMatchingServiceTest extends TestCase
     protected CapacityAwareMatchingService $service;
     protected SendRequestRepositoryInterface $sendRequestRepository;
     protected DeliveryRequestRepositoryInterface $deliveryRequestRepository;
+    protected RoundRobinDistributionService $roundRobinService;
 
     protected function setUp(): void
     {
@@ -27,10 +29,12 @@ class CapacityAwareMatchingServiceTest extends TestCase
 
         $this->sendRequestRepository = $this->mock(SendRequestRepositoryInterface::class);
         $this->deliveryRequestRepository = $this->mock(DeliveryRequestRepositoryInterface::class);
+        $this->roundRobinService = $this->mock(RoundRobinDistributionService::class);
 
         $this->service = new CapacityAwareMatchingService(
             $this->sendRequestRepository,
-            $this->deliveryRequestRepository
+            $this->deliveryRequestRepository,
+            $this->roundRobinService
         );
 
         // Set test capacity to 2 for easier testing
