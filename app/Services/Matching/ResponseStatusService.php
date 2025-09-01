@@ -36,6 +36,15 @@ class ResponseStatusService
 
         $this->handleStatusChange($response, $userId, $status);
 
+        // Trigger rebalancing if this was a deliverer acceptance
+        if ($status === DualStatus::ACCEPTED->value && $response->response_type === Response::TYPE_MATCHING) {
+            $userRole = $response->getUserRole($userId);
+            if ($userRole === 'deliverer') {
+                // Use app() to resolve the service to avoid circular dependency
+                app(ResponseRebalancingService::class)->rebalanceAfterAcceptance($response);
+            }
+        }
+
         return true;
     }
 
