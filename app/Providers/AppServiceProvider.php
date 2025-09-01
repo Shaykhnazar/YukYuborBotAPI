@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Services\Matcher;
 use App\Services\GoogleSheetsService;
+use App\Services\Matching\CapacityAwareMatchingService;
 use App\Services\Matching\RequestMatchingService;
 use App\Services\Matching\ResponseCreationService;
 use App\Services\Matching\ResponseStatusService;
@@ -32,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
             return new Matcher(
                 $app->make(NotificationService::class),
                 $app->make(RequestMatchingService::class),
+                $app->make(CapacityAwareMatchingService::class),
                 $app->make(ResponseCreationService::class),
                 $app->make(ResponseStatusService::class)
             );

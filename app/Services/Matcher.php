@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\DeliveryRequest;
 use App\Models\Response;
 use App\Models\SendRequest;
+use App\Services\Matching\CapacityAwareMatchingService;
 use App\Services\Matching\RequestMatchingService;
 use App\Services\Matching\ResponseCreationService;
 use App\Services\Matching\ResponseStatusService;
@@ -15,13 +16,15 @@ class Matcher
     public function __construct(
         protected NotificationService $notificationService,
         protected RequestMatchingService $matchingService,
+        protected CapacityAwareMatchingService $capacityMatchingService,
         protected ResponseCreationService $creationService,
         protected ResponseStatusService $statusService
     ) {}
 
     public function matchSendRequest(SendRequest $sendRequest): void
     {
-        $matchedDeliveries = $this->matchingService->findMatchingDeliveryRequests($sendRequest);
+        // Use capacity-aware matching to find only available deliverers
+        $matchedDeliveries = $this->capacityMatchingService->findMatchingDeliveryRequestsWithCapacity($sendRequest);
 
         foreach ($matchedDeliveries as $delivery) {
             $this->creationService->createMatchingResponse(
@@ -35,7 +38,7 @@ class Matcher
             $this->notifyDeliveryUserAboutNewSend($sendRequest, $delivery);
         }
 
-        Log::info('Send request matching completed', [
+        Log::info('Capacity-aware send request matching completed', [
             'send_request_id' => $sendRequest->id,
             'matches_found' => $matchedDeliveries->count()
         ]);
@@ -43,7 +46,8 @@ class Matcher
 
     public function matchDeliveryRequest(DeliveryRequest $deliveryRequest): void
     {
-        $matchedSends = $this->matchingService->findMatchingSendRequests($deliveryRequest);
+        // Use capacity-aware matching to respect deliverer's capacity limits
+        $matchedSends = $this->capacityMatchingService->findMatchingSendRequestsWithCapacity($deliveryRequest);
 
         foreach ($matchedSends as $send) {
             $this->creationService->createMatchingResponse(
@@ -57,7 +61,7 @@ class Matcher
             $this->notifyDeliveryUserAboutNewSend($send, $deliveryRequest);
         }
 
-        Log::info('Delivery request matching completed', [
+        Log::info('Capacity-aware delivery request matching completed', [
             'delivery_request_id' => $deliveryRequest->id,
             'matches_found' => $matchedSends->count()
         ]);
