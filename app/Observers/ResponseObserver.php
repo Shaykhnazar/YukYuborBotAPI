@@ -8,12 +8,14 @@ use App\Jobs\UpdateDeliveryRequestAccepted;
 use App\Jobs\UpdateSendRequestReceived;
 use App\Jobs\UpdateSendRequestAccepted;
 use App\Services\NotificationService;
+use App\Services\Matching\RedistributionService;
 use Illuminate\Support\Facades\Log;
 
 class ResponseObserver
 {
     public function __construct(
-        private NotificationService $notificationService
+        private NotificationService $notificationService,
+        private RedistributionService $redistributionService
     ) {}
 
     /**
@@ -188,6 +190,43 @@ class ResponseObserver
                     }
                 }
             }
+
+            // Handle automatic redistribution when deliverer declines matching response
+            $this->handleRedistributionOnDecline($response, $previousOverallStatus, $currentOverallStatus);
+        }
+    }
+
+    /**
+     * Handle automatic redistribution when a deliverer declines a matching response
+     */
+    private function handleRedistributionOnDecline(Response $response, string $previousStatus, string $currentStatus): void
+    {
+        // Only handle matching responses that just got rejected
+        if ($response->response_type !== 'matching' || $currentStatus !== 'rejected' || $previousStatus === 'rejected') {
+            return;
+        }
+
+        Log::info('Deliverer declined matching response, attempting redistribution', [
+            'response_id' => $response->id,
+            'declined_by' => $response->user_id,
+            'send_request_id' => $response->offer_id,
+            'previous_status' => $previousStatus,
+            'current_status' => $currentStatus
+        ]);
+
+        // Attempt redistribution
+        $redistributed = $this->redistributionService->redistributeOnDecline($response);
+        
+        if ($redistributed) {
+            Log::info('Response successfully redistributed after decline', [
+                'original_response_id' => $response->id,
+                'send_request_id' => $response->offer_id
+            ]);
+        } else {
+            Log::warning('Failed to redistribute response after decline - no available deliverers', [
+                'response_id' => $response->id,
+                'send_request_id' => $response->offer_id
+            ]);
         }
     }
 

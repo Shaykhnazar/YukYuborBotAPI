@@ -8,6 +8,7 @@ use App\Models\SendRequest;
 use App\Repositories\Contracts\DeliveryRequestRepositoryInterface;
 use App\Repositories\Contracts\SendRequestRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Log;
 
 class CapacityAwareMatchingService extends RequestMatchingService
@@ -36,6 +37,14 @@ class CapacityAwareMatchingService extends RequestMatchingService
      */
     public function findMatchingDeliveryRequestsWithCapacity(SendRequest $sendRequest): Collection
     {
+        // First check if this send request already has an active response
+        if ($this->sendRequestHasActiveResponse($sendRequest->id)) {
+            Log::info('Send request already has active response, skipping matching', [
+                'send_request_id' => $sendRequest->id
+            ]);
+            return new EloquentCollection();
+        }
+
         // Get basic matches using parent logic
         $matchedDeliveries = parent::findMatchingDeliveryRequests($sendRequest);
 
@@ -50,10 +59,10 @@ class CapacityAwareMatchingService extends RequestMatchingService
                 'send_request_id' => $sendRequest->id,
                 'total_matches_found' => $matchedDeliveries->count()
             ]);
-            return new Collection();
+            return new EloquentCollection();
         }
 
-        // Apply distribution strategy
+        // Apply distribution strategy - select ONLY ONE deliverer
         $selectedDelivery = $this->selectDelivererByStrategy($availableDeliveries, $sendRequest);
 
         Log::info('Capacity-aware delivery matching completed', [
@@ -67,7 +76,7 @@ class CapacityAwareMatchingService extends RequestMatchingService
             })->toArray()
         ]);
 
-        return $selectedDelivery ? collect([$selectedDelivery]) : new Collection();
+        return $selectedDelivery ? new EloquentCollection([$selectedDelivery]) : new EloquentCollection();
     }
 
     /**
@@ -100,9 +109,6 @@ class CapacityAwareMatchingService extends RequestMatchingService
      */
     public function findMatchingSendRequestsWithCapacity(DeliveryRequest $deliveryRequest): Collection
     {
-        // Get basic matches using parent logic
-        $matchedSends = parent::findMatchingSendRequests($deliveryRequest);
-
         // Check if this deliverer has capacity for new responses
         $currentLoad = $this->getDelivererActiveResponses($deliveryRequest->user_id);
 
@@ -111,25 +117,31 @@ class CapacityAwareMatchingService extends RequestMatchingService
                 'delivery_request_id' => $deliveryRequest->id,
                 'deliverer_id' => $deliveryRequest->user_id,
                 'current_load' => $currentLoad,
-                'max_capacity' => $this->getMaxCapacity(),
-                'matches_found' => $matchedSends->count(),
-                'matches_returned' => 0
+                'max_capacity' => $this->getMaxCapacity()
             ]);
 
             // Return empty collection if deliverer is at capacity
-            return new Collection();
+            return new EloquentCollection();
         }
 
-        // Calculate how many new matches we can handle
-        $availableCapacity = $this->getMaxCapacity() - $currentLoad;
-        $limitedMatches = $matchedSends->take($availableCapacity);
+        // Get basic matches using parent logic
+        $matchedSends = parent::findMatchingSendRequests($deliveryRequest);
+
+        // Filter out send requests that already have active responses
+        $availableSends = $matchedSends->filter(function($sendRequest) {
+            return !$this->sendRequestHasActiveResponse($sendRequest->id);
+        });
+
+        // Since capacity is 1, only take 1 send request maximum
+        $limitedMatches = $availableSends->take($this->getMaxCapacity());
 
         Log::info('Capacity-aware send matching completed', [
             'delivery_request_id' => $deliveryRequest->id,
             'deliverer_id' => $deliveryRequest->user_id,
             'current_load' => $currentLoad,
-            'available_capacity' => $availableCapacity,
+            'max_capacity' => $this->getMaxCapacity(),
             'total_matches_found' => $matchedSends->count(),
+            'available_sends' => $availableSends->count(),
             'matches_returned' => $limitedMatches->count()
         ]);
 
@@ -187,5 +199,27 @@ class CapacityAwareMatchingService extends RequestMatchingService
             ->sortBy(function($delivery) {
                 return $this->getDelivererActiveResponses($delivery->user_id);
             });
+    }
+
+    /**
+     * Check if a send request already has an active response
+     */
+    public function sendRequestHasActiveResponse(int $sendRequestId): bool
+    {
+        return Response::where('offer_id', $sendRequestId)
+            ->where('response_type', 'matching')
+            ->whereIn('overall_status', ['pending', 'partial'])
+            ->exists();
+    }
+
+    /**
+     * Get active response count per send request
+     */
+    public function getSendRequestActiveResponses(int $sendRequestId): int
+    {
+        return Response::where('offer_id', $sendRequestId)
+            ->where('response_type', 'matching')
+            ->whereIn('overall_status', ['pending', 'partial'])
+            ->count();
     }
 }
