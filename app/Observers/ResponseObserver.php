@@ -23,16 +23,35 @@ class ResponseObserver
      */
     public function created(Response $response): void
     {
-        // For matching responses, mark the DeliveryRequest as "received"
+        // For matching responses, mark the target request as "received" 
         if ($response->response_type === 'matching') {
-            UpdateDeliveryRequestReceived::dispatch($response->request_id)
-                ->delay(now()->addSeconds(3))
-                ->onQueue('gsheets');
+            // NEW LOGIC: Use offer_type to determine which request receives the response
+            // For matching responses, offer_type is ALWAYS 'send' (send request offered to deliverer)
+            if ($response->offer_type === 'send') {
+                // Send request is offered to deliverer
+                // - request_id = deliverer's delivery request (mark as received)
+                UpdateDeliveryRequestReceived::dispatch($response->request_id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
 
-            Log::info('ResponseObserver: Dispatched UpdateDeliveryRequestReceived job', [
-                'response_id' => $response->id,
-                'delivery_request_id' => $response->request_id
-            ]);
+                Log::info('ResponseObserver: Dispatched UpdateDeliveryRequestReceived for send->delivery matching', [
+                    'response_id' => $response->id,
+                    'deliverer_delivery_request_id' => $response->request_id,
+                    'offer_type' => $response->offer_type
+                ]);
+            } else {
+                // Delivery request is offered to sender (rare case)
+                // - request_id = sender's send request (mark as received)
+                UpdateSendRequestReceived::dispatch($response->request_id)
+                    ->delay(now()->addSeconds(3))
+                    ->onQueue('gsheets');
+
+                Log::info('ResponseObserver: Dispatched UpdateSendRequestReceived for delivery->send matching', [
+                    'response_id' => $response->id,
+                    'sender_send_request_id' => $response->request_id,
+                    'offer_type' => $response->offer_type
+                ]);
+            }
         } else {
             // For manual responses, mark the target request as "received"
             if ($response->offer_type === 'send') {
@@ -126,27 +145,53 @@ class ResponseObserver
                 $senderJustAccepted = ($previousSenderStatus === 'pending' && $currentSenderStatus === 'accepted');
 
                 if ($delivererJustAccepted) {
-                    // Deliverer accepted → DeliveryRequest marked as "accepted" + SendRequest marked as "received"
+                    // Deliverer accepted → Mark deliverer's request as "accepted" + Mark sender's request as "received"
                     Log::info('ResponseObserver: Deliverer acceptance detected', [
                         'response_id' => $response->id,
-                        'delivery_request_id' => $response->request_id,
-                        'send_request_id' => $response->offer_id
+                        'offer_type' => $response->offer_type,
+                        'request_id' => $response->request_id,
+                        'offer_id' => $response->offer_id
                     ]);
 
                     $acceptedNotificationTime = $this->getAcceptedNotificationTime($response);
-                    UpdateDeliveryRequestAccepted::dispatch($response->request_id, $acceptedNotificationTime)
-                        ->delay(now()->addSeconds(3))
-                        ->onQueue('gsheets');
+                    
+                    // NEW LOGIC: Use offer_type to determine which requests to update
+                    // For matching responses, offer_type is ALWAYS 'send' (send request offered to deliverer)
+                    if ($response->offer_type === 'send') {
+                        // Send request is offered to deliverer
+                        // - request_id = deliverer's delivery request (mark as accepted)
+                        // - offer_id = sender's send request (mark as received)
+                        UpdateDeliveryRequestAccepted::dispatch($response->request_id, $acceptedNotificationTime)
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
 
-                    UpdateSendRequestReceived::dispatch($response->offer_id)
-                        ->delay(now()->addSeconds(4))
-                        ->onQueue('gsheets');
+                        UpdateSendRequestReceived::dispatch($response->offer_id)
+                            ->delay(now()->addSeconds(4))
+                            ->onQueue('gsheets');
+                            
+                        Log::info('ResponseObserver: Dispatched jobs for send->delivery matching', [
+                            'response_id' => $response->id,
+                            'deliverer_delivery_request_id' => $response->request_id,
+                            'sender_send_request_id' => $response->offer_id
+                        ]);
+                    } else {
+                        // Delivery request is offered to sender (rare case)
+                        // - request_id = sender's send request (mark as accepted) 
+                        // - offer_id = deliverer's delivery request (mark as received)
+                        UpdateSendRequestAccepted::dispatch($response->request_id, $acceptedNotificationTime)
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
 
-                    Log::info('ResponseObserver: Dispatched DeliveryRequestAccepted and SendRequestReceived jobs', [
-                        'response_id' => $response->id,
-                        'delivery_request_id' => $response->request_id,
-                        'send_request_id' => $response->offer_id
-                    ]);
+                        UpdateDeliveryRequestReceived::dispatch($response->offer_id)
+                            ->delay(now()->addSeconds(4))
+                            ->onQueue('gsheets');
+                            
+                        Log::info('ResponseObserver: Dispatched jobs for delivery->send matching', [
+                            'response_id' => $response->id,
+                            'sender_send_request_id' => $response->request_id,
+                            'deliverer_delivery_request_id' => $response->offer_id
+                        ]);
+                    }
 
                     // Send notification to sender about deliverer acceptance
                     $senderUser = $response->getSenderUser();
@@ -159,25 +204,45 @@ class ResponseObserver
                         ]);
                     }
                 } elseif ($senderJustAccepted) {
-                    // Sender accepted → SendRequest marked as "accepted"
+                    // Sender accepted → Mark sender's request as "accepted"
                     Log::info('ResponseObserver: Sender acceptance detected', [
                         'response_id' => $response->id,
-                        'send_request_id' => $response->offer_id
+                        'offer_type' => $response->offer_type,
+                        'request_id' => $response->request_id,
+                        'offer_id' => $response->offer_id
                     ]);
 
                     // For matching responses, sender's waiting time should be calculated from when they received notification
                     // This happens when deliverer accepted (status changed to partial), not from original response creation
                     $acceptedNotificationTime = $this->getAcceptedNotificationTime($response);
 
-                    UpdateSendRequestAccepted::dispatch($response->offer_id, $acceptedNotificationTime)
-                        ->delay(now()->addSeconds(3))
-                        ->onQueue('gsheets');
+                    // NEW LOGIC: Use offer_type to determine which request the sender owns
+                    // For matching responses, offer_type is ALWAYS 'send' (send request offered to deliverer)
+                    if ($response->offer_type === 'send') {
+                        // Send request is offered to deliverer
+                        // - offer_id = sender's send request (mark as accepted)
+                        UpdateSendRequestAccepted::dispatch($response->offer_id, $acceptedNotificationTime)
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
 
-                    Log::info('ResponseObserver: Dispatched SendRequestAccepted job', [
-                        'response_id' => $response->id,
-                        'send_request_id' => $response->offer_id,
-                        'sender_notification_time' => $acceptedNotificationTime
-                    ]);
+                        Log::info('ResponseObserver: Dispatched SendRequestAccepted job for send->delivery matching', [
+                            'response_id' => $response->id,
+                            'sender_send_request_id' => $response->offer_id,
+                            'sender_notification_time' => $acceptedNotificationTime
+                        ]);
+                    } else {
+                        // Delivery request is offered to sender (rare case)
+                        // - request_id = sender's send request (mark as accepted)
+                        UpdateSendRequestAccepted::dispatch($response->request_id, $acceptedNotificationTime)
+                            ->delay(now()->addSeconds(3))
+                            ->onQueue('gsheets');
+
+                        Log::info('ResponseObserver: Dispatched SendRequestAccepted job for delivery->send matching', [
+                            'response_id' => $response->id,
+                            'sender_send_request_id' => $response->request_id,
+                            'sender_notification_time' => $acceptedNotificationTime
+                        ]);
+                    }
 
                     // Send acceptance notification to deliverer
                     $delivererUser = $response->getDelivererUser();
