@@ -23,7 +23,7 @@ return [
     | be sent to the deliverer until some responses are resolved.
     |
     */
-    'max_deliverer_capacity' => env('DELIVERER_MAX_CAPACITY', 3),
+    'max_deliverer_capacity' => env('DELIVERER_MAX_CAPACITY', 1),
 
     /*
     |--------------------------------------------------------------------------
