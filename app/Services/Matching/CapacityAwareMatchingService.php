@@ -31,12 +31,25 @@ class CapacityAwareMatchingService extends RequestMatchingService
         return config('capacity.distribution_strategy', 'least_loaded');
     }
 
+    private function isDistributionEnabled(): bool
+    {
+        return config('capacity.enabled', true);
+    }
+
     /**
      * Find matching delivery requests with capacity awareness
      * Uses configured distribution strategy (round_robin or least_loaded)
      */
     public function findMatchingDeliveryRequestsWithCapacity(SendRequest $sendRequest): Collection
     {
+        // If distribution is disabled, fall back to basic matching
+        if (!$this->isDistributionEnabled()) {
+            Log::info('Distribution system disabled, using basic matching', [
+                'send_request_id' => $sendRequest->id
+            ]);
+            return parent::findMatchingDeliveryRequests($sendRequest);
+        }
+
         // First check if this send request already has an active response
         if ($this->sendRequestHasActiveResponse($sendRequest->id)) {
             Log::info('Send request already has active response, skipping matching', [
@@ -109,6 +122,14 @@ class CapacityAwareMatchingService extends RequestMatchingService
      */
     public function findMatchingSendRequestsWithCapacity(DeliveryRequest $deliveryRequest): Collection
     {
+        // If distribution is disabled, fall back to basic matching
+        if (!$this->isDistributionEnabled()) {
+            Log::info('Distribution system disabled, using basic matching', [
+                'delivery_request_id' => $deliveryRequest->id
+            ]);
+            return parent::findMatchingSendRequests($deliveryRequest);
+        }
+
         // Check if this deliverer has capacity for new responses
         $currentLoad = $this->getDelivererActiveResponses($deliveryRequest->user_id);
 

@@ -20,6 +20,14 @@ class RedistributionService
      */
     public function redistributeOnDecline(Response $declinedResponse): bool
     {
+        // Check if redistribution is disabled
+        if (!config('capacity.rebalancing.enabled', true)) {
+            Log::info('Redistribution disabled, skipping automatic redistribution', [
+                'response_id' => $declinedResponse->id
+            ]);
+            return false;
+        }
+
         if ($declinedResponse->response_type !== 'matching') {
             Log::info('Skipping redistribution for non-matching response', [
                 'response_id' => $declinedResponse->id,

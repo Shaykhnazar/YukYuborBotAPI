@@ -4,6 +4,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Distribution System Master Switch
+    |--------------------------------------------------------------------------
+    |
+    | Controls whether the distribution system is enabled. When disabled,
+    | the system falls back to basic matching without capacity limits,
+    | round-robin distribution, or automatic rebalancing.
+    |
+    */
+    'enabled' => env('DISTRIBUTION_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Deliverer Capacity Configuration
     |--------------------------------------------------------------------------
     |
