@@ -266,6 +266,11 @@ class ResponseObserver
      */
     private function handleRedistributionOnDecline(Response $response, string $previousStatus, string $currentStatus): void
     {
+        // Check if redistribution is disabled
+        if (!config('capacity.rebalancing.enabled', true)) {
+            return;
+        }
+
         // Only handle matching responses that just got rejected
         if ($response->response_type !== 'matching' || $currentStatus !== 'rejected' || $previousStatus === 'rejected') {
             return;
