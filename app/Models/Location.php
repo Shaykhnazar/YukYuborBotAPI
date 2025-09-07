@@ -61,19 +61,37 @@ class Location extends Model
         return $query->where('type', 'city');
     }
 
+    // Scope for regions only
+    public function scopeRegions($query)
+    {
+        return $query->where('type', 'region');
+    }
+
     // Scope for active locations
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
     }
 
-    // Get full path (Country, City)
+    // Get full path (Country, Region, City)
     public function getFullRouteNameAttribute(): string
     {
         if ($this->type === 'country') {
             return $this->name;
         }
 
-        return $this->parent->name . ', ' . $this->name;
+        if ($this->type === 'region') {
+            return $this->parent->name . ', ' . $this->name;
+        }
+
+        // For cities, show parent region name
+        if ($this->type === 'city' && $this->parent) {
+            if ($this->parent->type === 'region') {
+                return $this->parent->name . ', ' . $this->name;
+            }
+            return $this->parent->name . ', ' . $this->name;
+        }
+
+        return $this->name;
     }
 }

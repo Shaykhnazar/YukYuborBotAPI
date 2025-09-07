@@ -9,7 +9,8 @@
       "Bash(php artisan vendor:publish:*)",
       "Bash(mkdir:*)",
       "Bash(find:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(php artisan:*)"
     ],
     "deny": []
   }

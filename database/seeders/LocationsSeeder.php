@@ -9,114 +9,45 @@ class LocationsSeeder extends Seeder
 {
     public function run()
     {
-        // First, insert countries
-        $countries = [
-            ['name' => 'Казахстан', 'country_code' => 'KZ'],
-            ['name' => 'ОАЭ', 'country_code' => 'AE'],
-            ['name' => 'Индонезия', 'country_code' => 'ID'],
-            ['name' => 'Турция', 'country_code' => 'TR', 'is_active' => false],
-        ];
+        // Load Uzbekistan regions data
+        $regionsData = json_decode(file_get_contents(database_path('seeders/data/regions.json')), true);
+        $districtsData = json_decode(file_get_contents(database_path('seeders/data/districts.json')), true);
 
-        $countryIds = [];
+        // First, insert Uzbekistan as the main country (using Tashkent city as capital)
+        $uzbekistanId = DB::table('locations')->insertGetId([
+            'name' => 'Ўзбекистон',
+            'parent_id' => null,
+            'type' => 'country',
+            'country_code' => 'UZ',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        foreach ($countries as $country) {
+        $regionIds = [];
+
+        // Insert regions as parent locations
+        foreach ($regionsData as $region) {
             $id = DB::table('locations')->insertGetId([
-                'name' => $country['name'],
-                'parent_id' => null,
-                'type' => 'country',
-                'country_code' => $country['country_code'],
-                'is_active' => $country['is_active'] ?? true,
+                'name' => $region['name_ru'], // Use Russian name for consistency
+                'parent_id' => $uzbekistanId,
+                'type' => 'region',
+                'country_code' => null,
+                'is_active' => true,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            $countryIds[$country['name']] = $id;
+            $regionIds[$region['id']] = $id;
         }
 
-        // Then, insert cities for each country
-        $cities = [
-            'Казахстан' => [
-                'Алматы',
-                'Астана',
-                'Шымкент',
-                'Караганда',
-                'Актобе',
-                'Тараз',
-                'Павлодар',
-                'Усть-Каменогорск',
-                'Семей',
-                'Атырау',
-                'Костанай',
-                'Кызылорда',
-                'Уральск',
-                'Петропавловск',
-                'Актау',
-                'Темиртау',
-                'Туркестан',
-                'Кокшетау',
-                'Талдыкорган',
-                'Экибастуз'
-            ],
-            'ОАЭ' => [
-                'Дубай',
-                'Абу-Даби',
-                'Шарджа',
-                'Аль-Айн',
-                'Аджман',
-                'Рас-эль-Хайма',
-                'Фуджейра',
-                'Умм-эль-Кайвайн'
-            ],
-            'Индонезия' => [
-                'Джакарта',
-                'Бали',
-                'Убуд',
-                'Суrabаya',
-                'Бандунг',
-                'Медан',
-                'Семаранг',
-                'Макассар',
-                'Палембанг',
-                'Танжеранг',
-                'Депок',
-                'Богор',
-                'Пекanbaru',
-                'Бекаси',
-                'Паданг',
-                'Малангg',
-                'Джокьякарта',
-                'Денпасар'
-            ],
-            'Турция' => [
-                'Стамбул',
-                'Анкара',
-                'Измир',
-                'Бурса',
-                'Анталия',
-                'Адана',
-                'Газиантеп',
-                'Конья',
-                'Кайсери',
-                'Мерсин',
-                'Эскишехир',
-                'Диярбакыр',
-                'Самсун',
-                'Денизли',
-                'Малатья',
-                'Кахраmanmaраш',
-                'Эрзурум',
-                'Ван',
-                'Элязыг',
-                'Манисa'
-            ],
-        ];
-
-        foreach ($cities as $countryName => $cityList) {
-            $countryId = $countryIds[$countryName];
-
-            foreach ($cityList as $cityName) {
+        // Insert cities/districts under their respective regions
+        foreach ($districtsData as $district) {
+            $regionDbId = $regionIds[$district['region_id']] ?? null;
+            
+            if ($regionDbId) {
                 DB::table('locations')->insert([
-                    'name' => $cityName,
-                    'parent_id' => $countryId,
+                    'name' => $district['name_ru'], // Use Russian name for consistency
+                    'parent_id' => $regionDbId,
                     'type' => 'city',
                     'country_code' => null,
                     'is_active' => true,
@@ -125,5 +56,7 @@ class LocationsSeeder extends Seeder
                 ]);
             }
         }
+
+        $this->command->info('Uzbekistan locations seeded successfully.');
     }
 }

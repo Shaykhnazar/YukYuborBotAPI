@@ -10,50 +10,110 @@ class RoutesSeeder extends Seeder
 {
     public function run()
     {
-        // Get countries
-        $kazakhstan = Location::where('name', 'Казахстан')->first();
-        $uae = Location::where('name', 'ОАЭ')->first();
-        $indonesia = Location::where('name', 'Индонезия')->first();
-        $turkey = Location::where('name', 'Турция')->first();
+        // Get main regional centers (capital and major regions)
+        $tashkent = Location::where('name', 'город Ташкент')->first();
+        $samarkand = Location::where('name', 'Самаркандская область')->first();
+        $bukhara = Location::where('name', 'Бухарская область')->first();
+        $fergana = Location::where('name', 'Ферганская область')->first();
+        $andijan = Location::where('name', 'Андижанская область')->first();
+        $namangan = Location::where('name', 'Наманганская область')->first();
+        $khorezm = Location::where('name', 'Хорезмская область')->first();
+        $karakalpakstan = Location::where('name', 'Республика Каракалпакстан')->first();
 
-        if (!$kazakhstan || !$uae || !$indonesia || !$turkey) {
-            $this->command->warn('Countries not found. Please run LocationsSeeder first.');
+        // Check if main locations exist
+        if (!$tashkent) {
+            $this->command->warn('Main locations not found. Please run LocationsSeeder first.');
             return;
         }
 
-        // Create popular routes
+        // Create popular domestic routes from Tashkent (capital) to other regions
         $routes = [
             [
-                'from_location_id' => $kazakhstan->id,
-                'to_location_id' => $uae->id,
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $samarkand->id,
                 'priority' => 10,
-                'description' => 'Популярный маршрут для бизнеса'
+                'description' => 'Тошкент - Самарқанд (популярный туристический маршрут)'
             ],
             [
-                'from_location_id' => $kazakhstan->id,
-                'to_location_id' => $indonesia->id,
-                'priority' => 10,
-                'description' => 'Популярный маршрут для отдыха'
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $bukhara->id,
+                'priority' => 9,
+                'description' => 'Тошкент - Бухоро (исторический туристический маршрут)'
             ],
             [
-                'from_location_id' => $kazakhstan->id,
-                'to_location_id' => $turkey->id,
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $fergana->id,
                 'priority' => 8,
-                'description' => 'Туристический маршрут',
-                'is_active' => false
+                'description' => 'Тошкент - Фарғона (деловые поездки)'
+            ],
+            [
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $andijan->id,
+                'priority' => 7,
+                'description' => 'Тошкент - Андижон (семейные связи)'
+            ],
+            [
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $namangan->id,
+                'priority' => 7,
+                'description' => 'Тошкент - Наманган (региональные связи)'
+            ],
+            [
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $khorezm->id,
+                'priority' => 6,
+                'description' => 'Тошкент - Хоразм (региональные поездки)'
+            ],
+            [
+                'from_location_id' => $tashkent->id,
+                'to_location_id' => $karakalpakstan->id,
+                'priority' => 5,
+                'description' => 'Тошкент - Қорақалпоғистон (длительные поездки)'
             ],
         ];
 
-        foreach ($routes as $routeData) {
-            Route::query()->updateOrCreate(
-                [
-                    'from_location_id' => $routeData['from_location_id'],
-                    'to_location_id' => $routeData['to_location_id']
-                ],
-                $routeData
-            );
+        // Add inter-regional routes
+        if ($samarkand && $bukhara) {
+            $routes[] = [
+                'from_location_id' => $samarkand->id,
+                'to_location_id' => $bukhara->id,
+                'priority' => 8,
+                'description' => 'Самарқанд - Бухоро (туристический)'
+            ];
         }
 
-        $this->command->info('Routes seeded successfully.');
+        if ($fergana && $andijan && $namangan) {
+            // Fergana Valley internal routes
+            $routes[] = [
+                'from_location_id' => $fergana->id,
+                'to_location_id' => $andijan->id,
+                'priority' => 9,
+                'description' => 'Фарғона - Андижон (долина маршрут)'
+            ];
+            
+            $routes[] = [
+                'from_location_id' => $fergana->id,
+                'to_location_id' => $namangan->id,
+                'priority' => 8,
+                'description' => 'Фарғона - Наманган (долина маршрут)'
+            ];
+        }
+
+        // Insert routes
+        foreach ($routes as $routeData) {
+            if (isset($routeData['from_location_id']) && isset($routeData['to_location_id']) && 
+                $routeData['from_location_id'] && $routeData['to_location_id']) {
+                
+                Route::query()->updateOrCreate(
+                    [
+                        'from_location_id' => $routeData['from_location_id'],
+                        'to_location_id' => $routeData['to_location_id']
+                    ],
+                    $routeData
+                );
+            }
+        }
+
+        $this->command->info('Uzbekistan domestic routes seeded successfully.');
     }
 }
