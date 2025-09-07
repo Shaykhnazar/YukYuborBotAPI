@@ -10,23 +10,23 @@ class RoutesSeeder extends Seeder
 {
     public function run()
     {
-        // Get main regional centers (capital and major regions)
-        $tashkent = Location::where('name', 'город Ташкент')->first();
-        $samarkand = Location::where('name', 'Самаркандская область')->first();
-        $bukhara = Location::where('name', 'Бухарская область')->first();
-        $fergana = Location::where('name', 'Ферганская область')->first();
-        $andijan = Location::where('name', 'Андижанская область')->first();
-        $namangan = Location::where('name', 'Наманганская область')->first();
-        $khorezm = Location::where('name', 'Хорезмская область')->first();
-        $karakalpakstan = Location::where('name', 'Республика Каракалпакстан')->first();
+        // Get main regions (now treated as countries in the system)
+        $tashkent = Location::where('name_ru', 'город Ташкент')->where('type', 'country')->first();
+        $samarkand = Location::where('name_ru', 'Самаркандская область')->where('type', 'country')->first();
+        $bukhara = Location::where('name_ru', 'Бухарская область')->where('type', 'country')->first();
+        $fergana = Location::where('name_ru', 'Ферганская область')->where('type', 'country')->first();
+        $andijan = Location::where('name_ru', 'Андижанская область')->where('type', 'country')->first();
+        $namangan = Location::where('name_ru', 'Наманганская область')->where('type', 'country')->first();
+        $khorezm = Location::where('name_ru', 'Хорезмская область')->where('type', 'country')->first();
+        $karakalpakstan = Location::where('name_ru', 'Республика Каракалпакстан')->where('type', 'country')->first();
 
         // Check if main locations exist
         if (!$tashkent) {
-            $this->command->warn('Main locations not found. Please run LocationsSeeder first.');
+            $this->command->warn('Main regions not found. Please run LocationsSeeder first.');
             return;
         }
 
-        // Create popular domestic routes from Tashkent (capital) to other regions
+        // Create popular domestic routes from Tashkent (capital region) to other regions
         $routes = [
             [
                 'from_location_id' => $tashkent->id,
@@ -114,6 +114,6 @@ class RoutesSeeder extends Seeder
             }
         }
 
-        $this->command->info('Uzbekistan domestic routes seeded successfully.');
+        $this->command->info('Uzbekistan inter-regional routes seeded successfully.');
     }
 }
