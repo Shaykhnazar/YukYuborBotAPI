@@ -28,6 +28,15 @@ class DeliveryController extends Controller
             $this->requestService->checkActiveRequestsLimit($user);
 
             $dto = $request->getDTO();
+            
+            // Check for duplicate route and date
+            $this->requestService->checkDuplicateRoute(
+                $user, 
+                $dto->fromLocId, 
+                $dto->toLocId, 
+                $dto->toDate->toDateString(), 
+                'delivery'
+            );
 
             $deliveryRequest = $this->deliveryRequestRepository->create([
                 'from_location_id' => $dto->fromLocId,

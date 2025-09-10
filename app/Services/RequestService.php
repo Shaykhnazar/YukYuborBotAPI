@@ -30,6 +30,32 @@ class RequestService
         }
     }
 
+    /**
+     * Check if user already has an active request for this route and date combination
+     * 
+     * @param User $user
+     * @param int $fromLocationId
+     * @param int $toLocationId
+     * @param string $date
+     * @param string $requestType 'send' or 'delivery'
+     * @return void
+     * @throws \Exception
+     */
+    public function checkDuplicateRoute(User $user, int $fromLocationId, int $toLocationId, string $date, string $requestType): void
+    {
+        $existingRequest = null;
+
+        if ($requestType === 'send') {
+            $existingRequest = $this->sendRequestRepository->findActiveByUserAndRoute($user, $fromLocationId, $toLocationId, $date);
+        } else {
+            $existingRequest = $this->deliveryRequestRepository->findActiveByUserAndRoute($user, $fromLocationId, $toLocationId, $date);
+        }
+
+        if ($existingRequest) {
+            throw new \Exception('У вас уже есть активная заявка для этого маршрута и даты. Удалите существующую заявку, чтобы создать новую.');
+        }
+    }
+
     public function canDeleteRequest($request): bool
     {
         return !in_array($request->status, [

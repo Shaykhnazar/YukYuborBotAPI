@@ -35,4 +35,6 @@ interface DeliveryRequestRepositoryInterface extends BaseRepositoryInterface
         string $fromDate,
         string $toDate
     ): Collection;
+
+    public function findActiveByUserAndRoute(User $user, int $fromLocationId, int $toLocationId, string $date): ?DeliveryRequest;
 }
