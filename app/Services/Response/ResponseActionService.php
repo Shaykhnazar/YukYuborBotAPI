@@ -586,9 +586,10 @@ class ResponseActionService
         // Update the response to rejected
         $response->updateUserStatus($sender->id, DualStatus::REJECTED->value);
 
-        // Reset request statuses
-        $this->updateRequestStatusAfterRejectionAsSender('send', $sendRequestId, $response->id);
-        $this->updateRequestStatusAfterRejectionAsSender('delivery', $deliveryRequestId, $response->id);
+        // Reset request statuses - for matching responses, the send request should be checked for remaining responses
+        // The delivery request should be reset back to open since the partial match was rejected
+        $this->updateSendRequestStatusAfterRejection($sendRequestId, $response->id);
+        $this->updateDeliveryRequestStatusAfterRejection($deliveryRequestId, $response->id);
 
         // IMPORTANT: When sender rejects partial response, deliverer can now accept other responses
         // No additional logic needed - the rejection clears the partial state
@@ -640,7 +641,53 @@ class ResponseActionService
     }
 
     /**
-     * Here we update both request status after rejection as sender
+     * Update send request status after sender rejects a matching response
+     *
+     * @param int $sendRequestId
+     * @param int $rejectedResponseId
+     * @return void
+     */
+    private function updateSendRequestStatusAfterRejection(int $sendRequestId, int $rejectedResponseId): void
+    {
+        // Check if send request has other active responses (both manual and matching)
+        $activeResponses = $this->responseRepository->findWhere([
+            'offer_id' => $sendRequestId,
+            'offer_type' => 'send'
+        ])->where('id', '!=', $rejectedResponseId)
+          ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value]);
+
+        $newStatus = $activeResponses->isNotEmpty()
+            ? RequestStatus::HAS_RESPONSES->value
+            : RequestStatus::OPEN->value;
+
+        $this->sendRequestRepository->updateStatus($sendRequestId, $newStatus);
+    }
+
+    /**
+     * Update delivery request status after sender rejects a matching response
+     *
+     * @param int $deliveryRequestId
+     * @param int $rejectedResponseId
+     * @return void
+     */
+    private function updateDeliveryRequestStatusAfterRejection(int $deliveryRequestId, int $rejectedResponseId): void
+    {
+        // Check if delivery request has other active responses
+        $activeResponses = $this->responseRepository->findWhere([
+            'request_id' => $deliveryRequestId,
+            'offer_type' => 'send'
+        ])->where('id', '!=', $rejectedResponseId)
+          ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value]);
+
+        $newStatus = $activeResponses->isNotEmpty()
+            ? RequestStatus::HAS_RESPONSES->value
+            : RequestStatus::OPEN->value;
+
+        $this->deliveryRequestRepository->updateStatus($deliveryRequestId, $newStatus);
+    }
+
+    /**
+     * Here we update both request status after rejection as sender (DEPRECATED - use specific methods above)
      * First we need to check if there are any other responses for the send request
      * If there are no other responses, we update the request status to open
      * If there are other responses, we update the request status to has responses
