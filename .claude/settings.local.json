@@ -11,7 +11,8 @@
       "Bash(find:*)",
       "Bash(mv:*)",
       "Bash(php artisan:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }

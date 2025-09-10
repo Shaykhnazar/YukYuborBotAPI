@@ -70,8 +70,11 @@ class ResponseActionService
 
         $this->updateTargetRequestStatus($targetRequest, RequestStatus::MATCHED_MANUALLY->value);
 
-        // CRITICAL: Close all other pending responses for this request
+        // CRITICAL: Close all other pending responses for this request (both manual and matching)
         $this->closePendingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
+        
+        // CRITICAL: Also close any matching responses for this request
+        $this->closeMatchingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
 
         $this->notificationService->sendAcceptanceNotification($responder->id);
 
@@ -783,6 +786,37 @@ class ResponseActionService
 //                    $this->notificationService->sendRejectionNotification($senderUser->id);
 //                }
 //            }
+        }
+    }
+
+    /**
+     * Close matching responses for a request when manual response is accepted
+     * This prevents matching responses from being accepted after manual acceptance
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closeMatchingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
+    {
+        $matchingResponses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'response_type' => ResponseType::MATCHING->value
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+          ->where('id', '!=', $acceptedResponseId);
+
+        foreach ($matchingResponses as $matchingResponse) {
+            $this->responseRepository->update($matchingResponse->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+
+            // Optional: Notify users that their matching response was automatically closed
+            // due to manual response acceptance
         }
     }
 
