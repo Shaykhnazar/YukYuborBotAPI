@@ -29,6 +29,15 @@ class SendRequestController extends Controller
 
             $dto = $request->getDTO();
             
+            // Check for duplicate route and date
+            $this->requestService->checkDuplicateRoute(
+                $user, 
+                $dto->fromLocId, 
+                $dto->toLocId, 
+                $dto->toDate->toDateString(), 
+                'send'
+            );
+            
             $sendRequest = $this->sendRequestRepository->create([
                 'from_location_id' => $dto->fromLocId,
                 'to_location_id' => $dto->toLocId,

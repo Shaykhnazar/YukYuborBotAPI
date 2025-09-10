@@ -108,4 +108,22 @@ class DeliveryRequestRepository extends BaseRepository implements DeliveryReques
             : $this->model->where('id', $matchedDeliveryId)
             ->update(['status' => RequestStatus::CLOSED->value]);
     }
+
+    public function findActiveByUserAndRoute(User $user, int $fromLocationId, int $toLocationId, string $date): ?DeliveryRequest
+    {
+        return $this->model->where('user_id', $user->id)
+            ->where('from_location_id', $fromLocationId)
+            ->where('to_location_id', $toLocationId)
+            ->where(function($query) use ($date) {
+                $query->where('from_date', '<=', $date)
+                    ->where('to_date', '>=', $date);
+            })
+            ->whereIn('status', [
+                RequestStatus::OPEN->value,
+                RequestStatus::HAS_RESPONSES->value,
+                RequestStatus::MATCHED->value,
+                RequestStatus::MATCHED_MANUALLY->value
+            ])
+            ->first();
+    }
 }
