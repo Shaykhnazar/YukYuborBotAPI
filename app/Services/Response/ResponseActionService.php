@@ -259,6 +259,11 @@ class ResponseActionService
             throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
         }
 
+        // CRITICAL: Check if this send request already has a partial response from another deliverer
+        if ($this->hasPartialResponseForSendRequest($sendRequestId)) {
+            throw new \Exception('Эта заявка на отправку уже принимается другим курьером. Дождитесь его решения или выберите другую заявку.');
+        }
+
         // CRITICAL: For deliverer, check if they already have a partial response pending
         if ($this->hasPartialResponseForDeliverer($deliveryRequestId, $deliverer->id)) {
             throw new \Exception('Пожалуйста, дождитесь ответа отправителя на ваш первый отклик перед принятием других откликов');
@@ -691,6 +696,25 @@ class ResponseActionService
         ]);
 
         return $responses->isNotEmpty();
+    }
+
+    /**
+     * Check if there's already a partial response for this send request from any deliverer
+     * This prevents multiple deliverers from accepting the same send request simultaneously
+     *
+     * @param int $sendRequestId
+     * @return bool
+     */
+    private function hasPartialResponseForSendRequest(int $sendRequestId): bool
+    {
+        $partialResponses = $this->responseRepository->findWhere([
+            'offer_id' => $sendRequestId,
+            'offer_type' => 'send',
+            'overall_status' => ResponseStatus::PARTIAL->value,
+            'response_type' => ResponseType::MATCHING->value
+        ]);
+
+        return $partialResponses->isNotEmpty();
     }
 
     /**

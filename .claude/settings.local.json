@@ -10,7 +10,8 @@
       "Bash(mkdir:*)",
       "Bash(find:*)",
       "Bash(mv:*)",
-      "Bash(php artisan:*)"
+      "Bash(php artisan:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
