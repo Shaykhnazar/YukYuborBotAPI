@@ -41,19 +41,28 @@ class ResponseQueryService
                 return true;
             }
 
-            // For pending status: deliverer can always see, sender only if they can act
+            // For pending status: check for competing partial responses
             if ($response->overall_status === ResponseStatus::PENDING->value) {
                 if ($userRole === 'deliverer') {
-                    return true; // Deliverers can always see pending matches
+                    // Check if there's another partial response for the same send request
+                    if ($this->hasCompetingPartialResponse($response, $userId)) {
+                        return false; // Hide this deliverer's pending response when another deliverer has partial
+                    }
+                    return true; // Deliverers can see pending matches if no competing partial
                 } elseif ($userRole === 'sender') {
                     // Senders can see pending only
                     return false;
                 }
             }
 
-            // For partial status: both parties can see (one accepted, waiting for other)
+            // For partial status: check if this user is involved in the partial response
             if ($response->overall_status === ResponseStatus::PARTIAL->value) {
-                return true; // Both can see partial responses
+                // Only the users directly involved in this partial response can see it
+                $delivererUser = $response->getDelivererUser();
+                $senderUser = $response->getSenderUser();
+                
+                return $delivererUser && $delivererUser->id === $userId || 
+                       $senderUser && $senderUser->id === $userId;
             }
         }
 
@@ -83,5 +92,39 @@ class ResponseQueryService
             $requestType,
             $requestId
         );
+    }
+
+    /**
+     * Check if there's a competing partial response for the same send request
+     * This hides pending responses from other deliverers when one deliverer has partial acceptance
+     *
+     * @param $response
+     * @param int $userId
+     * @return bool
+     */
+    private function hasCompetingPartialResponse($response, int $userId): bool
+    {
+        // Only apply this logic to matching responses for send requests
+        if ($response->response_type !== 'matching' || $response->offer_type !== 'send') {
+            return false;
+        }
+
+        // Find other responses for the same send request that are partial
+        $competingPartialResponses = $this->responseRepository->findWhere([
+            'offer_id' => $response->offer_id,
+            'offer_type' => 'send',
+            'response_type' => 'matching',
+            'overall_status' => ResponseStatus::PARTIAL->value
+        ]);
+
+        // Check if any of these partial responses involve a different deliverer
+        foreach ($competingPartialResponses as $partialResponse) {
+            $partialDelivererUser = $partialResponse->getDelivererUser();
+            if ($partialDelivererUser && $partialDelivererUser->id !== $userId) {
+                return true; // Found a competing partial response from another deliverer
+            }
+        }
+
+        return false;
     }
 }
