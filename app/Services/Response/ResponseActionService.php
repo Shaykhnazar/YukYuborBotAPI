@@ -488,7 +488,7 @@ class ResponseActionService
                     'offer_id' => $offerId,
                     'offer_type' => 'send'
                 ]);
-                $hasOtherResponses = $responses->whereIn('overall_status', ['pending', 'waiting', 'responded'])->isNotEmpty();
+                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
 
                 $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
                 $this->sendRequestRepository->updateStatus($offerId, $newStatus);
@@ -501,7 +501,7 @@ class ResponseActionService
                     'offer_id' => $offerId,
                     'offer_type' => 'delivery'
                 ]);
-                $hasOtherResponses = $responses->whereIn('overall_status', ['pending', 'waiting', 'responded'])->isNotEmpty();
+                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
 
                 $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
                 $this->deliveryRequestRepository->updateStatus($offerId, $newStatus);
@@ -516,7 +516,7 @@ class ResponseActionService
                     'request_id' => $requestId,
                     'offer_type' => 'send'
                 ]);
-                $hasOtherResponses = $responses->whereIn('overall_status', ['pending', 'waiting', 'responded'])->isNotEmpty();
+                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
 
                 $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
                 $this->deliveryRequestRepository->updateStatus($requestId, $newStatus);
@@ -528,7 +528,7 @@ class ResponseActionService
                     'request_id' => $requestId,
                     'offer_type' => 'delivery'
                 ]);
-                $hasOtherResponses = $responses->whereIn('overall_status', ['pending', 'waiting', 'responded'])->isNotEmpty();
+                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
 
                 $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
                 $this->sendRequestRepository->updateStatus($requestId, $newStatus);
