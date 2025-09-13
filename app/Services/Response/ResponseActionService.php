@@ -272,6 +272,11 @@ class ResponseActionService
             throw new \Exception('Пожалуйста, дождитесь ответа отправителя на ваш первый отклик перед принятием других откликов');
         }
 
+        // CRITICAL: Check if the send request has an accepted manual response
+        if ($this->hasAcceptedManualResponse('send', $sendRequestId)) {
+            throw new \Exception('Эта заявка уже принята через ручной отклик');
+        }
+
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
 
         if (!$response || !$response->canUserTakeAction($deliverer->id)) {
@@ -323,6 +328,11 @@ class ResponseActionService
         if ($this->hasAcceptedResponse('send', $sendRequestId) ||
             $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
             throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
+        }
+
+        // CRITICAL: Check if the send request has an accepted manual response
+        if ($this->hasAcceptedManualResponse('send', $sendRequestId)) {
+            throw new \Exception('Эта заявка уже принята через ручной отклик');
         }
 
         $response = $this->responseRepository->findMatchingResponse($sendRequestId, $deliveryRequestId);
@@ -650,15 +660,33 @@ class ResponseActionService
     private function updateSendRequestStatusAfterRejection(int $sendRequestId, int $rejectedResponseId): void
     {
         // Check if send request has other active responses (both manual and matching)
+        // IMPORTANT: We need to fetch fresh data to include the just-rejected response in our check
         $activeResponses = $this->responseRepository->findWhere([
             'offer_id' => $sendRequestId,
             'offer_type' => 'send'
         ])->where('id', '!=', $rejectedResponseId)
           ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value]);
 
-        $newStatus = $activeResponses->isNotEmpty()
+        // CRITICAL: Also check for any manual responses that might still be pending
+        $activeManualResponses = $this->responseRepository->findWhere([
+            'offer_id' => $sendRequestId,
+            'offer_type' => 'send',
+            'response_type' => 'manual'
+        ])->whereIn('overall_status', [ResponseStatus::PENDING->value]);
+
+        $hasActiveResponses = $activeResponses->isNotEmpty() || $activeManualResponses->isNotEmpty();
+
+        $newStatus = $hasActiveResponses
             ? RequestStatus::HAS_RESPONSES->value
             : RequestStatus::OPEN->value;
+
+        Log::info('Updating send request status after sender rejection', [
+            'send_request_id' => $sendRequestId,
+            'rejected_response_id' => $rejectedResponseId,
+            'active_matching_responses' => $activeResponses->count(),
+            'active_manual_responses' => $activeManualResponses->count(),
+            'new_status' => $newStatus
+        ]);
 
         $this->sendRequestRepository->updateStatus($sendRequestId, $newStatus);
     }
@@ -742,6 +770,25 @@ class ResponseActionService
         $responses = $this->responseRepository->findWhere([
             'offer_type' => $offerType,
             'offer_id' => $requestId,
+            'overall_status' => ResponseStatus::ACCEPTED->value
+        ]);
+
+        return $responses->isNotEmpty();
+    }
+
+    /**
+     * Check if a request already has an accepted manual response
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @return bool
+     */
+    private function hasAcceptedManualResponse(string $offerType, int $requestId): bool
+    {
+        $responses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'response_type' => ResponseType::MANUAL->value,
             'overall_status' => ResponseStatus::ACCEPTED->value
         ]);
 
