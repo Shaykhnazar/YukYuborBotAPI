@@ -683,22 +683,39 @@ class ResponseActionService
             ? RequestStatus::HAS_RESPONSES->value
             : RequestStatus::OPEN->value;
 
-        Log::info('Updating send request status after sender rejection', [
+        // DEBUGGING: Get all responses for this send request to understand the full picture
+        $allResponses = $this->responseRepository->findWhere([
+            'offer_id' => $sendRequestId,
+            'offer_type' => 'send'
+        ]);
+
+        Log::info('DEBUGGING: Updating send request status after sender rejection', [
             'send_request_id' => $sendRequestId,
             'rejected_response_id' => $rejectedResponseId,
+            'ALL_RESPONSES_FOR_REQUEST' => $allResponses->map(fn($r) => [
+                'id' => $r->id,
+                'overall_status' => $r->overall_status,
+                'deliverer_status' => $r->deliverer_status,
+                'sender_status' => $r->sender_status,
+                'response_type' => $r->response_type,
+                'user_id' => $r->user_id,
+                'responder_id' => $r->responder_id
+            ])->toArray(),
             'active_matching_responses' => $activeResponses->count(),
             'active_matching_responses_details' => $activeResponses->map(fn($r) => [
                 'id' => $r->id,
                 'overall_status' => $r->overall_status,
                 'deliverer_status' => $r->deliverer_status,
-                'sender_status' => $r->sender_status
+                'sender_status' => $r->sender_status,
+                'user_id' => $r->user_id
             ])->toArray(),
             'active_manual_responses' => $activeManualResponses->count(),
             'active_manual_responses_details' => $activeManualResponses->map(fn($r) => [
                 'id' => $r->id,
                 'overall_status' => $r->overall_status
             ])->toArray(),
-            'new_status' => $newStatus
+            'new_status' => $newStatus,
+            'EXPECTED_BEHAVIOR' => $hasActiveResponses ? 'Status should stay has_responses because other deliverers still pending' : 'Status should change to open because no more active responses'
         ]);
 
         $this->sendRequestRepository->updateStatus($sendRequestId, $newStatus);

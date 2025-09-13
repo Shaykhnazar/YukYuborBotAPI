@@ -385,6 +385,18 @@ class ResponseObserver
             return;
         }
 
+        // CRITICAL FIX: Only redistribute when DELIVERER rejects (pending → rejected)
+        // Do NOT redistribute when SENDER rejects (partial → rejected)
+        if ($previousStatus !== 'pending') {
+            Log::info('Skipping redistribution - sender rejected, not deliverer', [
+                'response_id' => $response->id,
+                'previous_status' => $previousStatus,
+                'current_status' => $currentStatus,
+                'rejection_type' => $previousStatus === 'partial' ? 'sender_rejection' : 'unknown'
+            ]);
+            return;
+        }
+
         Log::info('Deliverer declined matching response, attempting redistribution', [
             'response_id' => $response->id,
             'declined_by' => $response->user_id,
