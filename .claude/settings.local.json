@@ -12,7 +12,16 @@
       "Bash(mv:*)",
       "Bash(php artisan:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(mv:*)",
+      "Bash(where php)",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Services/Response/ResponseQueryService.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Services/Response/ResponseActionService.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Observers/ResponseObserver.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Services/GoogleSheetsService.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Jobs/ResetSendRequestReceived.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Jobs/ResetDeliveryRequestReceived.php\")",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" artisan --version)"
     ],
     "deny": []
   }

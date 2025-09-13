@@ -36,6 +36,11 @@ class ResponseQueryService
 
         // For matching responses, implement proper dual acceptance visibility logic
         if ($response->response_type === 'matching') {
+            // CRITICAL: Hide matching responses if the request already has an accepted manual response
+            if ($this->hasAcceptedManualResponse($response)) {
+                return false;
+            }
+
             // Always show accepted responses to both parties
             if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
                 return true;
@@ -60,9 +65,9 @@ class ResponseQueryService
                 // Only the users directly involved in this partial response can see it
                 $delivererUser = $response->getDelivererUser();
                 $senderUser = $response->getSenderUser();
-                
-                return $delivererUser && $delivererUser->id === $userId || 
-                       $senderUser && $senderUser->id === $userId;
+
+                return ($delivererUser && $delivererUser->id === $userId) ||
+                    ($senderUser && $senderUser->id === $userId);
             }
         }
 
@@ -92,6 +97,25 @@ class ResponseQueryService
             $requestType,
             $requestId
         );
+    }
+
+    /**
+     * Check if the request already has an accepted manual response
+     * This hides matching responses when a manual response has been accepted
+     *
+     * @param $response
+     * @return bool
+     */
+    private function hasAcceptedManualResponse($response): bool
+    {
+        $acceptedManualResponses = $this->responseRepository->findWhere([
+            'offer_id' => $response->offer_id,
+            'offer_type' => $response->offer_type,
+            'response_type' => 'manual',
+            'overall_status' => ResponseStatus::ACCEPTED->value
+        ]);
+
+        return $acceptedManualResponses->isNotEmpty();
     }
 
     /**

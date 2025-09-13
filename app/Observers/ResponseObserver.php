@@ -256,8 +256,117 @@ class ResponseObserver
                 }
             }
 
+            // Handle rejections - need to track in Google Sheets when responses are rejected
+            if ($currentOverallStatus === 'rejected' && $previousOverallStatus !== 'rejected') {
+                $this->handleResponseRejection($response);
+            }
+
             // Handle automatic redistribution when deliverer declines matching response
             $this->handleRedistributionOnDecline($response, $previousOverallStatus, $currentOverallStatus);
+        }
+    }
+
+    /**
+     * Handle the Response "deleted" event.
+     */
+    public function deleted(Response $response): void
+    {
+        Log::info('ResponseObserver: Response deleted, handling Google Sheets cleanup', [
+            'response_id' => $response->id,
+            'response_type' => $response->response_type,
+            'offer_type' => $response->offer_type,
+            'offer_id' => $response->offer_id,
+            'request_id' => $response->request_id
+        ]);
+
+        // When a response is deleted (cancelled), we need to reset the "received" status
+        // in Google Sheets if this was the only active response for the request
+        $this->handleResponseCancellation($response);
+    }
+
+    /**
+     * Handle response rejection - reset Google Sheets status if no other active responses
+     */
+    private function handleResponseRejection(Response $response): void
+    {
+        Log::info('ResponseObserver: Handling response rejection for Google Sheets', [
+            'response_id' => $response->id,
+            'response_type' => $response->response_type,
+            'offer_type' => $response->offer_type
+        ]);
+
+        // Check if there are other active responses for this request
+        // If not, reset the "received" status in Google Sheets
+        if ($response->response_type === 'manual') {
+            $this->resetRequestStatusIfNoActiveResponses($response->offer_type, $response->offer_id, $response->id);
+        } else {
+            // For matching responses, check both the offer and the request
+            $this->resetRequestStatusIfNoActiveResponses($response->offer_type, $response->offer_id, $response->id);
+
+            // Also check the other request involved in matching
+            $otherOfferType = $response->offer_type === 'send' ? 'delivery' : 'send';
+            $otherRequestId = $response->offer_type === 'send' ? $response->request_id : $response->offer_id;
+            $this->resetRequestStatusIfNoActiveResponses($otherOfferType, $otherRequestId, $response->id);
+        }
+    }
+
+    /**
+     * Handle response cancellation (deletion) - reset Google Sheets status if needed
+     */
+    private function handleResponseCancellation(Response $response): void
+    {
+        Log::info('ResponseObserver: Handling response cancellation for Google Sheets', [
+            'response_id' => $response->id,
+            'response_type' => $response->response_type,
+            'offer_type' => $response->offer_type
+        ]);
+
+        // Check if there are other active responses for this request
+        // If not, reset the "received" status in Google Sheets
+        if ($response->response_type === 'manual') {
+            $this->resetRequestStatusIfNoActiveResponses($response->offer_type, $response->offer_id, $response->id);
+        } else {
+            // For matching responses, check both the offer and the request
+            $this->resetRequestStatusIfNoActiveResponses($response->offer_type, $response->offer_id, $response->id);
+
+            // Also check the other request involved in matching
+            $otherOfferType = $response->offer_type === 'send' ? 'delivery' : 'send';
+            $otherRequestId = $response->offer_type === 'send' ? $response->request_id : $response->offer_id;
+            $this->resetRequestStatusIfNoActiveResponses($otherOfferType, $otherRequestId, $response->id);
+        }
+    }
+
+    /**
+     * Reset request status in Google Sheets if no other active responses exist
+     */
+    private function resetRequestStatusIfNoActiveResponses(string $offerType, int $requestId, int $excludeResponseId): void
+    {
+        // Check if there are any other active responses for this request
+        $activeResponsesCount = \App\Models\Response::where('offer_type', $offerType)
+            ->where('offer_id', $requestId)
+            ->where('id', '!=', $excludeResponseId)
+            ->whereIn('overall_status', ['pending', 'partial'])
+            ->count();
+
+        if ($activeResponsesCount === 0) {
+            Log::info('ResponseObserver: No other active responses found, resetting Google Sheets status', [
+                'offer_type' => $offerType,
+                'request_id' => $requestId,
+                'excluded_response_id' => $excludeResponseId
+            ]);
+
+            // Reset the "received" status in Google Sheets by passing false
+            if ($offerType === 'send') {
+                // Create a reset job that will clear the received status
+                \App\Jobs\ResetSendRequestReceived::dispatch($requestId)
+                    ->delay(now()->addSeconds(2))
+                    ->onQueue('gsheets');
+            } else {
+                // Create a reset job that will clear the received status
+                \App\Jobs\ResetDeliveryRequestReceived::dispatch($requestId)
+                    ->delay(now()->addSeconds(2))
+                    ->onQueue('gsheets');
+            }
         }
     }
 

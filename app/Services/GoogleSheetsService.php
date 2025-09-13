@@ -759,4 +759,89 @@ class GoogleSheetsService
         return null;
     }
 
+    /**
+     * Reset response tracking when all responses are rejected/cancelled
+     */
+    public function resetRequestResponseReceived($requestType, $requestId): bool
+    {
+        if (is_null($this->spreadsheetId)) {
+            Log::warning('Google Sheets spreadsheet ID not configured, skipping resetRequestResponseReceived');
+            return true;
+        }
+
+        return $this->withLock(function() use ($requestType, $requestId) {
+            try {
+                $worksheetName = $requestType === 'send' ? 'Send requests' : 'Deliver requests';
+                Log::info("GoogleSheetsService: Resetting response received status", [
+                    'request_type' => $requestType,
+                    'request_id' => $requestId,
+                    'worksheet' => $worksheetName
+                ]);
+
+                // Get all data from the sheet
+                $allData = Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->all();
+
+                if (empty($allData)) {
+                    Log::warning("Worksheet is empty", ['worksheet' => $worksheetName]);
+                    return true;
+                }
+
+                // Find the row with matching request ID
+                $rowNumber = null;
+                foreach ($allData as $index => $row) {
+                    if (isset($row[0]) && $row[0] == $requestId) {
+                        $rowNumber = $index + 1; // Sheets are 1-indexed
+                        break;
+                    }
+                }
+
+                if (!$rowNumber) {
+                    Log::warning("Request ID {$requestId} not found in {$worksheetName} - skipping reset");
+                    return true;
+                }
+
+                // Reset Column L: Response received (clear)
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("L{$rowNumber}")
+                    ->update([[""]]);
+
+                // Reset Column M: Number of responses received (set to 0)
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("M{$rowNumber}")
+                    ->update([[0]]);
+
+                // Reset Column N: Timestamp when first response was received (clear)
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("N{$rowNumber}")
+                    ->update([[""]]);
+
+                // Reset Column O: Waiting time for first response (clear)
+                Sheets::spreadsheet($this->spreadsheetId)
+                    ->sheet($worksheetName)
+                    ->range("O{$rowNumber}")
+                    ->update([[""]]);
+
+                Log::info("Request response status reset in Google Sheets", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'row_number' => $rowNumber
+                ]);
+
+                return true;
+            } catch (Exception $e) {
+                Log::error("Failed to reset response status in Google Sheets", [
+                    'worksheet' => $worksheetName,
+                    'request_id' => $requestId,
+                    'error' => $e->getMessage()
+                ]);
+                return false;
+            }
+        });
+    }
+
 }
