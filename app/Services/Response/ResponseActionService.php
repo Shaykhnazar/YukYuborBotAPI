@@ -488,7 +488,8 @@ class ResponseActionService
                     'offer_id' => $offerId,
                     'offer_type' => 'send'
                 ]);
-                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])->isNotEmpty();
+                // CRITICAL FIX: For send requests, senders can only act on PARTIAL responses
+                $hasOtherResponses = $responses->whereIn('overall_status', [ResponseStatus::PARTIAL->value])->isNotEmpty();
 
                 $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
                 $this->sendRequestRepository->updateStatus($offerId, $newStatus);
@@ -644,8 +645,9 @@ class ResponseActionService
                 'request_id' => $requestId,
                 'offer_type' => 'delivery'
             ]);
+            // CRITICAL FIX: For send requests, senders can only act on PARTIAL responses
             $hasOtherResponses = $responses->where('id', '!=', $rejectedResponseId)
-              ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->whereIn('overall_status', [ResponseStatus::PARTIAL->value])
               ->isNotEmpty();
 
             $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
@@ -663,12 +665,13 @@ class ResponseActionService
     private function updateSendRequestStatusAfterRejection(int $sendRequestId, int $rejectedResponseId): void
     {
         // Check if send request has other active responses (both manual and matching)
-        // Since response status was just updated, we get fresh data from database
+        // CRITICAL FIX: For send requests, senders can only act on PARTIAL responses (where deliverer already accepted)
+        // Senders cannot act on PENDING responses (where deliverer hasn't accepted yet)
         $activeResponses = $this->responseRepository->findWhere([
             'offer_id' => $sendRequestId,
             'offer_type' => 'send'
         ])->where('id', '!=', $rejectedResponseId)
-          ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value]);
+          ->whereIn('overall_status', [ResponseStatus::PARTIAL->value]); // Only partial responses are actionable for senders
 
         // CRITICAL: Also check for any manual responses that might still be pending
         $activeManualResponses = $this->responseRepository->findWhere([
@@ -767,8 +770,9 @@ class ResponseActionService
                 'offer_id' => $requestId,
                 'offer_type' => 'send'
             ]);
+            // CRITICAL FIX: For send requests, senders can only act on PARTIAL responses
             $hasOtherResponses = $responses->where('id', '!=', $rejectedResponseId)
-              ->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->whereIn('overall_status', [ResponseStatus::PARTIAL->value])
               ->isNotEmpty();
 
             $newStatus = $hasOtherResponses ? RequestStatus::HAS_RESPONSES->value : RequestStatus::OPEN->value;
