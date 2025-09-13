@@ -558,21 +558,13 @@ class ResponseActionService
             throw new \Exception('Отклик не найден или не может быть отклонен');
         }
 
-        // CRITICAL FIX: Use transaction to ensure atomic response rejection and request status update
-        DB::beginTransaction();
+        // CRITICAL FIX: Update response status first, then update request statuses
+        // The response status update triggers observers and must be committed before checking other responses
+        $response->updateUserStatus($deliverer->id, DualStatus::REJECTED->value);
 
-        try {
-            // Update the response to rejected
-            $response->updateUserStatus($deliverer->id, DualStatus::REJECTED->value);
-
-            // Reset delivery request status if no other active responses exist
-            $this->updateRequestStatusAfterRejection('send', $deliveryRequestId, $response->id);
-
-            DB::commit();
-        } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        // Reset request statuses AFTER response status has been committed
+        // This ensures we get accurate counts of remaining active responses
+        $this->updateRequestStatusAfterRejection('send', $deliveryRequestId, $response->id);
 
         // Optional: Notify sender that deliverer rejected
 //        $this->notificationService->sendRejectionNotification(
@@ -603,23 +595,14 @@ class ResponseActionService
             throw new \Exception('У пользователя нет прав на отклонение этого отклика');
         }
 
-        // CRITICAL FIX: Use transaction to ensure atomic response rejection and request status update
-        DB::beginTransaction();
+        // CRITICAL FIX: Update response status first, then update request statuses
+        // The response status update triggers observers and must be committed before checking other responses
+        $response->updateUserStatus($sender->id, DualStatus::REJECTED->value);
 
-        try {
-            // Update the response to rejected
-            $response->updateUserStatus($sender->id, DualStatus::REJECTED->value);
-
-            // Reset request statuses - for matching responses, the send request should be checked for remaining responses
-            // The delivery request should be reset back to open since the partial match was rejected
-            $this->updateSendRequestStatusAfterRejection($sendRequestId, $response->id);
-            $this->updateDeliveryRequestStatusAfterRejection($deliveryRequestId, $response->id);
-
-            DB::commit();
-        } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
-        }
+        // Reset request statuses AFTER response status has been committed
+        // This ensures we get accurate counts of remaining active responses
+        $this->updateSendRequestStatusAfterRejection($sendRequestId, $response->id);
+        $this->updateDeliveryRequestStatusAfterRejection($deliveryRequestId, $response->id);
 
         // IMPORTANT: When sender rejects partial response, deliverer can now accept other responses
         // No additional logic needed - the rejection clears the partial state
@@ -680,7 +663,7 @@ class ResponseActionService
     private function updateSendRequestStatusAfterRejection(int $sendRequestId, int $rejectedResponseId): void
     {
         // Check if send request has other active responses (both manual and matching)
-        // IMPORTANT: We need to fetch fresh data to include the just-rejected response in our check
+        // Since response status was just updated, we get fresh data from database
         $activeResponses = $this->responseRepository->findWhere([
             'offer_id' => $sendRequestId,
             'offer_type' => 'send'
@@ -704,7 +687,17 @@ class ResponseActionService
             'send_request_id' => $sendRequestId,
             'rejected_response_id' => $rejectedResponseId,
             'active_matching_responses' => $activeResponses->count(),
+            'active_matching_responses_details' => $activeResponses->map(fn($r) => [
+                'id' => $r->id,
+                'overall_status' => $r->overall_status,
+                'deliverer_status' => $r->deliverer_status,
+                'sender_status' => $r->sender_status
+            ])->toArray(),
             'active_manual_responses' => $activeManualResponses->count(),
+            'active_manual_responses_details' => $activeManualResponses->map(fn($r) => [
+                'id' => $r->id,
+                'overall_status' => $r->overall_status
+            ])->toArray(),
             'new_status' => $newStatus
         ]);
 
