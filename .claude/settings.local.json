@@ -21,7 +21,8 @@
       "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Services/GoogleSheetsService.php\")",
       "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Jobs/ResetSendRequestReceived.php\")",
       "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" -l \"app/Jobs/ResetDeliveryRequestReceived.php\")",
-      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" artisan --version)"
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" artisan --version)",
+      "Bash(\"D:\\OSPanel\\last\\modules\\PHP-8.3\\PHP\\php.exe\" artisan make:migration add_language_to_users_table)"
     ],
     "deny": []
   }
