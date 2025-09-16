@@ -39,7 +39,18 @@ class UpdateSendRequestReceived implements ShouldQueue
                 'user_id' => $sendRequest->user_id
             ]);
 
-            $googleSheetsService->updateRequestResponseReceived('send', $sendRequest->id, true);
+            // Check if this is the first response for this send request
+            // Need to account for both matching and manual response types:
+            // - Matching responses: offer_type='send' and offer_id=send_request_id (always 'send' for matching)
+            // - Manual responses: offer_type='send' and offer_id=send_request_id
+            $responseCount = \App\Models\Response::where('offer_type', 'send')
+                ->where('offer_id', $sendRequest->id)
+                ->whereIn('overall_status', ['pending', 'partial', 'accepted'])
+                ->count();
+
+            $isFirstResponse = $responseCount <= 1;
+
+            $googleSheetsService->updateRequestResponseReceived('send', $sendRequest->id, $isFirstResponse);
 
             Log::info('Successfully updated SendRequest as received in Google Sheets', [
                 'send_request_id' => $sendRequest->id
