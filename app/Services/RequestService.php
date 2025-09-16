@@ -100,6 +100,9 @@ class RequestService
 
     public function closeRequest(DeliveryRequest|SendRequest $request): void
     {
+        // Refresh the request to get the latest status from database
+        $request->refresh();
+
         if (!$this->canCloseRequest($request)) {
             throw new \Exception('Can only close matched requests');
         }
