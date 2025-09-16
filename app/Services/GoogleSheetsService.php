@@ -806,7 +806,7 @@ class GoogleSheetsService
                 Sheets::spreadsheet($this->spreadsheetId)
                     ->sheet($worksheetName)
                     ->range("L{$rowNumber}")
-                    ->update([[""]]);
+                    ->update([["не получен"]]);
 
                 // Reset Column M: Number of responses received (set to 0)
                 Sheets::spreadsheet($this->spreadsheetId)
