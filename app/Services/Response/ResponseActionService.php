@@ -928,12 +928,34 @@ class ResponseActionService
      */
     private function closeMatchingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
     {
-        $matchingResponses = $this->responseRepository->findWhere([
+        // FIXED: Find matching responses that target the same request
+        // For delivery requests: matching responses have offer_type='send' and request_id=delivery_request_id
+        // For send requests: matching responses have offer_type='send' and offer_id=send_request_id
+        if ($offerType === 'delivery') {
+            // Manual response to delivery request - find matching responses targeting this delivery request
+            $matchingResponses = $this->responseRepository->findWhere([
+                'offer_type' => 'send',
+                'request_id' => $requestId,
+                'response_type' => ResponseType::MATCHING->value
+            ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->where('id', '!=', $acceptedResponseId);
+        } else {
+            // Manual response to send request - find matching responses targeting this send request
+            $matchingResponses = $this->responseRepository->findWhere([
+                'offer_type' => 'send',
+                'offer_id' => $requestId,
+                'response_type' => ResponseType::MATCHING->value
+            ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
+              ->where('id', '!=', $acceptedResponseId);
+        }
+
+        Log::info('Closing matching responses after manual response acceptance', [
             'offer_type' => $offerType,
-            'offer_id' => $requestId,
-            'response_type' => ResponseType::MATCHING->value
-        ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
-          ->where('id', '!=', $acceptedResponseId);
+            'request_id' => $requestId,
+            'accepted_response_id' => $acceptedResponseId,
+            'matching_responses_found' => $matchingResponses->count(),
+            'matching_response_ids' => $matchingResponses->pluck('id')->toArray()
+        ]);
 
         foreach ($matchingResponses as $matchingResponse) {
             $this->responseRepository->update($matchingResponse->id, [
