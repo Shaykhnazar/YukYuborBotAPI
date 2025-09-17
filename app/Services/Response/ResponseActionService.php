@@ -70,11 +70,12 @@ class ResponseActionService
 
         $this->updateTargetRequestStatus($targetRequest, RequestStatus::MATCHED_MANUALLY->value);
 
-        // CRITICAL: Close all other pending responses for this request (both manual and matching)
-        $this->closePendingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
+        // CLIENT REQUIREMENT: Only close other pending manual responses, NEVER touch matching responses
+        // This allows manual responses to coexist with matching responses completely
+        $this->closePendingManualResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
 
-        // CRITICAL: Also close any matching responses for this request
-        $this->closeMatchingResponsesForRequest($response->offer_type, $response->offer_id, $response->id);
+        // REMOVED: Do NOT close any matching responses when manual response is accepted
+        // Client wants unlimited coexistence: 1 matching + unlimited manual responses
 
         $this->notificationService->sendAcceptanceNotification($responder->id);
 
@@ -256,10 +257,10 @@ class ResponseActionService
             throw new \Exception('Заявка не найдена');
         }
 
-        // CRITICAL: Check if either request already has an accepted response
-        if ($this->hasAcceptedResponse('send', $sendRequestId) ||
-            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
-            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
+        // CLIENT REQUIREMENT: Only block same-type conflicts, allow manual-matching coexistence
+        if ($this->hasAcceptedMatchingResponse('send', $sendRequestId) ||
+            $this->hasAcceptedMatchingResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим matching откликом');
         }
 
         // CRITICAL: Check if this send request already has a partial response from another deliverer
@@ -292,9 +293,10 @@ class ResponseActionService
         $response = $this->responseRepository->find($response->id);
 
         if ($response->overall_status === ResponseStatus::ACCEPTED->value) {
-            // CRITICAL: Close all other pending responses for both requests (only when fully accepted)
-            $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
-            $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+            // CLIENT REQUIREMENT: Don't close any manual responses - they should coexist with matching responses
+            // Only close conflicting PENDING matching responses (same type competition)
+            $this->closeOnlyConflictingMatchingResponses('send', $sendRequestId, $response->id);
+            $this->closeOnlyConflictingMatchingResponses('delivery', $deliveryRequestId, $response->id);
 
             // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
             $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
@@ -324,10 +326,10 @@ class ResponseActionService
             throw new \Exception('Заявка не найдена');
         }
 
-        // CRITICAL: Check if either request already has an accepted response
-        if ($this->hasAcceptedResponse('send', $sendRequestId) ||
-            $this->hasAcceptedResponse('delivery', $deliveryRequestId)) {
-            throw new \Exception('Одна из этих заявок уже сопоставлена с другим откликом');
+        // CLIENT REQUIREMENT: Only block same-type conflicts, allow manual-matching coexistence
+        if ($this->hasAcceptedMatchingResponse('send', $sendRequestId) ||
+            $this->hasAcceptedMatchingResponse('delivery', $deliveryRequestId)) {
+            throw new \Exception('Одна из этих заявок уже сопоставлена с другим matching откликом');
         }
 
         // CRITICAL: Check if the send request has an accepted manual response
@@ -357,9 +359,10 @@ class ResponseActionService
                 $this->deliveryRequestRepository->updateStatus($deliveryRequestId, RequestStatus::MATCHED->value);
 //                $sender->decrement('links_balance', 1);
 
-                // CRITICAL: Close all other pending responses for both requests
-                $this->closePendingResponsesForRequest('send', $sendRequestId, $response->id);
-                $this->closePendingResponsesForRequest('delivery', $deliveryRequestId, $response->id);
+                // CLIENT REQUIREMENT: Don't close any manual responses - they should coexist with matching responses
+                // Only close conflicting PENDING matching responses (same type competition)
+                $this->closeOnlyConflictingMatchingResponses('send', $sendRequestId, $response->id);
+                $this->closeOnlyConflictingMatchingResponses('delivery', $deliveryRequestId, $response->id);
 
                 // CRITICAL: Close ALL other responses to the deliverer's request (from other senders)
                 $this->closeAllResponsesForDelivererRequest($deliveryRequestId, $response->id);
@@ -566,11 +569,6 @@ class ResponseActionService
         // Reset request statuses AFTER response status has been committed
         // This ensures we get accurate counts of remaining active responses
         $this->updateRequestStatusAfterRejection('send', $deliveryRequestId, $response->id);
-
-        // Optional: Notify sender that deliverer rejected
-//        $this->notificationService->sendRejectionNotification(
-//            $response->responder_id,
-//        );
 
         return ['message' => 'Send request rejected successfully'];
     }
@@ -811,6 +809,26 @@ class ResponseActionService
     }
 
     /**
+     * CLIENT REQUIREMENT: Check if a request already has an accepted MATCHING response
+     * This allows coexistence with manual responses
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @return bool
+     */
+    private function hasAcceptedMatchingResponse(string $offerType, int $requestId): bool
+    {
+        $responses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'response_type' => ResponseType::MATCHING->value,  // Only matching responses
+            'overall_status' => ResponseStatus::ACCEPTED->value
+        ]);
+
+        return $responses->isNotEmpty();
+    }
+
+    /**
      * Check if a request already has an accepted manual response
      *
      * @param string $offerType
@@ -897,76 +915,129 @@ class ResponseActionService
                 'sender_status' => DualStatus::REJECTED->value,
                 'updated_at' => now()
             ]);
-
-            // Notify users that their response was automatically rejected due to another acceptance
-//            if ($pendingResponse->response_type === ResponseType::MANUAL->value) {
-//                // For manual responses, notify the responder
-//                $this->notificationService->sendRejectionNotification($pendingResponse->responder_id);
-//            } else {
-//                // For matching responses, notify both users if they haven't been rejected yet
-//                $delivererUser = $pendingResponse->getDelivererUser();
-//                $senderUser = $pendingResponse->getSenderUser();
-//
-//                if ($delivererUser) {
-//                    $this->notificationService->sendRejectionNotification($delivererUser->id);
-//                }
-//                if ($senderUser) {
-//                    $this->notificationService->sendRejectionNotification($senderUser->id);
-//                }
-//            }
         }
     }
 
     /**
-     * Close matching responses for a request when manual response is accepted
-     * This prevents matching responses from being accepted after manual acceptance
+     * Close only pending manual responses for a request when manual response is accepted
+     * This allows only one manual response per request but preserves matching responses
      *
      * @param string $offerType
      * @param int $requestId
      * @param int $acceptedResponseId
      * @return void
      */
-    private function closeMatchingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
+    private function closePendingManualResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
     {
-        // FIXED: Find matching responses that target the same request
-        // For delivery requests: matching responses have offer_type='send' and request_id=delivery_request_id
-        // For send requests: matching responses have offer_type='send' and offer_id=send_request_id
-        if ($offerType === 'delivery') {
-            // Manual response to delivery request - find matching responses targeting this delivery request
-            $matchingResponses = $this->responseRepository->findWhere([
-                'offer_type' => 'send',
-                'request_id' => $requestId,
-                'response_type' => ResponseType::MATCHING->value
-            ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
-              ->where('id', '!=', $acceptedResponseId);
-        } else {
-            // Manual response to send request - find matching responses targeting this send request
-            $matchingResponses = $this->responseRepository->findWhere([
-                'offer_type' => 'send',
-                'offer_id' => $requestId,
-                'response_type' => ResponseType::MATCHING->value
-            ])->whereIn('overall_status', [ResponseStatus::PENDING->value, ResponseStatus::PARTIAL->value])
-              ->where('id', '!=', $acceptedResponseId);
-        }
+        $pendingManualResponses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'response_type' => ResponseType::MANUAL->value,
+            'overall_status' => ResponseStatus::PENDING->value
+        ])->where('id', '!=', $acceptedResponseId);
 
-        Log::info('Closing matching responses after manual response acceptance', [
+        Log::info('Closing pending manual responses after manual response acceptance', [
             'offer_type' => $offerType,
             'request_id' => $requestId,
             'accepted_response_id' => $acceptedResponseId,
-            'matching_responses_found' => $matchingResponses->count(),
-            'matching_response_ids' => $matchingResponses->pluck('id')->toArray()
+            'manual_responses_found' => $pendingManualResponses->count(),
+            'manual_response_ids' => $pendingManualResponses->pluck('id')->toArray()
         ]);
 
-        foreach ($matchingResponses as $matchingResponse) {
-            $this->responseRepository->update($matchingResponse->id, [
+        foreach ($pendingManualResponses as $manualResponse) {
+            $this->responseRepository->update($manualResponse->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
+        }
+    }
+
+    /**
+     * Close only PENDING matching responses for a request when manual response is accepted
+     * This preserves PARTIAL matching responses to allow coexistence
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closePendingMatchingResponsesForRequest(string $offerType, int $requestId, int $acceptedResponseId): void
+    {
+        // CRITICAL CHANGE: Only close PENDING matching responses, preserve PARTIAL ones
+        if ($offerType === 'delivery') {
+            // Manual response to delivery request - find matching responses targeting this delivery request
+            $pendingMatchingResponses = $this->responseRepository->findWhere([
+                'offer_type' => 'send',
+                'request_id' => $requestId,
+                'response_type' => ResponseType::MATCHING->value,
+                'overall_status' => ResponseStatus::PENDING->value  // Only PENDING, not PARTIAL
+            ])->where('id', '!=', $acceptedResponseId);
+        } else {
+            // Manual response to send request - find matching responses targeting this send request
+            $pendingMatchingResponses = $this->responseRepository->findWhere([
+                'offer_type' => 'send',
+                'offer_id' => $requestId,
+                'response_type' => ResponseType::MATCHING->value,
+                'overall_status' => ResponseStatus::PENDING->value  // Only PENDING, not PARTIAL
+            ])->where('id', '!=', $acceptedResponseId);
+        }
+
+        Log::info('Closing only PENDING matching responses after manual response acceptance (preserving PARTIAL)', [
+            'offer_type' => $offerType,
+            'request_id' => $requestId,
+            'accepted_response_id' => $acceptedResponseId,
+            'pending_matching_responses_found' => $pendingMatchingResponses->count(),
+            'pending_matching_response_ids' => $pendingMatchingResponses->pluck('id')->toArray(),
+            'behavior' => 'PARTIAL matching responses are preserved to allow coexistence'
+        ]);
+
+        foreach ($pendingMatchingResponses as $pendingMatchingResponse) {
+            $this->responseRepository->update($pendingMatchingResponse->id, [
                 'overall_status' => ResponseStatus::REJECTED->value,
                 'deliverer_status' => DualStatus::REJECTED->value,
                 'sender_status' => DualStatus::REJECTED->value,
                 'updated_at' => now()
             ]);
+        }
+    }
 
-            // Optional: Notify users that their matching response was automatically closed
-            // due to manual response acceptance
+    /**
+     * CLIENT REQUIREMENT: Close ONLY other pending matching responses, NEVER touch manual responses
+     * This allows unlimited manual responses to coexist with 1 matching response
+     *
+     * @param string $offerType
+     * @param int $requestId
+     * @param int $acceptedResponseId
+     * @return void
+     */
+    private function closeOnlyConflictingMatchingResponses(string $offerType, int $requestId, int $acceptedResponseId): void
+    {
+        // STRICT CLIENT REQUIREMENT: Only close PENDING matching responses of the same type
+        // NEVER touch ANY manual responses (pending, partial, or accepted)
+        // This enables: 1 matching response + unlimited manual responses coexistence
+        $conflictingMatchingResponses = $this->responseRepository->findWhere([
+            'offer_type' => $offerType,
+            'offer_id' => $requestId,
+            'response_type' => ResponseType::MATCHING->value,  // ONLY matching responses
+            'overall_status' => ResponseStatus::PENDING->value  // ONLY pending status
+        ])->where('id', '!=', $acceptedResponseId);
+
+        Log::info('CLIENT REQUIREMENT: Closing only PENDING matching responses, preserving ALL manual responses', [
+            'offer_type' => $offerType,
+            'request_id' => $requestId,
+            'accepted_matching_response_id' => $acceptedResponseId,
+            'pending_matching_responses_closed' => $conflictingMatchingResponses->count(),
+            'pending_matching_response_ids' => $conflictingMatchingResponses->pluck('id')->toArray(),
+            'CLIENT_BEHAVIOR' => 'Manual responses are NEVER touched - unlimited coexistence allowed'
+        ]);
+
+        foreach ($conflictingMatchingResponses as $conflictingResponse) {
+            $this->responseRepository->update($conflictingResponse->id, [
+                'overall_status' => ResponseStatus::REJECTED->value,
+                'deliverer_status' => DualStatus::REJECTED->value,
+                'sender_status' => DualStatus::REJECTED->value,
+                'updated_at' => now()
+            ]);
         }
     }
 
@@ -995,12 +1066,6 @@ class ResponseActionService
                 'sender_status' => DualStatus::REJECTED->value,
                 'updated_at' => now()
             ]);
-
-            // Notify the sender that their offer is no longer available
-//            $senderUser = $response->getSenderUser();
-//            if ($senderUser) {
-//                $this->notificationService->sendRejectionNotification($senderUser->id);
-//            }
         }
     }
 }
