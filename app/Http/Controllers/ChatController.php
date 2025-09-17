@@ -438,7 +438,8 @@ class ChatController extends BaseController
     }
 
     /**
-     * Complete/close a chat when request is finished
+     * Complete/close a chat when specific response is finished
+     * NEW LOGIC: Close individual response, not entire request
      */
     public function completeChat(Request $request, int $chatId): JsonResponse
     {
@@ -453,26 +454,34 @@ class ChatController extends BaseController
                 $query->where('sender_id', $user->id)
                     ->orWhere('receiver_id', $user->id);
             })
-            ->with(['sendRequest', 'deliveryRequest'])
+            ->with(['sendRequest', 'deliveryRequest', 'response'])
             ->firstOrFail();
+
+        // CRITICAL FIX: Close individual response, not entire request
+        $response = $chat->response;
+        if (!$response) {
+            return response()->json(['error' => 'No response associated with this chat'], 400);
+        }
 
         // Update chat status to completed
         $chat->update(['status' => 'completed']);
 
-        // Update related request statuses to completed
-        if ($chat->sendRequest && in_array($chat->sendRequest->status, ['matched', 'matched_manually', 'active'])) {
-            $chat->sendRequest->update(['status' => 'completed']);
-        }
+        // Update response status to closed (individual response closure)
+        $response->update([
+            'overall_status' => 'closed',
+            'deliverer_status' => 'closed',
+            'sender_status' => 'closed',
+            'updated_at' => now()
+        ]);
 
-        if ($chat->deliveryRequest && in_array($chat->deliveryRequest->status, ['matched', 'matched_manually', 'active'])) {
-            $chat->deliveryRequest->update(['status' => 'completed']);
-        }
+        // CRITICAL: Check if this was the last active response for the request(s)
+        $this->checkAndCloseRequestsIfNoActiveResponses($chat, $response, $user);
 
         // Add system message about completion
         $systemMessage = new ChatMessage([
             'chat_id' => $chatId,
             'sender_id' => $user->id,
-            'message' => "Заявка завершена пользователем {$user->name}",
+            'message' => "Отклик завершен пользователем {$user->name}",
             'message_type' => 'system',
             'is_read' => true,
         ]);
@@ -482,21 +491,104 @@ class ChatController extends BaseController
         $otherUserId = $chat->sender_id === $user->id ? $chat->receiver_id : $chat->sender_id;
         $this->notificationService->sendTelegramNotification(
             $otherUserId,
-            "Заявка завершена пользователем {$user->name}. Спасибо за использование PostLink!"
+            "Отклик завершен пользователем {$user->name}. Спасибо за использование PostLink!"
         );
 
-//        Log::info('Chat completed', [
-//            'chat_id' => $chatId,
-//            'completed_by' => $user->id,
-//            'reason' => $request->input('reason')
-//        ]);
+        Log::info('Individual response completed via chat closure', [
+            'chat_id' => $chatId,
+            'response_id' => $response->id,
+            'completed_by' => $user->id,
+            'reason' => $request->input('reason')
+        ]);
 
         return response()->json([
-            'message' => 'Chat completed successfully',
+            'message' => 'Response completed successfully',
             'status' => 'completed',
             'completed_at' => now(),
             'completed_by' => $user->name
         ]);
+    }
+
+    /**
+     * CRITICAL: Check if request(s) should be closed when individual response is completed
+     * Only close requests if NO other active responses remain
+     */
+    private function checkAndCloseRequestsIfNoActiveResponses($chat, $response, $user): void
+    {
+        // For manual responses: check only the target request
+        if ($response->response_type === 'manual') {
+            $this->checkAndCloseRequestIfNoActiveResponses(
+                $response->offer_type,
+                $response->offer_id,
+                $response->id,
+                $user->name
+            );
+        } else {
+            // For matching responses: check both involved requests
+            // Check the offered request (sender's request)
+            $this->checkAndCloseRequestIfNoActiveResponses(
+                $response->offer_type,
+                $response->offer_id,
+                $response->id,
+                $user->name
+            );
+
+            // Check the receiving request (deliverer's request)
+            $receivingRequestType = $response->offer_type === 'send' ? 'delivery' : 'send';
+            $this->checkAndCloseRequestIfNoActiveResponses(
+                $receivingRequestType,
+                $response->request_id,
+                $response->id,
+                $user->name
+            );
+        }
+    }
+
+    /**
+     * Check if a specific request should be closed when response is completed
+     * Uses the same logic as ResponseObserver for consistency
+     */
+    private function checkAndCloseRequestIfNoActiveResponses(string $offerType, int $requestId, int $excludeResponseId, string $completedByUserName): void
+    {
+        // Check if there are any other active responses for this request
+        $activeResponsesCount = \App\Models\Response::where('offer_type', $offerType)
+            ->where('offer_id', $requestId)
+            ->where('id', '!=', $excludeResponseId)
+            ->whereIn('overall_status', ['pending', 'partial', 'accepted'])
+            ->count();
+
+        Log::info('Checking if request should be closed after response completion', [
+            'offer_type' => $offerType,
+            'request_id' => $requestId,
+            'excluded_response_id' => $excludeResponseId,
+            'remaining_active_responses' => $activeResponsesCount
+        ]);
+
+        // If no other active responses, close the request
+        if ($activeResponsesCount === 0) {
+            $requestModel = $offerType === 'send'
+                ? \App\Models\SendRequest::find($requestId)
+                : \App\Models\DeliveryRequest::find($requestId);
+
+            if ($requestModel && !in_array($requestModel->status, ['closed', 'completed'])) {
+                $requestModel->update(['status' => 'completed']);
+
+                Log::info('Request closed automatically - no more active responses', [
+                    'request_type' => $offerType,
+                    'request_id' => $requestId,
+                    'completed_by' => $completedByUserName,
+                    'reason' => 'All responses completed'
+                ]);
+
+                // This will trigger RequestObserver which handles Google Sheets integration
+            }
+        } else {
+            Log::info('Request remains active - other responses still exist', [
+                'request_type' => $offerType,
+                'request_id' => $requestId,
+                'remaining_active_responses' => $activeResponsesCount
+            ]);
+        }
     }
 
     /**

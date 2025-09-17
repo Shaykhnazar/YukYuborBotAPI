@@ -261,6 +261,11 @@ class ResponseObserver
                 $this->handleResponseRejection($response);
             }
 
+            // CRITICAL FIX: Handle individual response closures (new for multiple response support)
+            if ($currentOverallStatus === 'closed' && $previousOverallStatus !== 'closed') {
+                $this->handleResponseClosure($response);
+            }
+
             // Handle automatic redistribution when deliverer declines matching response
             $this->handleRedistributionOnDecline($response, $previousOverallStatus, $currentOverallStatus);
         }
@@ -337,15 +342,41 @@ class ResponseObserver
     }
 
     /**
+     * CRITICAL FIX: Handle individual response closure (new for multiple response support)
+     * When a response is closed via chat completion, check if request should be closed too
+     */
+    private function handleResponseClosure(Response $response): void
+    {
+        Log::info('ResponseObserver: Individual response closed, checking if requests should be closed', [
+            'response_id' => $response->id,
+            'response_type' => $response->response_type,
+            'offer_type' => $response->offer_type,
+            'previous_status' => $response->getOriginal('overall_status'),
+            'current_status' => $response->overall_status
+        ]);
+
+        // Note: The ChatController already handles request closure logic
+        // This observer just logs the event for tracking purposes
+        // The actual request closure and Google Sheets integration
+        // is triggered by RequestObserver when request status changes to 'completed'
+
+        Log::info('ResponseObserver: Response closure logged, request closure handled by ChatController', [
+            'response_id' => $response->id,
+            'closure_method' => 'individual_response_completion'
+        ]);
+    }
+
+    /**
      * Reset request status in Google Sheets if no other active responses exist
      */
     private function resetRequestStatusIfNoActiveResponses(string $offerType, int $requestId, int $excludeResponseId): void
     {
         // Check if there are any other active responses for this request
+        // CRITICAL FIX: Exclude 'closed' status from active responses (new for multiple response support)
         $activeResponsesCount = \App\Models\Response::where('offer_type', $offerType)
             ->where('offer_id', $requestId)
             ->where('id', '!=', $excludeResponseId)
-            ->whereIn('overall_status', ['pending', 'partial'])
+            ->whereIn('overall_status', ['pending', 'partial', 'accepted'])
             ->count();
 
         if ($activeResponsesCount === 0) {
