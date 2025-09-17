@@ -29,7 +29,9 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($user->deliveryRequests, $user, 'delivery');
         }
 
-        $requests = $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
+        // CRITICAL FIX: Remove unique('id') to allow multiple responses per request to show separately
+        // Each response should appear as a separate card even if they belong to the same request
+        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         // Apply additional filters
         if ($filters['status']) {
@@ -58,7 +60,8 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($user->deliveryRequests->where('id', $id), $user, 'delivery');
         }
 
-        return $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
+        // CRITICAL FIX: Remove unique('id') to allow multiple responses per request to show separately
+        return $delivery->concat($send)->sortByDesc('created_at')->values();
     }
 
     public function getOtherUserRequests(User $targetUser, User $currentUser, array $filters = []): Collection
@@ -76,7 +79,8 @@ class UserRequestQueryService
             $delivery = $this->processRequestsWithResponses($targetUser->deliveryRequests, $currentUser, 'delivery');
         }
 
-        $requests = $delivery->concat($send)->sortByDesc('created_at')->unique('id')->values();
+        // CRITICAL FIX: Remove unique('id') to allow multiple responses per request to show separately
+        $requests = $delivery->concat($send)->sortByDesc('created_at')->values();
 
         // Apply filters
         if ($filters['status']) {
@@ -108,7 +112,9 @@ class UserRequestQueryService
             $manualResponsesList = $request->manualResponses ?? collect();
             $offerResponsesList = $request->offerResponses ?? collect();
 
-            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList); // Remove duplicates by ID
+            // CRITICAL FIX: Merge all response types and remove duplicate responses by response ID
+            // This ensures each unique response appears only once, but allows multiple responses per request
+            $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList)->unique('id');
 
             // Filter responses where current user is involved
             $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {

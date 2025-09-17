@@ -105,6 +105,18 @@ class UserRepository extends BaseRepository implements UserRepositoryInterface
             'sendRequests.manualResponses.chat',
             'sendRequests.manualResponses.responder.telegramUser',
             'sendRequests.manualResponses.user.telegramUser',
+            // CRITICAL FIX: Load offerResponses relationship for send requests
+            'sendRequests.offerResponses' => function ($query) use ($user) {
+                if ($user) {
+                    $query->where(function($q) use ($user) {
+                        $q->where('user_id', $user->id)
+                          ->orWhere('responder_id', $user->id);
+                    });
+                }
+            },
+            'sendRequests.offerResponses.chat',
+            'sendRequests.offerResponses.responder.telegramUser',
+            'sendRequests.offerResponses.user.telegramUser',
             'deliveryRequests.responses' => function ($query) use ($user) {
                 if ($user) {
                     $query->where(function($q) use ($user) {
@@ -127,6 +139,18 @@ class UserRepository extends BaseRepository implements UserRepositoryInterface
             'deliveryRequests.manualResponses.chat',
             'deliveryRequests.manualResponses.responder.telegramUser',
             'deliveryRequests.manualResponses.user.telegramUser',
+            // CRITICAL FIX: Load offerResponses relationship for delivery requests
+            'deliveryRequests.offerResponses' => function ($query) use ($user) {
+                if ($user) {
+                    $query->where(function($q) use ($user) {
+                        $q->where('user_id', $user->id)
+                          ->orWhere('responder_id', $user->id);
+                    });
+                }
+            },
+            'deliveryRequests.offerResponses.chat',
+            'deliveryRequests.offerResponses.responder.telegramUser',
+            'deliveryRequests.offerResponses.user.telegramUser',
             // Matched requests
             'deliveryRequests.matchedSend',
             'deliveryRequests.matchedSend.fromLocation',
