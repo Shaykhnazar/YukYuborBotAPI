@@ -116,22 +116,34 @@ class UserRequestQueryService
             // This ensures each unique response appears only once, but allows multiple responses per request
             $allResponses = $responsesList->merge($manualResponsesList)->merge($offerResponsesList)->unique('id');
 
-            // Filter responses where current user is involved
-            $relevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
+            // Filter all responses where current user is involved
+            $allRelevantResponses = $allResponses->filter(function($response) use ($currentUser, $statusFilter) {
                 return in_array($response->overall_status, $statusFilter) &&
                        ($response->user_id == $currentUser->id || $response->responder_id == $currentUser->id) &&
                        $response->responder_id != null;
             });
 
-            if ($relevantResponses->isNotEmpty()) {
-                // Create separate item for each response
-                foreach ($relevantResponses as $response) {
+            // CRITICAL UX FIX: Only create separate cards for ACCEPTED/PARTIAL responses
+            // Pending responses should not create duplicate cards
+            $acceptedResponses = $allRelevantResponses->filter(function($response) {
+                return in_array($response->overall_status, ['accepted', 'partial', 'closed']);
+            });
+
+            $pendingResponses = $allRelevantResponses->filter(function($response) {
+                return $response->overall_status === 'pending';
+            });
+
+            if ($acceptedResponses->isNotEmpty()) {
+                // Create separate cards for each accepted/partial response (actual commitments)
+                foreach ($acceptedResponses as $response) {
                     $requestCopy = clone $request;
                     $requestCopy = $this->enrichRequestWithResponseData($requestCopy, $response, $currentUser, $type);
                     $processedRequests->push($requestCopy);
                 }
-            } else {
-                // No responses, show original request
+            }
+
+            // Always show original request if there are pending responses OR no responses at all
+            if ($pendingResponses->isNotEmpty() || $allRelevantResponses->isEmpty()) {
                 $request->type = $type;
                 $request->chat_id = null;
                 $request->response_id = null;
@@ -139,6 +151,10 @@ class UserRequestQueryService
                 $request->response_type = null;
                 $request->responder_user = null;
                 $request->has_reviewed = $this->hasUserReviewedOtherParty($currentUser, $request);
+
+                // Add indication of pending responses count for UI
+                $request->pending_responses_count = $pendingResponses->count();
+
                 $processedRequests->push($request);
             }
         }

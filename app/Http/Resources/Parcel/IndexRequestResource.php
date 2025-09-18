@@ -98,6 +98,7 @@ class IndexRequestResource extends JsonResource
             'has_reviewed' => $this->has_reviewed ?? false,
             'chat_id' => $this->chat_id ?? null,
             'response_id' => $this->response_id ?? null,
+            'pending_responses_count' => $this->pending_responses_count ?? 0,
             ...$details,
             'user' => [
                 'id' => $displayUser->id,
